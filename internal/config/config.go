@@ -43,9 +43,9 @@ type ServerConfig struct {
 // ModelConfig specifies a single model with optional metadata overrides.
 // It supports both shorthand string form ("gpt-4o") and object form:
 //
-//	- id: gpt-4o
-//	  context_length: 128000
-//	  max_output_tokens: 16384
+//   - id: gpt-4o
+//     context_length: 128000
+//     max_output_tokens: 16384
 type ModelConfig struct {
 	ID              string `yaml:"id"`
 	ContextLength   *int64 `yaml:"context_length,omitempty"`

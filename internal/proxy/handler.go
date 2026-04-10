@@ -354,4 +354,3 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 		},
 	})
 }
-

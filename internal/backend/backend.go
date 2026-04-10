@@ -61,17 +61,17 @@ type Usage struct {
 }
 
 type Model struct {
-	ID              string `json:"id"`
-	Object          string `json:"object"`
-	Created         int64  `json:"created"`
-	OwnedBy         string `json:"owned_by"`
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	OwnedBy string `json:"owned_by"`
 	// DisplayName is a human-readable model name, e.g. "Claude Sonnet 4".
 	// Empty when not known; clients should fall back to deriving a name from ID.
-	DisplayName     string   `json:"display_name,omitempty"`
-	ContextLength   *int64   `json:"context_length,omitempty"`
-	MaxOutputTokens *int64   `json:"max_output_tokens,omitempty"`
+	DisplayName     string `json:"display_name,omitempty"`
+	ContextLength   *int64 `json:"context_length,omitempty"`
+	MaxOutputTokens *int64 `json:"max_output_tokens,omitempty"`
 	// Capabilities lists supported features, e.g. ["vision", "tools"].
-	Capabilities    []string `json:"capabilities,omitempty"`
+	Capabilities []string `json:"capabilities,omitempty"`
 }
 
 type ModelList struct {
