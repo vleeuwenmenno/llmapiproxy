@@ -142,11 +142,11 @@ Set the API base URL to `http://localhost:8080/v1` and the API key to your proxy
 
 Navigate to [http://localhost:8080/ui/](http://localhost:8080/ui/) to access the dashboard.
 
-| Page          | Path              | Description                                                           |
-| ------------- | ----------------- | --------------------------------------------------------------------- |
-| Dashboard     | `/ui/`            | Live request feed, token totals, per-backend breakdown, latency stats |
-| Models        | `/ui/models`      | Browse models, enable/disable backends, quick-connect setup guides    |
-| Settings      | `/ui/settings`    | API key management, raw config editor, stats, appearance              |
+| Page      | Path           | Description                                                           |
+| --------- | -------------- | --------------------------------------------------------------------- |
+| Dashboard | `/ui/`         | Live request feed, token totals, per-backend breakdown, latency stats |
+| Models    | `/ui/models`   | Browse models, enable/disable backends, quick-connect setup guides    |
+| Settings  | `/ui/settings` | API key management, raw config editor, stats, appearance              |
 
 Stats persist to SQLite across server restarts. The dashboard auto-refreshes every 10 seconds.
 
