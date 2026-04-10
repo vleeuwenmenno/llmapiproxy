@@ -176,18 +176,32 @@ func (u *UI) SaveConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	redirectTo := r.FormValue("redirect")
+
 	configText := r.FormValue("config")
 	if configText == "" {
+		if redirectTo != "" {
+			http.Redirect(w, r, redirectTo+"?msg=Error:+Config+content+is+empty.", http.StatusSeeOther)
+			return
+		}
 		renderConfigMessage(w, "", "Config content is empty")
 		return
 	}
 
 	if err := u.cfgMgr.SaveRaw([]byte(configText)); err != nil {
+		if redirectTo != "" {
+			http.Redirect(w, r, redirectTo+"?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+			return
+		}
 		renderConfigMessage(w, configText, "Error: "+err.Error())
 		return
 	}
 
 	u.registry.LoadFromConfig(u.cfgMgr.Get())
+	if redirectTo != "" {
+		http.Redirect(w, r, redirectTo+"?msg=Configuration+saved+and+reloaded+successfully!", http.StatusSeeOther)
+		return
+	}
 	renderConfigMessage(w, configText, "Configuration saved and reloaded successfully!")
 }
 

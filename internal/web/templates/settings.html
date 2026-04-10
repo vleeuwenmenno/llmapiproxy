@@ -708,6 +708,7 @@
                 <button class="modal-close" onclick="closeConfigModal()">&times;</button>
             </div>
             <form method="POST" action="/ui/config/save" id="configForm">
+                <input type="hidden" name="redirect" value="/ui/settings">
                 <div class="modal-body">
                     <div class="editor-container" id="editorContainer">
                         <pre id="editorHighlight" aria-hidden="true"></pre>
