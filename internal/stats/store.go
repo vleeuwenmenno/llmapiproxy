@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -192,3 +193,258 @@ func (s *Store) GetByID(id int64) (*Record, error) {
 	r.Stream = stream != 0
 	return &r, nil
 }
+
+// buildWhere converts a StatsFilter into a SQL WHERE clause and positional args.
+func buildWhere(f StatsFilter) (string, []any) {
+	var parts []string
+	var args []any
+	if !f.From.IsZero() {
+		parts = append(parts, "timestamp >= ?")
+		args = append(args, f.From.UnixMilli())
+	}
+	if !f.To.IsZero() {
+		parts = append(parts, "timestamp <= ?")
+		args = append(args, f.To.UnixMilli())
+	}
+	if f.Backend != "" {
+		parts = append(parts, "backend = ?")
+		args = append(args, f.Backend)
+	}
+	if f.Model != "" {
+		parts = append(parts, "model = ?")
+		args = append(args, f.Model)
+	}
+	if f.Client != "" {
+		parts = append(parts, "client = ?")
+		args = append(args, f.Client)
+	}
+	if f.ErrOnly {
+		parts = append(parts, "error != ''")
+	}
+	if len(parts) == 0 {
+		return "", nil
+	}
+	return "WHERE " + strings.Join(parts, " AND "), args
+}
+
+// DistinctValues returns the distinct non-empty values for a column (backend, model, or client).
+// Returns an empty slice when the store is nil.
+func (s *Store) DistinctValues(col string) ([]string, error) {
+	if s == nil {
+		return nil, nil
+	}
+	// col is validated by callers — only backend/model/client are passed.
+	rows, err := s.db.Query(
+		`SELECT DISTINCT ` + col + ` FROM requests WHERE ` + col + ` != '' ORDER BY ` + col)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// FilteredSummary returns aggregate statistics for records matching f.
+func (s *Store) FilteredSummary(f StatsFilter) (Summary, error) {
+	empty := Summary{
+		ByBackend:       make(map[string]int),
+		ByModel:         make(map[string]int),
+		TokensByBackend: make(map[string]int),
+		ErrorsByBackend: make(map[string]int),
+		ByClient:        make(map[string]int),
+		TokensByClient:  make(map[string]int),
+	}
+	if s == nil {
+		return empty, nil
+	}
+	where, args := buildWhere(f)
+	query := `SELECT COUNT(*), COALESCE(SUM(total_tokens),0),
+	                 COALESCE(SUM(CASE WHEN error!='' THEN 1 ELSE 0 END),0),
+	                 COALESCE(AVG(latency_ms),0)
+	          FROM requests ` + where
+	row := s.db.QueryRow(query, args...)
+	var sum Summary
+	var avgLat float64
+	if err := row.Scan(&sum.TotalRequests, &sum.TotalTokens, &sum.TotalErrors, &avgLat); err != nil {
+		return empty, err
+	}
+	sum.AvgLatencyMs = int64(avgLat)
+	sum.ByBackend = make(map[string]int)
+	sum.ByModel = make(map[string]int)
+	sum.TokensByBackend = make(map[string]int)
+	sum.ErrorsByBackend = make(map[string]int)
+	sum.ByClient = make(map[string]int)
+	sum.TokensByClient = make(map[string]int)
+	return sum, nil
+}
+
+// FilteredPercentiles computes P50/P90/P99 latency for records matching f.
+func (s *Store) FilteredPercentiles(f StatsFilter) (Percentiles, error) {
+	if s == nil {
+		return Percentiles{}, nil
+	}
+	where, args := buildWhere(f)
+	rows, err := s.db.Query(`SELECT latency_ms FROM requests `+where+` ORDER BY latency_ms`, args...)
+	if err != nil {
+		return Percentiles{}, err
+	}
+	defer rows.Close()
+	var lats []int64
+	for rows.Next() {
+		var v int64
+		if err := rows.Scan(&v); err != nil {
+			return Percentiles{}, err
+		}
+		lats = append(lats, v)
+	}
+	if err := rows.Err(); err != nil {
+		return Percentiles{}, err
+	}
+	n := len(lats)
+	if n == 0 {
+		return Percentiles{}, nil
+	}
+	pct := func(p float64) int64 {
+		idx := int(float64(n-1) * p)
+		return lats[idx]
+	}
+	return Percentiles{P50: pct(0.50), P90: pct(0.90), P99: pct(0.99)}, nil
+}
+
+// TimeSeries returns bucketed time series data for records matching f.
+// bucketSecs is the bucket width in seconds.
+func (s *Store) TimeSeries(f StatsFilter, bucketSecs int64) ([]TimePoint, error) {
+	if s == nil || bucketSecs <= 0 {
+		return nil, nil
+	}
+	bucketMs := bucketSecs * 1000
+	where, args := buildWhere(f)
+	// Use fmt.Sprintf to embed the literal bucket width so SQLite can use it in GROUP BY/ORDER BY
+	// without repeated positional parameters (SQLite doesn't allow ? in GROUP BY expressions referring
+	// to the same slot used in SELECT).
+	query := fmt.Sprintf(`
+		SELECT (timestamp / %d) * %d,
+		       COUNT(*),
+		       COALESCE(SUM(total_tokens),0),
+		       COALESCE(SUM(CASE WHEN error!='' THEN 1 ELSE 0 END),0),
+		       COALESCE(AVG(latency_ms),0)
+		FROM requests %s
+		GROUP BY (timestamp / %d)
+		ORDER BY (timestamp / %d)`,
+		bucketMs, bucketMs, where, bucketMs, bucketMs)
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var pts []TimePoint
+	for rows.Next() {
+		var tsMs int64
+		var pt TimePoint
+		var avgLat float64
+		if err := rows.Scan(&tsMs, &pt.Requests, &pt.Tokens, &pt.Errors, &avgLat); err != nil {
+			return nil, err
+		}
+		pt.BucketTime = time.UnixMilli(tsMs)
+		pt.AvgLatencyMs = int64(avgLat)
+		pts = append(pts, pt)
+	}
+	return pts, rows.Err()
+}
+
+// RankBy returns the top-limit rows ranked by request count for a dimension column.
+// dim must be "backend", "model", or "client".
+func (s *Store) RankBy(f StatsFilter, dim string, limit int) ([]RankRow, error) {
+	if s == nil {
+		return nil, nil
+	}
+	where, args := buildWhere(f)
+	query := `
+		SELECT ` + dim + `,
+		       COUNT(*),
+		       COALESCE(SUM(total_tokens),0),
+		       COALESCE(SUM(CASE WHEN error!='' THEN 1 ELSE 0 END),0),
+		       COALESCE(AVG(latency_ms),0)
+		FROM requests ` + where + `
+		GROUP BY ` + dim + `
+		ORDER BY COUNT(*) DESC
+		LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RankRow
+	for rows.Next() {
+		var rr RankRow
+		var avgLat float64
+		if err := rows.Scan(&rr.Name, &rr.Requests, &rr.Tokens, &rr.Errors, &avgLat); err != nil {
+			return nil, err
+		}
+		rr.AvgLatMs = int64(avgLat)
+		if rr.Requests > 0 {
+			rr.ErrPct = float64(rr.Errors) / float64(rr.Requests) * 100
+		}
+		out = append(out, rr)
+	}
+	return out, rows.Err()
+}
+
+// FilteredRecords returns a filtered, paginated slice of records (newest first) and the total matching count.
+func (s *Store) FilteredRecords(f StatsFilter, page, pageSize int) ([]Record, int, error) {
+	if s == nil {
+		return nil, 0, nil
+	}
+	where, args := buildWhere(f)
+
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM requests `+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	if total == 0 {
+		return nil, 0, nil
+	}
+
+	offset := page * pageSize
+	queryArgs := append(append([]any(nil), args...), pageSize, offset)
+	rows, err := s.db.Query(
+		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
+		        latency_ms,status_code,error,stream,response_body,client
+		 FROM requests `+where+`
+		 ORDER BY timestamp DESC
+		 LIMIT ? OFFSET ?`,
+		queryArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var records []Record
+	for rows.Next() {
+		var r Record
+		var tsMs int64
+		var stream int
+		if err := rows.Scan(
+			&r.ID, &tsMs, &r.Backend, &r.Model,
+			&r.PromptTokens, &r.CompletionTokens, &r.TotalTokens,
+			&r.LatencyMs, &r.StatusCode, &r.Error, &stream,
+			&r.ResponseBody, &r.Client,
+		); err != nil {
+			return nil, 0, err
+		}
+		r.Timestamp = time.UnixMilli(tsMs)
+		r.Stream = stream != 0
+		records = append(records, r)
+	}
+	return records, total, rows.Err()
+}
+
+

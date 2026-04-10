@@ -105,26 +105,139 @@ func StaticFS() embed.FS {
 
 const pageSize = 25
 
+func parseWindowParam(s string) (time.Duration, string) {
+	switch s {
+	case "2h":
+		return 2 * time.Hour, "2h"
+	case "3h":
+		return 3 * time.Hour, "3h"
+	case "6h":
+		return 6 * time.Hour, "6h"
+	case "12h":
+		return 12 * time.Hour, "12h"
+	default:
+		return 1 * time.Hour, "1h"
+	}
+}
+
 func (u *UI) Dashboard(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.ExecuteTemplate(w, "dashboard.html", nil); err != nil {
+		log.Printf("template error: %v", err)
+		http.Error(w, "template error", http.StatusInternalServerError)
+	}
+}
+
+// dashboardDataResponse is the JSON payload for the dashboard data endpoint.
+type dashboardDataResponse struct {
+	WindowLabel string        `json:"window_label"`
+	WindowStats stats.Summary `json:"window_stats"`
+	Today       stats.Summary `json:"today"`
+	AllTime     stats.Summary `json:"all_time"`
+	Backends    []dashBackend `json:"backends"`
+	Clients     []dashClient  `json:"clients"`
+	Recent      dashRecPage   `json:"recent"`
+}
+
+type dashBackend struct {
+	Name     string `json:"name"`
+	Requests int    `json:"requests"`
+	Tokens   int    `json:"tokens"`
+	Errors   int    `json:"errors"`
+}
+
+type dashClient struct {
+	Name     string `json:"name"`
+	Requests int    `json:"requests"`
+	Tokens   int    `json:"tokens"`
+}
+
+type dashRecPage struct {
+	Items      []stats.Record `json:"items"`
+	Total      int            `json:"total"`
+	Page       int            `json:"page"`
+	TotalPages int            `json:"total_pages"`
+}
+
+// DashboardData returns all dashboard data as a single JSON response.
+// Supports ?window=1h|2h|3h|6h|12h and ?page=N.
+func (u *UI) DashboardData(w http.ResponseWriter, r *http.Request) {
+	windowDur, windowLabel := parseWindowParam(r.URL.Query().Get("window"))
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 0 {
+		page = 0
+	}
+
+	windowStats := u.collector.Summarize(windowDur)
+	today := u.collector.Summarize(24 * time.Hour)
+	allTime := u.collector.Summarize(0)
+
+	// Backends — window-scoped
+	backends := make([]dashBackend, 0, len(windowStats.ByBackend))
+	for name, count := range windowStats.ByBackend {
+		backends = append(backends, dashBackend{
+			Name:     name,
+			Requests: count,
+			Tokens:   windowStats.TokensByBackend[name],
+			Errors:   windowStats.ErrorsByBackend[name],
+		})
+	}
+	sort.Slice(backends, func(i, j int) bool { return backends[i].Requests > backends[j].Requests })
+
+	// Clients — window-scoped
+	clients := make([]dashClient, 0, len(windowStats.ByClient))
+	for name, count := range windowStats.ByClient {
+		clients = append(clients, dashClient{
+			Name:     name,
+			Requests: count,
+			Tokens:   windowStats.TokensByClient[name],
+		})
+	}
+	sort.Slice(clients, func(i, j int) bool { return clients[i].Requests > clients[j].Requests })
+
+	// Recent requests — window-scoped, paginated
+	recent, total := u.collector.FilteredPaged(windowDur, page, pageSize)
+	totalPages := (total + pageSize - 1) / pageSize
+	if totalPages > 0 && page >= totalPages {
+		page = totalPages - 1
+		recent, total = u.collector.FilteredPaged(windowDur, page, pageSize)
+	}
+
+	resp := dashboardDataResponse{
+		WindowLabel: windowLabel,
+		WindowStats: windowStats,
+		Today:       today,
+		AllTime:     allTime,
+		Backends:    backends,
+		Clients:     clients,
+		Recent: dashRecPage{
+			Items:      recent,
+			Total:      total,
+			Page:       page,
+			TotalPages: totalPages,
+		},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("dashboard data encode error: %v", err)
+	}
+}
+
+func (u *UI) StatsCards(w http.ResponseWriter, r *http.Request) {
+	window, label := parseWindowParam(r.URL.Query().Get("window"))
 	allTime := u.collector.Summarize(0)
 	today := u.collector.Summarize(24 * time.Hour)
-	hour := u.collector.Summarize(1 * time.Hour)
-	recent, total := u.collector.RecentPaged(0, pageSize)
+	windowStats := u.collector.Summarize(window)
 
 	data := map[string]any{
-		"AllTime":    allTime,
-		"Today":      today,
-		"Hour":       hour,
-		"Recent":     recent,
-		"Backends":   u.registry.All(),
-		"Page":       0,
-		"TotalCount": total,
-		"TotalPages": (total + pageSize - 1) / pageSize,
-		"PageSize":   pageSize,
+		"AllTime":     allTime,
+		"Today":       today,
+		"WindowStats": windowStats,
+		"WindowLabel": label,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := templates.ExecuteTemplate(w, "dashboard.html", data); err != nil {
+	if err := templates.ExecuteTemplate(w, "stats_cards_fragment.html", data); err != nil {
 		log.Printf("template error: %v", err)
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
@@ -138,7 +251,6 @@ func (u *UI) StatsFragment(w http.ResponseWriter, r *http.Request) {
 
 	allTime := u.collector.Summarize(0)
 	today := u.collector.Summarize(24 * time.Hour)
-	hour := u.collector.Summarize(1 * time.Hour)
 	recent, total := u.collector.RecentPaged(page, pageSize)
 	totalPages := (total + pageSize - 1) / pageSize
 	if page >= totalPages && totalPages > 0 {
@@ -149,7 +261,6 @@ func (u *UI) StatsFragment(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{
 		"AllTime":    allTime,
 		"Today":      today,
-		"Hour":       hour,
 		"Recent":     recent,
 		"Backends":   u.registry.All(),
 		"Page":       page,
@@ -813,4 +924,163 @@ func (u *UI) ToggleBackend(w http.ResponseWriter, r *http.Request) {
 		status = "enabled"
 	}
 	http.Redirect(w, r, redirectTo+"?msg=Backend+"+name+"+"+status+".", http.StatusSeeOther)
+}
+
+// parseStatsFilter builds a StatsFilter from common query parameters.
+// Supported params: window (e.g. "1h","24h","7d","30d"), from, to (ISO 8601),
+// backend, model, client, errors ("1" for errors-only).
+func parseStatsFilter(r *http.Request) stats.StatsFilter {
+	q := r.URL.Query()
+	var f stats.StatsFilter
+
+	// Named window takes priority over explicit from/to
+	if w := q.Get("window"); w != "" {
+		var dur time.Duration
+		switch w {
+		case "1h":
+			dur = time.Hour
+		case "6h":
+			dur = 6 * time.Hour
+		case "24h":
+			dur = 24 * time.Hour
+		case "7d":
+			dur = 7 * 24 * time.Hour
+		case "30d":
+			dur = 30 * 24 * time.Hour
+		}
+		if dur > 0 {
+			f.From = time.Now().Add(-dur)
+		}
+	} else {
+		if s := q.Get("from"); s != "" {
+			if t, err := time.Parse(time.RFC3339, s); err == nil {
+				f.From = t
+			}
+		}
+		if s := q.Get("to"); s != "" {
+			if t, err := time.Parse(time.RFC3339, s); err == nil {
+				f.To = t
+			}
+		}
+	}
+
+	f.Backend = q.Get("backend")
+	f.Model = q.Get("model")
+	f.Client = q.Get("client")
+	f.ErrOnly = q.Get("errors") == "1"
+	return f
+}
+
+// bucketSecsForFilter returns a reasonable time-series bucket width in seconds.
+func bucketSecsForFilter(f stats.StatsFilter) int64 {
+	if f.From.IsZero() {
+		return 3600 // default 1-hour buckets
+	}
+	span := time.Since(f.From)
+	switch {
+	case span <= 2*time.Hour:
+		return 60 // 1-min buckets
+	case span <= 24*time.Hour:
+		return 900 // 15-min buckets
+	case span <= 7*24*time.Hour:
+		return 3600 // 1-hour buckets
+	default:
+		return 4 * 3600 // 4-hour buckets
+	}
+}
+
+// AnalyticsPage renders the analytics shell with filter dropdowns pre-populated.
+func (u *UI) AnalyticsPage(w http.ResponseWriter, r *http.Request) {
+	backends, _ := u.store.DistinctValues("backend")
+	models, _ := u.store.DistinctValues("model")
+	clients, _ := u.store.DistinctValues("client")
+
+	data := map[string]any{
+		"Backends": backends,
+		"Models":   models,
+		"Clients":  clients,
+		// Pass current filter state for pre-selecting dropdowns
+		"Filter": r.URL.Query(),
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.ExecuteTemplate(w, "analytics.html", data); err != nil {
+		log.Printf("analytics template error: %v", err)
+		http.Error(w, "template error", http.StatusInternalServerError)
+	}
+}
+
+// analyticsDataResponse is the JSON envelope returned by AnalyticsData.
+type analyticsDataResponse struct {
+	Summary     stats.Summary    `json:"summary"`
+	Percentiles stats.Percentiles `json:"percentiles"`
+	TimeSeries  []stats.TimePoint `json:"time_series"`
+	TopModels   []stats.RankRow   `json:"top_models"`
+	TopBackends []stats.RankRow   `json:"top_backends"`
+	TopClients  []stats.RankRow   `json:"top_clients"`
+	Records     analyticsRecPage  `json:"records"`
+}
+
+type analyticsRecPage struct {
+	Items      []stats.Record `json:"items"`
+	Total      int            `json:"total"`
+	Page       int            `json:"page"`
+	TotalPages int            `json:"total_pages"`
+}
+
+// AnalyticsData returns all filtered analytics data as a single JSON response.
+func (u *UI) AnalyticsData(w http.ResponseWriter, r *http.Request) {
+	f := parseStatsFilter(r)
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 0 {
+		page = 0
+	}
+
+	summary, err := u.store.FilteredSummary(f)
+	if err != nil {
+		log.Printf("analytics: summary error: %v", err)
+	}
+	pcts, err := u.store.FilteredPercentiles(f)
+	if err != nil {
+		log.Printf("analytics: percentiles error: %v", err)
+	}
+	ts, err := u.store.TimeSeries(f, bucketSecsForFilter(f))
+	if err != nil {
+		log.Printf("analytics: timeseries error: %v", err)
+	}
+	topModels, err := u.store.RankBy(f, "model", 20)
+	if err != nil {
+		log.Printf("analytics: rank models error: %v", err)
+	}
+	topBackends, err := u.store.RankBy(f, "backend", 20)
+	if err != nil {
+		log.Printf("analytics: rank backends error: %v", err)
+	}
+	topClients, err := u.store.RankBy(f, "client", 20)
+	if err != nil {
+		log.Printf("analytics: rank clients error: %v", err)
+	}
+	records, total, err := u.store.FilteredRecords(f, page, pageSize)
+	if err != nil {
+		log.Printf("analytics: records error: %v", err)
+	}
+	totalPages := (total + pageSize - 1) / pageSize
+
+	resp := analyticsDataResponse{
+		Summary:     summary,
+		Percentiles: pcts,
+		TimeSeries:  ts,
+		TopModels:   topModels,
+		TopBackends: topBackends,
+		TopClients:  topClients,
+		Records: analyticsRecPage{
+			Items:      records,
+			Total:      total,
+			Page:       page,
+			TotalPages: totalPages,
+		},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("analytics: json encode error: %v", err)
+	}
 }

@@ -72,6 +72,7 @@ func main() {
 
 	r.Route("/ui", func(r chi.Router) {
 		r.Get("/", ui.Dashboard)
+		r.Get("/dashboard/data", ui.DashboardData)
 		r.Get("/stats", ui.StatsFragment)
 		r.Get("/models", ui.ModelsPage)
 		r.Get("/backends/{name}/models", ui.BackendModels)
@@ -85,7 +86,10 @@ func main() {
 		r.Post("/settings/keys/add", ui.AddAPIKey)
 		r.Post("/settings/keys/delete", ui.DeleteAPIKey)
 		r.Post("/settings/backends/toggle", ui.ToggleBackend)
+		r.Get("/stats/cards", ui.StatsCards)
 		r.Get("/stats/detail", ui.RequestDetail)
+		r.Get("/analytics", ui.AnalyticsPage)
+		r.Get("/analytics/data", ui.AnalyticsData)
 		r.Post("/settings/clients/add", ui.AddClient)
 		r.Post("/settings/clients/delete", ui.DeleteClient)
 		r.Post("/routing/save", ui.SaveRouting)

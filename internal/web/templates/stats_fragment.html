@@ -1,27 +1,3 @@
-<h1>Dashboard</h1>
-
-<div class="cards">
-    <div class="card">
-        <div class="label">Requests (1h)</div>
-        <div class="value accent">{{.Hour.TotalRequests}}</div>
-        <div class="sub">{{.Today.TotalRequests}} today &middot; {{.AllTime.TotalRequests}} all time</div>
-    </div>
-    <div class="card">
-        <div class="label">Tokens (1h)</div>
-        <div class="value">{{.Hour.TotalTokens}}</div>
-        <div class="sub">{{.Today.TotalTokens}} today &middot; {{.AllTime.TotalTokens}} all time</div>
-    </div>
-    <div class="card">
-        <div class="label">Avg Latency (1h)</div>
-        <div class="value green">{{formatDuration .Hour.AvgLatencyMs}}</div>
-        <div class="sub">{{formatDuration .AllTime.AvgLatencyMs}} all time</div>
-    </div>
-    <div class="card">
-        <div class="label">Errors (1h)</div>
-        <div class="value {{if gt .Hour.TotalErrors 0}}red{{else}}green{{end}}">{{.Hour.TotalErrors}}</div>
-        <div class="sub">{{.Today.TotalErrors}} today &middot; {{.AllTime.TotalErrors}} all time</div>
-    </div>
-</div>
 
 <div class="section-title">Backends</div>
 <div class="backend-grid">

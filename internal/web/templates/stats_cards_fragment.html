@@ -1,0 +1,22 @@
+<div class="cards">
+    <div class="card">
+        <div class="label">Requests ({{.WindowLabel}})</div>
+        <div class="value accent">{{.WindowStats.TotalRequests}}</div>
+        <div class="sub">{{.Today.TotalRequests}} today &middot; {{.AllTime.TotalRequests}} all time</div>
+    </div>
+    <div class="card">
+        <div class="label">Tokens ({{.WindowLabel}})</div>
+        <div class="value">{{.WindowStats.TotalTokens}}</div>
+        <div class="sub">{{.Today.TotalTokens}} today &middot; {{.AllTime.TotalTokens}} all time</div>
+    </div>
+    <div class="card">
+        <div class="label">Avg Latency ({{.WindowLabel}})</div>
+        <div class="value green">{{formatDuration .WindowStats.AvgLatencyMs}}</div>
+        <div class="sub">{{formatDuration .AllTime.AvgLatencyMs}} all time</div>
+    </div>
+    <div class="card">
+        <div class="label">Errors ({{.WindowLabel}})</div>
+        <div class="value {{if gt .WindowStats.TotalErrors 0}}red{{else}}green{{end}}">{{.WindowStats.TotalErrors}}</div>
+        <div class="sub">{{.Today.TotalErrors}} today &middot; {{.AllTime.TotalErrors}} all time</div>
+    </div>
+</div>

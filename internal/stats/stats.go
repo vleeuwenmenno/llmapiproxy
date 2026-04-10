@@ -22,6 +22,42 @@ type Record struct {
 	ID               int64     `json:"id,omitempty"`
 }
 
+// StatsFilter narrows analytics queries.
+type StatsFilter struct {
+	From    time.Time
+	To      time.Time
+	Backend string
+	Model   string
+	Client  string
+	ErrOnly bool
+}
+
+// TimePoint is one time-bucket in a time-series query.
+type TimePoint struct {
+	BucketTime   time.Time `json:"t"`
+	Requests     int       `json:"req"`
+	Tokens       int       `json:"tok"`
+	Errors       int       `json:"err"`
+	AvgLatencyMs int64     `json:"lat"`
+}
+
+// Percentiles holds latency distribution values.
+type Percentiles struct {
+	P50 int64 `json:"p50"`
+	P90 int64 `json:"p90"`
+	P99 int64 `json:"p99"`
+}
+
+// RankRow holds aggregated stats for one dimension value (model/backend/client).
+type RankRow struct {
+	Name     string  `json:"name"`
+	Requests int     `json:"req"`
+	Tokens   int     `json:"tok"`
+	Errors   int     `json:"err"`
+	AvgLatMs int64   `json:"lat"`
+	ErrPct   float64 `json:"err_pct"`
+}
+
 // Summary provides aggregated statistics.
 type Summary struct {
 	TotalRequests   int            `json:"total_requests"`
@@ -134,6 +170,47 @@ func (c *Collector) Clear() {
 	if store != nil {
 		store.DeleteAll()
 	}
+}
+
+// FilteredPaged returns a page of records (newest first) within an optional time window
+// and the total count of matching records. since=0 means all time.
+func (c *Collector) FilteredPaged(since time.Duration, page, pageSize int) ([]Record, int) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	var cutoff time.Time
+	if since > 0 {
+		cutoff = time.Now().Add(-since)
+	}
+
+	// Records are stored oldest-first; find the first index inside the window.
+	n := len(c.records)
+	start := 0
+	if !cutoff.IsZero() {
+		for start < n && c.records[start].Timestamp.Before(cutoff) {
+			start++
+		}
+	}
+
+	total := n - start
+	if total <= 0 {
+		return nil, 0
+	}
+
+	skip := page * pageSize
+	result := make([]Record, 0, pageSize)
+	// Iterate newest-first
+	for i := n - 1; i >= start; i-- {
+		if skip > 0 {
+			skip--
+			continue
+		}
+		result = append(result, c.records[i])
+		if len(result) >= pageSize {
+			break
+		}
+	}
+	return result, total
 }
 
 // Summarize returns aggregate stats over a given duration (0 = all time).
