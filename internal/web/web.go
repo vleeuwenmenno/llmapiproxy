@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -323,10 +324,61 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// playgroundKeyEntry holds a label and the actual key value for the playground dropdown.
+type playgroundKeyEntry struct {
+	Label string
+	Value string
+}
+
+// PlaygroundPage renders the interactive model playground.
+func (u *UI) PlaygroundPage(w http.ResponseWriter, r *http.Request) {
+	cfg := u.cfgMgr.Get()
+
+	// Collect API keys: server-level keys and per-client keys.
+	var keys []playgroundKeyEntry
+	for i, k := range cfg.Server.APIKeys {
+		keys = append(keys, playgroundKeyEntry{
+			Label: fmt.Sprintf("Server key %d (%s)", i+1, maskKey(k)),
+			Value: k,
+		})
+	}
+	for _, c := range cfg.Clients {
+		if c.APIKey != "" {
+			keys = append(keys, playgroundKeyEntry{
+				Label: fmt.Sprintf("%s (%s)", c.Name, maskKey(c.APIKey)),
+				Value: c.APIKey,
+			})
+		}
+	}
+
+	// Collect all models from enabled backends (prefixed backend/model-id).
+	var models []string
+	for _, bc := range cfg.Backends {
+		if !bc.IsEnabled() {
+			continue
+		}
+		for _, m := range bc.Models {
+			models = append(models, bc.Name+"/"+m)
+		}
+	}
+
+	data := map[string]any{
+		"APIKeys": keys,
+		"Models":  models,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.ExecuteTemplate(w, "playground.html", data); err != nil {
+		log.Printf("template error: %v", err)
+		http.Error(w, "template error", http.StatusInternalServerError)
+	}
+}
+
 // keyEntry holds display data for a single API key on the settings page.
 type keyEntry struct {
 	Index  int
 	Masked string
+	Full   string
 }
 
 // backendSettingsEntry holds display data for a backend on the settings page.
@@ -348,7 +400,7 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 	cfg := u.cfgMgr.Get()
 	keys := make([]keyEntry, len(cfg.Server.APIKeys))
 	for i, k := range cfg.Server.APIKeys {
-		keys[i] = keyEntry{Index: i, Masked: maskKey(k)}
+		keys[i] = keyEntry{Index: i, Masked: maskKey(k), Full: k}
 	}
 	msg := r.URL.Query().Get("msg")
 
@@ -370,7 +422,7 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
-		"Keys":         keys,
+		"LegacyKeys":   keys, // server.api_keys entries (unnamed, for migration notice only)
 		"Backends":     backends,
 		"StatsCount":   u.collector.TotalCount(),
 		"Message":      msg,

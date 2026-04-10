@@ -233,6 +233,17 @@
             background: rgba(34, 211, 238, 0.2);
         }
 
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-dim);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            color: var(--text);
+            border-color: var(--text-dim);
+        }
+
         .keys-list {
             list-style: none;
             margin-bottom: 1rem;
@@ -258,6 +269,29 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+        }
+
+        .key-copy-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.75rem;
+            line-height: 1;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+
+        .key-copy-btn:hover {
+            color: var(--accent);
+            border-color: rgba(34,211,238,0.3);
+        }
+
+        .key-copy-btn.copied {
+            color: var(--green);
+            border-color: rgba(52,211,153,0.3);
         }
 
         .key-delete-btn {
@@ -593,6 +627,7 @@
         <div class="links">
             <a href="/ui/">Dashboard</a>
             <a href="/ui/models">Models</a>
+            <a href="/ui/playground">Playground</a>
             <a href="/ui/settings" class="active">Settings</a>
             <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">&#9728;</button>
         </div>
@@ -640,17 +675,23 @@
             {{end}}
         </div>
 
-        <!-- API Keys Section -->
+        <!-- Anonymous API Keys Section -->
         <div class="section">
             <div class="section-header">
-                <div class="section-title">API Keys</div>
+                <div class="section-title">Anonymous API Keys</div>
             </div>
-            <p class="section-desc">Keys used by clients to authenticate with this proxy. Stored in the config file.</p>
-            {{if .Keys}}
+            <p class="section-desc">
+                Simple bearer tokens that grant access to the proxy. Requests using these keys are authenticated but
+                tracked as <strong>unknown</strong> in the stats dashboard — no per-key breakdown is available.
+                Use these for quick setups or tools where you don't need per-app visibility.
+                Stored under <code>server.api_keys</code> in the config file.
+            </p>
+            {{if .LegacyKeys}}
             <ul class="keys-list">
-                {{range .Keys}}
+                {{range .LegacyKeys}}
                 <li>
                     <span class="key-text">{{.Masked}}</span>
+                    <button type="button" class="key-copy-btn" onclick="copyKey(this, '{{.Full}}')" title="Copy key">&#x2398;</button>
                     <form method="POST" action="/ui/settings/keys/delete" style="display:contents"
                           onsubmit="return confirm('Delete this API key?')">
                         <input type="hidden" name="index" value="{{.Index}}">
@@ -661,22 +702,27 @@
             </ul>
             {{end}}
             <form method="POST" action="/ui/settings/keys/add" class="add-key-form">
-                <input type="text" name="key" placeholder="Paste new API key…" autocomplete="off" spellcheck="false" required>
+                <input type="text" id="anon-key-input" name="key" placeholder="Paste or generate an API key…" autocomplete="off" spellcheck="false" required>
+                <button type="button" class="btn btn-secondary" onclick="generateKey('anon-key-input')">&#x2728; Generate</button>
                 <button type="submit" class="btn btn-primary">&#43; Add Key</button>
             </form>
         </div>
 
-        <!-- Clients Section -->
+        <!-- Named Clients Section -->
         <div class="section">
             <div class="section-header">
-                <div class="section-title">Clients</div>
+                <div class="section-title">Named Clients</div>
             </div>
-            <p class="section-desc">Named clients with their own API keys. Clients appear in stats breakdowns.</p>
+            <p class="section-desc">
+                Like anonymous keys, but tied to a named app (e.g. <em>zed</em>, <em>continue</em>). The name appears in stats breakdowns.
+                Clients can also have per-backend API key overrides via <code>backend_keys</code> in the Advanced editor below.
+            </p>
             {{if .Clients}}
             <ul class="keys-list">
                 {{range .Clients}}
                 <li>
                     <span class="key-text">{{.Name}} — {{maskKey .APIKey}}</span>
+                    <button type="button" class="key-copy-btn" onclick="copyKey(this, '{{.APIKey}}')" title="Copy key">&#x2398;</button>
                     <form method="POST" action="/ui/settings/clients/delete" style="display:contents"
                           onsubmit="return confirm('Delete client {{.Name}}?')">
                         <input type="hidden" name="name" value="{{.Name}}">
@@ -685,10 +731,13 @@
                 </li>
                 {{end}}
             </ul>
+            {{else}}
+            <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:1rem">No named clients yet.</p>
             {{end}}
             <form method="POST" action="/ui/settings/clients/add" class="add-key-form" style="display:flex;gap:0.5rem;flex-wrap:wrap">
-                <input type="text" name="name" placeholder="Client name" autocomplete="off" spellcheck="false" required style="flex:1;min-width:120px">
-                <input type="text" name="key" placeholder="API key (sk-...)" autocomplete="off" spellcheck="false" required style="flex:2;min-width:200px">
+                <input type="text" name="name" placeholder="Client name (e.g. zed, continue)" autocomplete="off" spellcheck="false" required style="flex:1;min-width:140px">
+                <input type="text" id="client-key-input" name="key" placeholder="Paste or generate an API key…" autocomplete="off" spellcheck="false" required style="flex:2;min-width:200px">
+                <button type="button" class="btn btn-secondary" onclick="generateKey('client-key-input')">&#x2728; Generate</button>
                 <button type="submit" class="btn btn-primary">&#43; Add Client</button>
             </form>
         </div>
@@ -931,6 +980,25 @@
         var pre = document.getElementById('editorHighlight');
         pre.scrollTop = ta.scrollTop;
         pre.scrollLeft = ta.scrollLeft;
+    }
+
+    function generateKey(inputId) {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        const arr = new Uint8Array(32);
+        crypto.getRandomValues(arr);
+        const token = Array.from(arr).map(b => chars[b % chars.length]).join('');
+        document.getElementById(inputId).value = 'sk-proxy-' + token;
+    }
+
+    function copyKey(btn, key) {
+        navigator.clipboard.writeText(key).then(() => {
+            btn.classList.add('copied');
+            btn.textContent = '✓';
+            setTimeout(() => {
+                btn.classList.remove('copied');
+                btn.textContent = '⎘';
+            }, 1500);
+        });
     }
     </script>
 </body>

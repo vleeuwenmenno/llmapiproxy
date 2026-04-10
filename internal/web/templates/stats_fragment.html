@@ -77,7 +77,7 @@
     </thead>
     <tbody>
     {{range .Recent}}
-        <tr style="cursor:pointer" {{if gt .ID 0}}onclick="showDetail({{.ID}})"{{end}}>
+        <tr style="cursor:pointer" {{if .ID}}onclick="showDetail({{.ID}})"{{end}}>
             <td>{{if .Error}}<span class="status-err" title="{{.Error}}"></span>{{else}}<span class="status-ok"></span>{{end}}</td>
             <td>{{formatTime .Timestamp}}</td>
             <td>{{.Backend}}</td>

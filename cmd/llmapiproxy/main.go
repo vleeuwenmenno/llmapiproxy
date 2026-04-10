@@ -77,6 +77,7 @@ func main() {
 		r.Get("/config", http.RedirectHandler("/ui/settings", http.StatusSeeOther).ServeHTTP)
 		r.Post("/config/save", ui.SaveConfig)
 		r.Get("/settings", ui.SettingsPage)
+		r.Get("/playground", ui.PlaygroundPage)
 		r.Post("/settings/clear-stats", ui.ClearStats)
 		r.Post("/settings/toggle-stats", ui.ToggleStats)
 		r.Post("/settings/keys/add", ui.AddAPIKey)
