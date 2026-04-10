@@ -1,0 +1,14 @@
+commands:
+  install: go mod download
+  build: go build ./cmd/llmapiproxy
+  test: go test ./...
+  lint: go vet ./...
+  typecheck: go build ./...
+
+services:
+  proxy:
+    start: go run ./cmd/llmapiproxy
+    stop: lsof -ti :8000 | xargs kill
+    healthcheck: curl -sf http://localhost:8000/health
+    port: 8000
+    depends_on: []
