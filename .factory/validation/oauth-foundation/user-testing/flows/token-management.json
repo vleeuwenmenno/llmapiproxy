@@ -1,0 +1,200 @@
+{
+  "groupId": "token-management",
+  "testedAt": "2026-04-11T00:33:12Z",
+  "isolation": {
+    "method": "Go unit tests with httptest.NewServer mocks",
+    "noLiveProxy": true,
+    "noExternalAPIs": true
+  },
+  "toolsUsed": ["go test"],
+  "assertions": {
+    "VAL-TOKEN-001": {
+      "status": "pass",
+      "evidence": "TestDiscoverGitHubToken_COPILOT_GITHUB_TOKEN sets COPILOT_GITHUB_TOKEN env var, discovers token, verifies source='env:COPILOT_GITHUB_TOKEN'. Test passed.",
+      "testName": "TestDiscoverGitHubToken_COPILOT_GITHUB_TOKEN"
+    },
+    "VAL-TOKEN-002": {
+      "status": "pass",
+      "evidence": "TestDiscoverGitHubToken_GH_TOKEN sets GH_TOKEN with other env vars unset, discovers token, verifies source='env:GH_TOKEN'. Test passed.",
+      "testName": "TestDiscoverGitHubToken_GH_TOKEN"
+    },
+    "VAL-TOKEN-003": {
+      "status": "pass",
+      "evidence": "TestDiscoverGitHubToken_GITHUB_TOKEN sets GITHUB_TOKEN only, discovers token, verifies source='env:GITHUB_TOKEN'. Test passed.",
+      "testName": "TestDiscoverGitHubToken_GITHUB_TOKEN"
+    },
+    "VAL-TOKEN-004": {
+      "status": "pass",
+      "evidence": "TestDiscoverGitHubToken_GhCli uses mock gh CLI script returning a token, verifies token discovered with source='gh_cli'. Also tests timeout (TestDiscoverGitHubToken_GhCliTimeout) and failure (TestDiscoverGitHubToken_GhCliFailure). All passed.",
+      "testName": "TestDiscoverGitHubToken_GhCli"
+    },
+    "VAL-TOKEN-005": {
+      "status": "pass",
+      "evidence": "TestDiscoverGitHubToken_HostsYml creates hosts.yml with github.com oauth_token entry, verifies token parsed with source='hosts.yml'. Also tests malformed, no-github-entry, empty-token, and whitespace-token edge cases. All passed.",
+      "testName": "TestDiscoverGitHubToken_HostsYml"
+    },
+    "VAL-TOKEN-006": {
+      "status": "pass",
+      "evidence": "TestDiscoverGitHubToken_PersistedToken saves a TokenData to TokenStore, then discovers it with source='persisted'. Test passed.",
+      "testName": "TestDiscoverGitHubToken_PersistedToken"
+    },
+    "VAL-TOKEN-007": {
+      "status": "pass",
+      "evidence": "Multiple tests confirm priority chain: TestDiscoverGitHubToken_PriorityOrder (all sources present, COPILOT_GITHUB_TOKEN wins), TestDiscoverGitHubToken_PriorityOrder_GH_TOKEN (COPILOT unset, GH_TOKEN wins), TestDiscoverGitHubToken_PriorityOrder_GITHUB_TOKEN (only GITHUB_TOKEN set), TestDiscoverGitHubToken_PriorityOrder_CliOverHostsYml, TestDiscoverGitHubToken_PriorityOrder_HostsYmlOverPersisted. All passed.",
+      "testName": "TestDiscoverGitHubToken_PriorityOrder"
+    },
+    "VAL-TOKEN-008": {
+      "status": "pass",
+      "evidence": "TestDiscoverGitHubToken_NoSources unsets all env vars, removes CLI and hosts.yml, verifies empty token returned without error. Test passed.",
+      "testName": "TestDiscoverGitHubToken_NoSources"
+    },
+    "VAL-TOKEN-009": {
+      "status": "pass",
+      "evidence": "TestExchangeCopilotToken_Success sets up mock GitHub API returning copilot token with refresh_in, verifies token stored and accessible. Also verifies Authorization and required Copilot headers sent. Test passed.",
+      "testName": "TestExchangeCopilotToken_Success"
+    },
+    "VAL-TOKEN-010": {
+      "status": "pass",
+      "evidence": "TestExchangeCopilotToken_InvalidGitHubToken tests mock server returning 401, verifies error mentions 401/unauthorized. TestExchangeCopilotToken_ForbiddenToken tests 403 response. Both passed.",
+      "testName": "TestExchangeCopilotToken_InvalidGitHubToken"
+    },
+    "VAL-TOKEN-011": {
+      "status": "pass",
+      "evidence": "TestExchangeCopilotToken_RateLimit tests mock server returning 429 with Retry-After header, verifies error mentions 429/rate limit. Test passed.",
+      "testName": "TestExchangeCopilotToken_RateLimit"
+    },
+    "VAL-TOKEN-012": {
+      "status": "pass",
+      "evidence": "TestExchangeCopilotToken_NetworkFailure creates httptest server and closes it immediately, verifies exchange fails with network error. Test passed.",
+      "testName": "TestExchangeCopilotToken_NetworkFailure"
+    },
+    "VAL-TOKEN-013": {
+      "status": "pass",
+      "evidence": "TestTokenStore_SaveAndLoad saves token, verifies JSON file exists and is valid JSON, loads into new TokenStore and verifies round-trip. Test passed.",
+      "testName": "TestTokenStore_SaveAndLoad"
+    },
+    "VAL-TOKEN-014": {
+      "status": "pass",
+      "evidence": "TestTokenStore_FilePermissions saves token and verifies file has 0600 permissions via os.Stat. Test passed.",
+      "testName": "TestTokenStore_FilePermissions"
+    },
+    "VAL-TOKEN-015": {
+      "status": "pass",
+      "evidence": "TestTokenStore_DirectoryCreation uses deeply nested path that doesn't exist, verifies directory created and file written. TestTokenStore_DirectoryPermissions verifies 0700 permissions. Both passed.",
+      "testName": "TestTokenStore_DirectoryCreation"
+    },
+    "VAL-TOKEN-016": {
+      "status": "pass",
+      "evidence": "TestTokenStore_LoadOnStartup writes token JSON file manually, creates new TokenStore pointing to that file, verifies token loaded without re-discovery. Test passed.",
+      "testName": "TestTokenStore_LoadOnStartup"
+    },
+    "VAL-TOKEN-017": {
+      "status": "pass",
+      "evidence": "TestTokenStore_ExpiredTokenDetection saves expired token, verifies ValidToken() returns nil but Get() returns the token. TestTokenStore_LoadExpiredTokenFromDisk writes expired token to disk and verifies it's loaded but detected as expired. Both passed.",
+      "testName": "TestTokenStore_ExpiredTokenDetection"
+    },
+    "VAL-TOKEN-018": {
+      "status": "pass",
+      "evidence": "TestTokenStore_CorruptedFile writes invalid JSON, verifies NewTokenStore doesn't panic/error, Get() returns nil, and new save works. TestTokenStore_EmptyFile also tests empty file case. Both passed.",
+      "testName": "TestTokenStore_CorruptedFile"
+    },
+    "VAL-TOKEN-019": {
+      "status": "pass",
+      "evidence": "TestExchangeCopilotToken_RefreshInFieldUsed sets a token past its refresh_in threshold, calls GetOrRefresh, verifies token was refreshed proactively. Test passed.",
+      "testName": "TestExchangeCopilotToken_RefreshInFieldUsed"
+    },
+    "VAL-TOKEN-023": {
+      "status": "pass",
+      "evidence": "TestTokenStore_RefreshCoordination_SingleRefresh verifies first caller gets non-nil done function, second/third callers get nil done (refresh already in progress). TestExchangeCopilotToken_ConcurrentGetOrRefresh launches 10 goroutines and verifies exactly 1 HTTP request was made. Both passed.",
+      "testName": "TestTokenStore_RefreshCoordination_SingleRefresh, TestExchangeCopilotToken_ConcurrentGetOrRefresh"
+    },
+    "VAL-TOKEN-024": {
+      "status": "pass",
+      "evidence": "TestTokenStore_ConcurrentAccess runs 50 goroutines each doing 100 reads, verifies all get consistent token. TestTokenStore_ConcurrentReadWrite does concurrent saves and reads. Both passed.",
+      "testName": "TestTokenStore_ConcurrentAccess"
+    },
+    "VAL-TOKEN-025": {
+      "status": "pass",
+      "evidence": "TestTokenStore_StaleTokenFallback sets near-expiry token, starts refresh, verifies ValidToken() returns non-nil during refresh, then simulates refresh failure and verifies stale token still usable. Test passed.",
+      "testName": "TestTokenStore_StaleTokenFallback"
+    },
+    "VAL-TOKEN-026": {
+      "status": "pass",
+      "evidence": "TestTokenStore_ExpiredTokenDuringRefreshFailure saves expired token, starts refresh, simulates failure, verifies ValidToken() returns nil. Test passed.",
+      "testName": "TestTokenStore_ExpiredTokenDuringRefreshFailure"
+    },
+    "VAL-TOKEN-027": {
+      "status": "pass",
+      "evidence": "TestManager_HotReload_AddsOAuthBackend starts with openai-only config, rewrites YAML to add copilot, calls Reload(), verifies copilot backend appears. Test passed.",
+      "testName": "TestManager_HotReload_AddsOAuthBackend"
+    },
+    "VAL-TOKEN-028": {
+      "status": "pass",
+      "evidence": "TestManager_HotReload_RemovesOAuthBackend starts with openai+copilot config, rewrites to remove copilot, calls Reload(), verifies only openrouter remains. Test passed.",
+      "testName": "TestManager_HotReload_RemovesOAuthBackend"
+    },
+    "VAL-TOKEN-029": {
+      "status": "pass",
+      "evidence": "TestManager_HotReload_UpdatesOAuthBackendConfig starts with copilot using api.githubcopilot.com, rewrites to api.business.githubcopilot.com, calls Reload(), verifies BaseURL updated. Test passed.",
+      "testName": "TestManager_HotReload_UpdatesOAuthBackendConfig"
+    },
+    "VAL-TOKEN-030": {
+      "status": "pass",
+      "evidence": "TestTokenStore_AtomicWrite saves token1, verifies valid JSON, overwrites with token2, verifies valid JSON and no leftover .tmp files. Test passed.",
+      "testName": "TestTokenStore_AtomicWrite"
+    },
+    "VAL-TOKEN-031": {
+      "status": "pass",
+      "evidence": "TestRegistry_HotReload_MultipleIndependent registers copilot+codex, verifies both present, then reloads with only codex, verifies copilot removed and codex unaffected. Test passed.",
+      "testName": "TestRegistry_HotReload_MultipleIndependent"
+    },
+    "VAL-TOKEN-033": {
+      "status": "pass",
+      "evidence": "TestTokenStore_TransientWriteFailure saves token, removes directory, attempts save (fails on disk), verifies in-memory token still reflects new value. Test passed.",
+      "testName": "TestTokenStore_TransientWriteFailure"
+    },
+    "VAL-TOKEN-034": {
+      "status": "pass",
+      "evidence": "TestExchangeCopilotToken_MissingRefreshIn uses mock server returning response without refresh_in field, verifies token parsed successfully and NeedsRefresh() uses default 80% of TTL. Test passed.",
+      "testName": "TestExchangeCopilotToken_MissingRefreshIn"
+    },
+    "VAL-TOKEN-035": {
+      "status": "pass",
+      "evidence": "TestExchangeCopilotToken_OfflineStartup_WithCache pre-populates cache, uses broken URL, verifies GetOrRefresh returns cached token. TestExchangeCopilotToken_OfflineStartup_NoCache verifies error when no cache and no network. Both passed.",
+      "testName": "TestExchangeCopilotToken_OfflineStartup_WithCache"
+    },
+    "VAL-TOKEN-036": {
+      "status": "pass",
+      "evidence": "TestTokenData_IsExpired_ClockSkew verifies token expiring in 15 seconds is treated as expired (within 30s margin), and token expiring in 60 seconds is not. Test passed.",
+      "testName": "TestTokenData_IsExpired_ClockSkew"
+    },
+    "VAL-TOKEN-037": {
+      "status": "pass",
+      "evidence": "TestTokenStore_FileDeletedExternally saves token, deletes file externally, verifies in-memory token still available, saves new token, verifies file recreated. Test passed.",
+      "testName": "TestTokenStore_FileDeletedExternally"
+    },
+    "VAL-TOKEN-038": {
+      "status": "pass",
+      "evidence": "TestCopilotBackend_Upstream401_RetryWithReauth uses mock upstream returning 401 on first request then success on retry, verifies client receives successful response after exactly 2 attempts. Test passed.",
+      "testName": "TestCopilotBackend_Upstream401_RetryWithReauth"
+    },
+    "VAL-TOKEN-040": {
+      "status": "pass",
+      "evidence": "TestCopilotBackend_Upstream401_LoopPrevention uses mock upstream always returning 401, verifies error returned to client and at most 2 attempts made (loop prevention). Test passed.",
+      "testName": "TestCopilotBackend_Upstream401_LoopPrevention"
+    },
+    "VAL-COPILOT-024": {
+      "status": "pass",
+      "evidence": "TestValidate_OAuthBackendStillRequiresBaseURL creates config with copilot type but empty base_url, verifies Validate() returns error. Test passed.",
+      "testName": "TestValidate_OAuthBackendStillRequiresBaseURL"
+    },
+    "VAL-COPILOT-025": {
+      "status": "pass",
+      "evidence": "TestValidate_CopilotBackendDoesNotRequireAPIKey creates config with copilot type and no api_key, verifies Validate() passes. TestParse_CopilotNoAPIKey also verifies YAML parsing works without api_key. TestRegistry_LoadFromConfig_Copilot verifies copilot backend registered without api_key. All passed.",
+      "testName": "TestValidate_CopilotBackendDoesNotRequireAPIKey"
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 35 assertions (VAL-TOKEN-001 through VAL-TOKEN-038, VAL-TOKEN-040, plus VAL-COPILOT-024 and VAL-COPILOT-025). All 35 passed. All Go tests across internal/oauth, internal/config, and internal/backend packages pass successfully."
+}
