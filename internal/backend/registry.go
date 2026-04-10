@@ -50,9 +50,7 @@ func (r *Registry) createBackend(bc config.BackendConfig) (Backend, error) {
 	case "copilot":
 		return newCopilotBackendFromConfig(bc)
 	case "codex":
-		// CodexBackend will be implemented in a subsequent feature.
-		// For now, register an OpenAI-compatible placeholder.
-		return NewOpenAI(bc), nil
+		return newCodexBackendFromConfig(bc)
 	case "openai", "":
 		return NewOpenAI(bc), nil
 	default:
@@ -82,6 +80,46 @@ func newCopilotBackendFromConfig(bc config.BackendConfig) (*CopilotBackend, erro
 	exchanger := oauth.NewCopilotExchanger(ts)
 
 	return NewCopilotBackend(bc, discoverer, exchanger, ts), nil
+}
+
+// newCodexBackendFromConfig creates a CodexBackend with its token store
+// and OAuth handler properly wired.
+func newCodexBackendFromConfig(bc config.BackendConfig) (*CodexBackend, error) {
+	// Determine token file path.
+	tokenPath := "codex-token.json"
+	if bc.OAuth != nil && bc.OAuth.TokenPath != "" {
+		tokenPath = bc.OAuth.TokenPath
+	}
+	// Use a per-backend token file.
+	if !strings.Contains(tokenPath, "/") {
+		tokenPath = filepath.Join("tokens", bc.Name+"-token.json")
+	}
+
+	ts, err := oauth.NewTokenStore(tokenPath)
+	if err != nil {
+		return nil, fmt.Errorf("creating token store: %w", err)
+	}
+
+	// Build OAuth config from the backend config, falling back to defaults.
+	oauthCfg := oauth.DefaultCodexOAuthConfig()
+	if bc.OAuth != nil {
+		if bc.OAuth.ClientID != "" {
+			oauthCfg.ClientID = bc.OAuth.ClientID
+		}
+		if bc.OAuth.AuthURL != "" {
+			oauthCfg.AuthURL = bc.OAuth.AuthURL
+		}
+		if bc.OAuth.TokenURL != "" {
+			oauthCfg.TokenURL = bc.OAuth.TokenURL
+		}
+		if len(bc.OAuth.Scopes) > 0 {
+			oauthCfg.Scope = strings.Join(bc.OAuth.Scopes, " ")
+		}
+	}
+
+	oauthHandler := oauth.NewCodexOAuthHandler(ts, oauthCfg)
+
+	return NewCodexBackend(bc, oauthHandler, ts), nil
 }
 
 // Resolve parses a model string like "openrouter/openai/gpt-5.2" and returns
