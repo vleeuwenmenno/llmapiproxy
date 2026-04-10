@@ -296,7 +296,12 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		// These render immediately; JS will update them with metadata badges.
 		var modelEntries []ModelEntry
 		if !isDynamic {
+			seenModelIDs := make(map[string]bool, len(bc.Models))
 			for _, mc := range bc.Models {
+				if seenModelIDs[mc.ID] {
+					continue
+				}
+				seenModelIDs[mc.ID] = true
 				modelEntries = append(modelEntries, ModelEntry{
 					FullID: bc.Name + "/" + mc.ID,
 					BareID: mc.ID,

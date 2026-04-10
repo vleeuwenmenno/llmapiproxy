@@ -34,21 +34,68 @@ var knownModels = map[string]knownModelInfo{
 	"chatgpt-4o-":    {DisplayName: "ChatGPT-4o", ContextLength: 128000, MaxOutputTokens: 16384, Vision: true},
 	"chatgpt-4o":     {DisplayName: "ChatGPT-4o", ContextLength: 128000, MaxOutputTokens: 16384, Vision: true},
 
+	// GPT-5.4 series — flagship 2026 lineup (context 1.05M or 400K)
+	"gpt-5.4-pro-":  {DisplayName: "GPT-5.4 Pro", ContextLength: 1050000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.4-pro":   {DisplayName: "GPT-5.4 Pro", ContextLength: 1050000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.4-mini-": {DisplayName: "GPT-5.4 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.4-mini":  {DisplayName: "GPT-5.4 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.4-nano-": {DisplayName: "GPT-5.4 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.4-nano":  {DisplayName: "GPT-5.4 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.4-":      {DisplayName: "GPT-5.4", ContextLength: 1050000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.4":       {DisplayName: "GPT-5.4", ContextLength: 1050000, MaxOutputTokens: 131072, Vision: true},
+
+	// GPT-5.3 series
+	"gpt-5.3-codex-": {DisplayName: "GPT-5.3 Codex", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.3-codex":  {DisplayName: "GPT-5.3 Codex", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.3-":       {DisplayName: "GPT-5.3", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.3":        {DisplayName: "GPT-5.3", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+
+	// GPT-5.2 series
+	"gpt-5.2-codex-": {DisplayName: "GPT-5.2 Codex", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.2-codex":  {DisplayName: "GPT-5.2 Codex", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.2-":       {DisplayName: "GPT-5.2", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.2":        {DisplayName: "GPT-5.2", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+
+	// GPT-5.1 series
+	"gpt-5.1-": {DisplayName: "GPT-5.1", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.1":  {DisplayName: "GPT-5.1", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+
+	// GPT-5 base series
+	"gpt-5-mini-": {DisplayName: "GPT-5 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5-mini":  {DisplayName: "GPT-5 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5-nano-": {DisplayName: "GPT-5 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5-nano":  {DisplayName: "GPT-5 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5-":      {DisplayName: "GPT-5", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5":       {DisplayName: "GPT-5", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+
 	// ── Anthropic Claude ────────────────────────────────────────
-	"claude-sonnet-4-":   {DisplayName: "Claude Sonnet 4", ContextLength: 200000, MaxOutputTokens: 64000, Vision: true},
-	"claude-sonnet-4":    {DisplayName: "Claude Sonnet 4", ContextLength: 200000, MaxOutputTokens: 64000, Vision: true},
-	"claude-opus-4-":     {DisplayName: "Claude Opus 4", ContextLength: 200000, MaxOutputTokens: 32000, Vision: true},
-	"claude-opus-4":      {DisplayName: "Claude Opus 4", ContextLength: 200000, MaxOutputTokens: 32000, Vision: true},
-	"claude-3.7-sonnet-": {DisplayName: "Claude 3.7 Sonnet", ContextLength: 200000, MaxOutputTokens: 64000, Vision: true},
-	"claude-3.7-sonnet":  {DisplayName: "Claude 3.7 Sonnet", ContextLength: 200000, MaxOutputTokens: 64000, Vision: true},
+	// Claude 4 series: Opus/Sonnet have 1M ctx; Haiku has 200K ctx.
+	// API IDs use dash notation: claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5.
+	// Prefix "claude-opus-4-" matches all snapshots (e.g. claude-opus-4-6-20260115).
+	"claude-opus-4-":   {DisplayName: "Claude Opus 4", ContextLength: 1000000, MaxOutputTokens: 131072, Vision: true},
+	"claude-opus-4":    {DisplayName: "Claude Opus 4", ContextLength: 1000000, MaxOutputTokens: 131072, Vision: true},
+	"claude-sonnet-4-": {DisplayName: "Claude Sonnet 4", ContextLength: 1000000, MaxOutputTokens: 65536, Vision: true},
+	"claude-sonnet-4":  {DisplayName: "Claude Sonnet 4", ContextLength: 1000000, MaxOutputTokens: 65536, Vision: true},
+	"claude-haiku-4-":  {DisplayName: "Claude Haiku 4", ContextLength: 200000, MaxOutputTokens: 65536, Vision: true},
+	"claude-haiku-4":   {DisplayName: "Claude Haiku 4", ContextLength: 200000, MaxOutputTokens: 65536, Vision: true},
+
+	// Claude 3.7 series: 200K ctx; 64K output via extended thinking
+	"claude-3.7-sonnet-": {DisplayName: "Claude 3.7 Sonnet", ContextLength: 200000, MaxOutputTokens: 65536, Vision: true},
+	"claude-3.7-sonnet":  {DisplayName: "Claude 3.7 Sonnet", ContextLength: 200000, MaxOutputTokens: 65536, Vision: true},
+
+	// Claude 3.5 series
 	"claude-3.5-sonnet-": {DisplayName: "Claude 3.5 Sonnet", ContextLength: 200000, MaxOutputTokens: 8192, Vision: true},
 	"claude-3.5-sonnet":  {DisplayName: "Claude 3.5 Sonnet", ContextLength: 200000, MaxOutputTokens: 8192, Vision: true},
 	"claude-3.5-haiku-":  {DisplayName: "Claude 3.5 Haiku", ContextLength: 200000, MaxOutputTokens: 8192, Vision: true},
 	"claude-3.5-haiku":   {DisplayName: "Claude 3.5 Haiku", ContextLength: 200000, MaxOutputTokens: 8192, Vision: true},
-	"claude-3-opus-":     {DisplayName: "Claude 3 Opus", ContextLength: 200000, MaxOutputTokens: 4096, Vision: true},
-	"claude-3-opus":      {DisplayName: "Claude 3 Opus", ContextLength: 200000, MaxOutputTokens: 4096, Vision: true},
-	"claude-3-haiku-":    {DisplayName: "Claude 3 Haiku", ContextLength: 200000, MaxOutputTokens: 4096, Vision: true},
-	"claude-3-haiku":     {DisplayName: "Claude 3 Haiku", ContextLength: 200000, MaxOutputTokens: 4096, Vision: true},
+
+	// Claude 3 series
+	"claude-3-opus-":   {DisplayName: "Claude 3 Opus", ContextLength: 200000, MaxOutputTokens: 4096, Vision: true},
+	"claude-3-opus":    {DisplayName: "Claude 3 Opus", ContextLength: 200000, MaxOutputTokens: 4096, Vision: true},
+	"claude-3-sonnet-": {DisplayName: "Claude 3 Sonnet", ContextLength: 200000, MaxOutputTokens: 4096, Vision: true},
+	"claude-3-sonnet":  {DisplayName: "Claude 3 Sonnet", ContextLength: 200000, MaxOutputTokens: 4096, Vision: true},
+	"claude-3-haiku-":  {DisplayName: "Claude 3 Haiku", ContextLength: 200000, MaxOutputTokens: 4096, Vision: true},
+	"claude-3-haiku":   {DisplayName: "Claude 3 Haiku", ContextLength: 200000, MaxOutputTokens: 4096, Vision: true},
 
 	// ── Google Gemini ───────────────────────────────────────────
 	"gemini-3.1-pro-":   {DisplayName: "Gemini 3.1 Pro", ContextLength: 1048576, MaxOutputTokens: 65536, Vision: true},

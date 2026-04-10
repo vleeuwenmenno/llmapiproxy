@@ -170,8 +170,13 @@ func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
 	if len(b.models) > 0 {
 		// Static model list — try to enrich from upstream, ignore errors.
 		upstreamMap := b.fetchUpstreamModelMap(ctx)
+		seen := make(map[string]bool, len(b.models))
 		models := make([]Model, 0, len(b.models))
 		for _, mc := range b.models {
+			if seen[mc.ID] {
+				continue
+			}
+			seen[mc.ID] = true
 			if u, ok := upstreamMap[mc.ID]; ok {
 				// Upstream data found — use it, but let config overrides + known DB win.
 				m := u.toModel(b.name)
