@@ -18,6 +18,15 @@ server:
   # Defaults to stats.db in the current working directory.
   # stats_path: "stats.db"
 
+  # Path to the SQLite database used for persistent chat sessions.
+  # Defaults to chat.db in the current working directory.
+  # chat_db_path: "chat.db"
+
+  # Model used to auto-generate chat session titles.
+  # Must match a model ID available through one of your backends.
+  # If not set, titles default to a truncated version of the first message.
+  # title_model: "glm-5-turbo"
+
 backends:
   # ── OpenRouter ─────────────────────────────────────────────
   # Fully OpenAI-compatible. Supports hundreds of models.
@@ -126,9 +135,33 @@ clients:
   #   api_key: "sk-proxy-your-vscode-key"
 
 # ── Routing ──────────────────────────────────────────────────
+# When the same model ID is served by multiple backends, the
+# routing section controls how requests are distributed.
+#
+# Strategies:
+#   priority    — Always prefer the first backend; fall through to
+#                 the next only on error. (default)
+#   round-robin — Rotate requests evenly across all listed backends.
+#                 State is in-memory and resets on restart.
+#   race        — Send the request to all backends simultaneously;
+#                 the first successful response wins. Streaming is
+#                 supported (first backend to deliver ~4 KB wins).
+#
+# The global strategy applies to every model that doesn't have its
+# own per-model override.
+#
 # routing:
+#   strategy: priority   # global default: priority | round-robin | race
 #   models:
 #     - model: glm-5.1
+#       # Optional per-model strategy override (omit to use global).
+#       strategy: round-robin
 #       backends:
 #         - zai-coding
 #         - zen
+#         - go
+#     - model: kimi-k2.5
+#       strategy: race
+#       backends:
+#         - zen
+#         - go

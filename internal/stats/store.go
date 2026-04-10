@@ -62,8 +62,8 @@ func OpenStore(path string, c *Collector) (*Store, error) {
 func (s *Store) Save(r Record) {
 	_, err := s.db.Exec(
 		`INSERT INTO requests
-		    (timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,latency_ms,status_code,error,stream,response_body,client)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		    (timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,latency_ms,status_code,error,stream,response_body,client,strategy,attempted_backends,fallback)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		r.Timestamp.UnixMilli(),
 		r.Backend,
 		r.Model,
@@ -76,6 +76,9 @@ func (s *Store) Save(r Record) {
 		boolToInt(r.Stream),
 		r.ResponseBody,
 		r.Client,
+		r.Strategy,
+		r.AttemptedBackends,
+		boolToInt(r.Fallback),
 	)
 	if err != nil {
 		log.Printf("stats: failed to save record: %v", err)
@@ -105,7 +108,8 @@ func (s *Store) Close() error {
 func (s *Store) loadInto(c *Collector) error {
 	rows, err := s.db.Query(
 		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
-		        latency_ms,status_code,error,stream,response_body,client
+		        latency_ms,status_code,error,stream,response_body,client,
+		        strategy,attempted_backends,fallback
 		 FROM requests ORDER BY timestamp ASC`)
 	if err != nil {
 		return err
@@ -115,7 +119,7 @@ func (s *Store) loadInto(c *Collector) error {
 	for rows.Next() {
 		var r Record
 		var tsMillis int64
-		var stream int
+		var stream, fallback int
 		if err := rows.Scan(
 			&r.ID,
 			&tsMillis,
@@ -130,11 +134,15 @@ func (s *Store) loadInto(c *Collector) error {
 			&stream,
 			&r.ResponseBody,
 			&r.Client,
+			&r.Strategy,
+			&r.AttemptedBackends,
+			&fallback,
 		); err != nil {
 			return err
 		}
 		r.Timestamp = time.UnixMilli(tsMillis)
 		r.Stream = stream != 0
+		r.Fallback = fallback != 0
 		c.Record(r)
 	}
 	return rows.Err()
@@ -160,18 +168,34 @@ func (s *Store) migrate() error {
 			return fmt.Errorf("migration 2: %w", err)
 		}
 	}
-	_, err := s.db.Exec("PRAGMA user_version = 2")
+	if version < 3 {
+		if _, err := s.db.Exec("ALTER TABLE requests ADD COLUMN strategy TEXT NOT NULL DEFAULT ''"); err != nil {
+			return fmt.Errorf("migration 3: %w", err)
+		}
+	}
+	if version < 4 {
+		if _, err := s.db.Exec("ALTER TABLE requests ADD COLUMN attempted_backends TEXT NOT NULL DEFAULT ''"); err != nil {
+			return fmt.Errorf("migration 4: %w", err)
+		}
+	}
+	if version < 5 {
+		if _, err := s.db.Exec("ALTER TABLE requests ADD COLUMN fallback INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return fmt.Errorf("migration 5: %w", err)
+		}
+	}
+	_, err := s.db.Exec("PRAGMA user_version = 5")
 	return err
 }
 
 func (s *Store) GetByID(id int64) (*Record, error) {
 	row := s.db.QueryRow(
 		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
-		        latency_ms,status_code,error,stream,response_body,client
+		        latency_ms,status_code,error,stream,response_body,client,
+		        strategy,attempted_backends,fallback
 		 FROM requests WHERE id = ?`, id)
 	var r Record
 	var tsMillis int64
-	var stream int
+	var stream, fallback int
 	if err := row.Scan(
 		&r.ID,
 		&tsMillis,
@@ -186,11 +210,15 @@ func (s *Store) GetByID(id int64) (*Record, error) {
 		&stream,
 		&r.ResponseBody,
 		&r.Client,
+		&r.Strategy,
+		&r.AttemptedBackends,
+		&fallback,
 	); err != nil {
 		return nil, err
 	}
 	r.Timestamp = time.UnixMilli(tsMillis)
 	r.Stream = stream != 0
+	r.Fallback = fallback != 0
 	return &r, nil
 }
 
@@ -417,7 +445,8 @@ func (s *Store) FilteredRecords(f StatsFilter, page, pageSize int) ([]Record, in
 	queryArgs := append(append([]any(nil), args...), pageSize, offset)
 	rows, err := s.db.Query(
 		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
-		        latency_ms,status_code,error,stream,response_body,client
+		        latency_ms,status_code,error,stream,response_body,client,
+		        strategy,attempted_backends,fallback
 		 FROM requests `+where+`
 		 ORDER BY timestamp DESC
 		 LIMIT ? OFFSET ?`,
@@ -431,18 +460,126 @@ func (s *Store) FilteredRecords(f StatsFilter, page, pageSize int) ([]Record, in
 	for rows.Next() {
 		var r Record
 		var tsMs int64
-		var stream int
+		var stream, fallback int
 		if err := rows.Scan(
 			&r.ID, &tsMs, &r.Backend, &r.Model,
 			&r.PromptTokens, &r.CompletionTokens, &r.TotalTokens,
 			&r.LatencyMs, &r.StatusCode, &r.Error, &stream,
 			&r.ResponseBody, &r.Client,
+			&r.Strategy, &r.AttemptedBackends, &fallback,
 		); err != nil {
 			return nil, 0, err
 		}
 		r.Timestamp = time.UnixMilli(tsMs)
 		r.Stream = stream != 0
+		r.Fallback = fallback != 0
 		records = append(records, r)
 	}
 	return records, total, rows.Err()
+}
+
+// RoutingStats returns per-model, per-backend aggregated routing statistics.
+// Only records that have a strategy set (i.e. came through multi-backend routing) are included.
+func (s *Store) RoutingStats(f StatsFilter) ([]ModelRoutingStats, error) {
+	if s == nil {
+		return nil, nil
+	}
+	where, args := buildWhere(f)
+	// Add extra filter: only records with routing metadata.
+	if where == "" {
+		where = "WHERE strategy != ''"
+	} else {
+		where += " AND strategy != ''"
+	}
+
+	query := `
+		SELECT model, backend, strategy,
+		       COUNT(*) AS requests,
+		       COALESCE(AVG(latency_ms), 0) AS avg_lat,
+		       SUM(CASE WHEN error != '' THEN 1 ELSE 0 END) AS errors,
+		       SUM(CASE WHEN fallback = 1 THEN 1 ELSE 0 END) AS fallbacks
+		FROM requests
+		` + where + `
+		GROUP BY model, backend
+		ORDER BY model, requests DESC`
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type row struct {
+		model, backend, strategy string
+		reqs, errors, fallbacks  int
+		avgLat                   float64
+	}
+	var raw []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.model, &r.backend, &r.strategy, &r.reqs, &r.avgLat, &r.errors, &r.fallbacks); err != nil {
+			return nil, err
+		}
+		raw = append(raw, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Group by model.
+	type modelAcc struct {
+		strategy  string
+		backends  []BackendRoutingStats
+		totalReqs int
+		totalLat  float64
+		totalFall int
+	}
+	modelMap := make(map[string]*modelAcc)
+	modelOrder := []string{}
+	for _, r := range raw {
+		acc, ok := modelMap[r.model]
+		if !ok {
+			acc = &modelAcc{strategy: r.strategy}
+			modelMap[r.model] = acc
+			modelOrder = append(modelOrder, r.model)
+		}
+		acc.backends = append(acc.backends, BackendRoutingStats{
+			Name:      r.backend,
+			Requests:  r.reqs,
+			AvgLatMs:  int64(r.avgLat),
+			Errors:    r.errors,
+			Fallbacks: r.fallbacks,
+		})
+		acc.totalReqs += r.reqs
+		acc.totalLat += r.avgLat * float64(r.reqs)
+		acc.totalFall += r.fallbacks
+	}
+
+	out := make([]ModelRoutingStats, 0, len(modelOrder))
+	for _, m := range modelOrder {
+		acc := modelMap[m]
+		var avgLat int64
+		if acc.totalReqs > 0 {
+			avgLat = int64(acc.totalLat / float64(acc.totalReqs))
+		}
+		var fallbackRate float64
+		if acc.totalReqs > 0 {
+			fallbackRate = float64(acc.totalFall) / float64(acc.totalReqs) * 100
+		}
+		// Compute win_pct per backend.
+		for i := range acc.backends {
+			if acc.totalReqs > 0 {
+				acc.backends[i].WinPct = float64(acc.backends[i].Requests) / float64(acc.totalReqs) * 100
+			}
+		}
+		out = append(out, ModelRoutingStats{
+			Model:        m,
+			Strategy:     acc.strategy,
+			Backends:     acc.backends,
+			TotalReqs:    acc.totalReqs,
+			FallbackRate: fallbackRate,
+			AvgLatMs:     avgLat,
+		})
+	}
+	return out, nil
 }

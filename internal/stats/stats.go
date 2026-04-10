@@ -20,6 +20,11 @@ type Record struct {
 	ResponseBody     string    `json:"response_body,omitempty"`
 	Client           string    `json:"client,omitempty"`
 	ID               int64     `json:"id,omitempty"`
+
+	// Routing metadata (set when multiple backends are configured for the model).
+	Strategy          string `json:"strategy,omitempty"`           // e.g. "priority", "round-robin", "race"
+	AttemptedBackends string `json:"attempted_backends,omitempty"` // comma-separated, e.g. "zai-coding,zen"
+	Fallback          bool   `json:"fallback,omitempty"`           // true if winning backend was not the first attempted
 }
 
 // StatsFilter narrows analytics queries.
@@ -256,3 +261,24 @@ func (c *Collector) Summarize(since time.Duration) Summary {
 	}
 	return s
 }
+
+// BackendRoutingStats holds aggregated routing stats for a single backend within a model.
+type BackendRoutingStats struct {
+	Name      string  `json:"name"`
+	Requests  int     `json:"requests"`
+	AvgLatMs  int64   `json:"avg_lat_ms"`
+	Errors    int     `json:"errors"`
+	Fallbacks int     `json:"fallbacks"`
+	WinPct    float64 `json:"win_pct"`
+}
+
+// ModelRoutingStats holds aggregated routing stats for a single model.
+type ModelRoutingStats struct {
+	Model        string                `json:"model"`
+	Strategy     string                `json:"strategy"`
+	Backends     []BackendRoutingStats `json:"backends"`
+	TotalReqs    int                   `json:"total_requests"`
+	FallbackRate float64               `json:"fallback_rate"`
+	AvgLatMs     int64                 `json:"avg_lat_ms"`
+}
+

@@ -16,6 +16,7 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/menno/llmapiproxy/internal/backend"
+	"github.com/menno/llmapiproxy/internal/chat"
 	"github.com/menno/llmapiproxy/internal/config"
 	"github.com/menno/llmapiproxy/internal/proxy"
 	"github.com/menno/llmapiproxy/internal/stats"
@@ -64,7 +65,14 @@ func main() {
 	}
 
 	proxyHandler := proxy.NewHandler(registry, collector, cfgMgr)
-	ui := web.NewUI(cfgMgr, collector, registry, store)
+
+	chatStore, err := chat.OpenChatStore(cfg.Server.ChatDBPath)
+	if err != nil {
+		log.Fatalf("failed to open chat database: %v", err)
+	}
+	log.Printf("chat database: %s", cfg.Server.ChatDBPath)
+
+	ui := web.NewUI(cfgMgr, collector, registry, store, chatStore)
 
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.RealIP)
@@ -88,6 +96,21 @@ func main() {
 		r.Get("/settings", ui.SettingsPage)
 		r.Get("/playground", ui.PlaygroundPage)
 		r.Get("/playground/models", ui.PlaygroundModels)
+
+		// Chat API
+		r.Get("/chat", ui.ChatPage)
+		r.Get("/chat/models", ui.ChatModels)
+		r.Get("/chat/sessions", ui.ChatListSessions)
+		r.Post("/chat/sessions", ui.ChatCreateSession)
+		r.Get("/chat/sessions/{id}", ui.ChatGetSession)
+		r.Put("/chat/sessions/{id}", ui.ChatUpdateSession)
+		r.Delete("/chat/sessions/{id}", ui.ChatDeleteSession)
+		r.Delete("/chat/sessions", ui.ChatDeleteAllSessions)
+		r.Get("/chat/sessions/{id}/messages", ui.ChatListMessages)
+		r.Post("/chat/sessions/{id}/messages", ui.ChatSaveMessage)
+		r.Post("/chat/sessions/{id}/title", ui.ChatGenerateTitle)
+		r.Put("/chat/title-model", ui.ChatSetTitleModel)
+		r.Put("/chat/default-model", ui.ChatSetDefaultModel)
 		r.Post("/settings/clear-stats", ui.ClearStats)
 		r.Post("/settings/toggle-stats", ui.ToggleStats)
 		r.Post("/settings/keys/add", ui.AddAPIKey)
@@ -97,6 +120,9 @@ func main() {
 		r.Get("/stats/detail", ui.RequestDetail)
 		r.Get("/analytics", ui.AnalyticsPage)
 		r.Get("/analytics/data", ui.AnalyticsData)
+		r.Get("/routing", ui.RoutingPage)
+		r.Get("/routing/data", ui.RoutingData)
+		r.Get("/routing/config", ui.RoutingConfigJSON)
 		r.Post("/settings/clients/add", ui.AddClient)
 		r.Post("/settings/clients/delete", ui.DeleteClient)
 		r.Post("/routing/save", ui.SaveRouting)
@@ -160,5 +186,6 @@ func main() {
 	if store != nil {
 		store.Close()
 	}
+	chatStore.Close()
 	log.Println("server stopped")
 }

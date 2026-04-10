@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/menno/llmapiproxy/internal/backend"
@@ -56,7 +58,7 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries, err := h.registry.ResolveRoute(req.Model, h.cfgMgr.Get().Routing)
+	entries, strategy, err := h.registry.ResolveRoute(req.Model, h.cfgMgr.Get().Routing)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -71,17 +73,36 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	originalModel := req.Model
 	start := time.Now()
 
-	if req.Stream {
-		h.handleStream(r.Context(), w, entries, &req, originalModel, start, clientName, cl)
-	} else {
-		h.handleNonStream(r.Context(), w, entries, &req, originalModel, start, clientName, cl)
+	switch strategy {
+	case config.StrategyRace:
+		if req.Stream {
+			h.handleRaceStream(r.Context(), w, entries, &req, originalModel, start, clientName, cl)
+		} else {
+			h.handleRaceNonStream(r.Context(), w, entries, &req, originalModel, start, clientName, cl)
+		}
+	default: // priority and round-robin both use the ordered fallback loop
+		if req.Stream {
+			h.handleStream(r.Context(), w, entries, strategy, &req, originalModel, start, clientName, cl)
+		} else {
+			h.handleNonStream(r.Context(), w, entries, strategy, &req, originalModel, start, clientName, cl)
+		}
 	}
 }
 
-func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, entries []backend.RouteEntry, req *backend.ChatCompletionRequest, originalModel string, start time.Time, clientName string, cl *config.ClientConfig) {
+// attemptedBackends returns a comma-separated list of backend names from the entries slice.
+func attemptedBackends(entries []backend.RouteEntry) string {
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.Backend.Name()
+	}
+	return strings.Join(names, ",")
+}
+
+func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, entries []backend.RouteEntry, strategy string, req *backend.ChatCompletionRequest, originalModel string, start time.Time, clientName string, cl *config.ClientConfig) {
 	var lastErr error
 	var lastBE *backend.BackendError
 	var lastBackend string
+	attempted := attemptedBackends(entries)
 
 	for i, entry := range entries {
 		reqCopy := *req
@@ -111,12 +132,15 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 
 		latency := time.Since(start).Milliseconds()
 		rec := stats.Record{
-			Timestamp: start,
-			Backend:   entry.Backend.Name(),
-			Model:     originalModel,
-			LatencyMs: latency,
-			Stream:    false,
-			Client:    clientName,
+			Timestamp:         start,
+			Backend:           entry.Backend.Name(),
+			Model:             originalModel,
+			LatencyMs:         latency,
+			Stream:            false,
+			Client:            clientName,
+			Strategy:          strategy,
+			AttemptedBackends: attempted,
+			Fallback:          i > 0,
 		}
 		if resp.Usage != nil {
 			rec.PromptTokens = resp.Usage.PromptTokens
@@ -134,14 +158,16 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 
 	latency := time.Since(start).Milliseconds()
 	rec := stats.Record{
-		Timestamp:  start,
-		Backend:    lastBackend,
-		Model:      originalModel,
-		LatencyMs:  latency,
-		StatusCode: http.StatusBadGateway,
-		Error:      lastErr.Error(),
-		Stream:     false,
-		Client:     clientName,
+		Timestamp:         start,
+		Backend:           lastBackend,
+		Model:             originalModel,
+		LatencyMs:         latency,
+		StatusCode:        http.StatusBadGateway,
+		Error:             lastErr.Error(),
+		Stream:            false,
+		Client:            clientName,
+		Strategy:          strategy,
+		AttemptedBackends: attempted,
 	}
 	if lastBE != nil {
 		rec.ResponseBody = lastBE.Body
@@ -150,11 +176,13 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 	writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())
 }
 
-func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entries []backend.RouteEntry, req *backend.ChatCompletionRequest, originalModel string, start time.Time, clientName string, cl *config.ClientConfig) {
+func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entries []backend.RouteEntry, strategy string, req *backend.ChatCompletionRequest, originalModel string, start time.Time, clientName string, cl *config.ClientConfig) {
 	var stream io.ReadCloser
 	var lastErr error
 	var lastBE *backend.BackendError
 	var lastBackend string
+	attempted := attemptedBackends(entries)
+	winnerIdx := 0
 
 	for i, entry := range entries {
 		reqCopy := *req
@@ -183,19 +211,22 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 			break
 		}
 		lastBackend = entry.Backend.Name()
+		winnerIdx = i
 		break
 	}
 
 	if stream == nil {
 		rec := stats.Record{
-			Timestamp:  start,
-			Backend:    lastBackend,
-			Model:      originalModel,
-			LatencyMs:  time.Since(start).Milliseconds(),
-			StatusCode: http.StatusBadGateway,
-			Error:      lastErr.Error(),
-			Stream:     true,
-			Client:     clientName,
+			Timestamp:         start,
+			Backend:           lastBackend,
+			Model:             originalModel,
+			LatencyMs:         time.Since(start).Milliseconds(),
+			StatusCode:        http.StatusBadGateway,
+			Error:             lastErr.Error(),
+			Stream:            true,
+			Client:            clientName,
+			Strategy:          strategy,
+			AttemptedBackends: attempted,
 		}
 		if lastBE != nil {
 			rec.ResponseBody = lastBE.Body
@@ -217,11 +248,14 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 	w.Header().Set("Connection", "keep-alive")
 
 	rec := stats.Record{
-		Timestamp: start,
-		Backend:   lastBackend,
-		Model:     originalModel,
-		Stream:    true,
-		Client:    clientName,
+		Timestamp:         start,
+		Backend:           lastBackend,
+		Model:             originalModel,
+		Stream:            true,
+		Client:            clientName,
+		Strategy:          strategy,
+		AttemptedBackends: attempted,
+		Fallback:          winnerIdx > 0,
 	}
 
 	scanner := bufio.NewScanner(stream)
@@ -257,6 +291,270 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 
 	if err := scanner.Err(); err != nil {
 		log.Printf("stream scan error: %v", err)
+		rec.Error = err.Error()
+	}
+
+	rec.LatencyMs = time.Since(start).Milliseconds()
+	rec.StatusCode = http.StatusOK
+	h.collector.Record(rec)
+}
+
+// raceResult holds the outcome of a single backend attempt in race mode.
+type raceResult struct {
+	resp    *backend.ChatCompletionResponse
+	be      backend.Backend
+	err     error
+	beErr   *backend.BackendError
+}
+
+func (h *Handler) handleRaceNonStream(ctx context.Context, w http.ResponseWriter, entries []backend.RouteEntry, req *backend.ChatCompletionRequest, originalModel string, start time.Time, clientName string, cl *config.ClientConfig) {
+	attempted := attemptedBackends(entries)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	resultCh := make(chan raceResult, len(entries))
+	var wg sync.WaitGroup
+	for _, entry := range entries {
+		wg.Add(1)
+		e := entry
+		go func() {
+			defer wg.Done()
+			reqCopy := *req
+			reqCopy.Model = e.ModelID
+			if cl != nil && cl.BackendKeys != nil {
+				if k, ok := cl.BackendKeys[e.Backend.Name()]; ok {
+					reqCopy.APIKeyOverride = k
+				}
+			}
+			resp, err := e.Backend.ChatCompletion(ctx, &reqCopy)
+			rr := raceResult{resp: resp, be: e.Backend, err: err}
+			errors.As(err, &rr.beErr)
+			resultCh <- rr
+		}()
+	}
+	// Close channel once all goroutines finish so we can drain below.
+	go func() { wg.Wait(); close(resultCh) }()
+
+	var lastErr error
+	var lastBE *backend.BackendError
+	var lastBEName string
+	received := 0
+	for rr := range resultCh {
+		received++
+		if rr.err == nil {
+			// Winner — cancel all remaining, return response.
+			cancel()
+			latency := time.Since(start).Milliseconds()
+			rec := stats.Record{
+				Timestamp:         start,
+				Backend:           rr.be.Name(),
+				Model:             originalModel,
+				LatencyMs:         latency,
+				StatusCode:        http.StatusOK,
+				Stream:            false,
+				Client:            clientName,
+				Strategy:          config.StrategyRace,
+				AttemptedBackends: attempted,
+			}
+			if rr.resp.Usage != nil {
+				rec.PromptTokens = rr.resp.Usage.PromptTokens
+				rec.CompletionTokens = rr.resp.Usage.CompletionTokens
+				rec.TotalTokens = rr.resp.Usage.TotalTokens
+			}
+			h.collector.Record(rec)
+			rr.resp.Model = originalModel
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(rr.resp)
+			return
+		}
+		lastErr = rr.err
+		lastBEName = rr.be.Name()
+		if rr.beErr != nil {
+			lastBE = rr.beErr
+		}
+		if received == len(entries) {
+			break
+		}
+	}
+
+	// All backends failed.
+	latency := time.Since(start).Milliseconds()
+	rec := stats.Record{
+		Timestamp:         start,
+		Backend:           lastBEName,
+		Model:             originalModel,
+		LatencyMs:         latency,
+		StatusCode:        http.StatusBadGateway,
+		Error:             lastErr.Error(),
+		Stream:            false,
+		Client:            clientName,
+		Strategy:          config.StrategyRace,
+		AttemptedBackends: attempted,
+	}
+	if lastBE != nil {
+		rec.ResponseBody = lastBE.Body
+	}
+	h.collector.Record(rec)
+	writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())
+}
+
+// raceStreamResult carries the winning stream and its initial buffered data.
+type raceStreamResult struct {
+	stream     io.ReadCloser
+	buffered   []byte
+	be         backend.Backend
+	cancelOurs context.CancelFunc
+}
+
+func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, entries []backend.RouteEntry, req *backend.ChatCompletionRequest, originalModel string, start time.Time, clientName string, cl *config.ClientConfig) {
+	attempted := attemptedBackends(entries)
+	parentCtx, parentCancel := context.WithCancel(ctx)
+	defer parentCancel()
+
+	type streamAttempt struct {
+		result raceStreamResult
+		err    error
+	}
+
+	resultCh := make(chan streamAttempt, len(entries))
+	// Per-backend cancels so we can cancel losers individually.
+	cancels := make([]context.CancelFunc, len(entries))
+
+	var wg sync.WaitGroup
+	for i, entry := range entries {
+		wg.Add(1)
+		e := entry
+		bCtx, bCancel := context.WithCancel(parentCtx)
+		cancels[i] = bCancel
+		go func() {
+			defer wg.Done()
+			reqCopy := *req
+			reqCopy.Model = e.ModelID
+			if cl != nil && cl.BackendKeys != nil {
+				if k, ok := cl.BackendKeys[e.Backend.Name()]; ok {
+					reqCopy.APIKeyOverride = k
+				}
+			}
+			stream, err := e.Backend.ChatCompletionStream(bCtx, &reqCopy)
+			if err != nil {
+				resultCh <- streamAttempt{err: err}
+				return
+			}
+			// Buffer initial data to confirm the stream is alive before declaring a winner.
+			buf := make([]byte, 4096)
+			n, readErr := stream.Read(buf)
+			if readErr != nil && n == 0 {
+				stream.Close()
+				resultCh <- streamAttempt{err: fmt.Errorf("stream read failed: %w", readErr)}
+				return
+			}
+			resultCh <- streamAttempt{result: raceStreamResult{
+				stream:   stream,
+				buffered: buf[:n],
+				be:       e.Backend,
+			}}
+		}()
+	}
+	go func() { wg.Wait(); close(resultCh) }()
+
+	var winner *raceStreamResult
+	var lastErr error
+	received := 0
+	for attempt := range resultCh {
+		received++
+		if attempt.err == nil && winner == nil {
+			// First successful stream — cancel all other backend contexts.
+			parentCancel()
+			w := attempt.result
+			winner = &w
+			if received == len(entries) {
+				break
+			}
+			// Keep draining so goroutines can finish.
+			continue
+		}
+		if attempt.err != nil && winner == nil {
+			lastErr = attempt.err
+		}
+		if received == len(entries) {
+			break
+		}
+	}
+
+	if winner == nil {
+		if lastErr == nil {
+			lastErr = fmt.Errorf("all backends failed to stream")
+		}
+		rec := stats.Record{
+			Timestamp:         start,
+			Backend:           "",
+			Model:             originalModel,
+			LatencyMs:         time.Since(start).Milliseconds(),
+			StatusCode:        http.StatusBadGateway,
+			Error:             lastErr.Error(),
+			Stream:            true,
+			Client:            clientName,
+			Strategy:          config.StrategyRace,
+			AttemptedBackends: attempted,
+		}
+		h.collector.Record(rec)
+		writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())
+		return
+	}
+	defer winner.stream.Close()
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	rec := stats.Record{
+		Timestamp:         start,
+		Backend:           winner.be.Name(),
+		Model:             originalModel,
+		Stream:            true,
+		Client:            clientName,
+		Strategy:          config.StrategyRace,
+		AttemptedBackends: attempted,
+	}
+
+	// Replay buffered data first, then stream the rest.
+	fullStream := io.MultiReader(bytes.NewReader(winner.buffered), winner.stream)
+	scanner := bufio.NewScanner(fullStream)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if ctx.Err() != nil {
+			break
+		}
+		if strings.HasPrefix(line, "data: ") && line != "data: [DONE]" {
+			data := line[6:]
+			rewritten, usage := rewriteStreamChunk(data, originalModel)
+			if usage != nil {
+				rec.PromptTokens = usage.PromptTokens
+				rec.CompletionTokens = usage.CompletionTokens
+				rec.TotalTokens = usage.TotalTokens
+			}
+			fmt.Fprintf(w, "data: %s\n\n", rewritten)
+		} else if line != "" {
+			fmt.Fprintf(w, "%s\n", line)
+			if line == "data: [DONE]" {
+				fmt.Fprint(w, "\n")
+			}
+		} else {
+			fmt.Fprint(w, "\n")
+		}
+		flusher.Flush()
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("race stream scan error: %v", err)
 		rec.Error = err.Error()
 	}
 

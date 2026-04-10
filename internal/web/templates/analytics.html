@@ -68,6 +68,139 @@
         .theme-toggle { background: none; border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; padding: 0.4rem 0.6rem; border-radius: 6px; font-size: 1rem; line-height: 1; transition: all 0.15s; margin-left: 0.5rem; }
         .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
 
+        /* ── Mobile Menu Styles ── */
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--text);
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 6px;
+            transition: background 0.15s;
+        }
+
+        .mobile-menu-btn:hover {
+            background: var(--accent-dim);
+        }
+
+        .mobile-menu-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .nav-links-mobile {
+            display: none;
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 280px;
+            max-width: 80vw;
+            height: 100vh;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            z-index: 1000;
+            flex-direction: column;
+            padding: 1rem;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        }
+
+        .nav-links-mobile.open {
+            transform: translateX(0);
+        }
+
+        .nav-links-mobile .mobile-menu-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 1rem;
+        }
+
+        .nav-links-mobile .mobile-menu-title {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .nav-links-mobile .mobile-menu-close {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 6px;
+            font-size: 1.25rem;
+            line-height: 1;
+            transition: all 0.15s;
+        }
+
+        .nav-links-mobile .mobile-menu-close:hover {
+            color: var(--text);
+            background: var(--accent-dim);
+        }
+
+        .nav-links-mobile a {
+            color: var(--text-dim);
+            text-decoration: none;
+            padding: 0.875rem 1rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .nav-links-mobile a:hover, .nav-links-mobile a.active {
+            color: var(--text);
+            background: var(--accent-dim);
+        }
+
+        .nav-links-mobile a.active {
+            color: var(--accent);
+        }
+
+        .nav-links-mobile .theme-toggle-mobile {
+            margin-top: auto;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            cursor: pointer;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.15s;
+        }
+
+        .nav-links-mobile .theme-toggle-mobile:hover {
+            border-color: var(--accent);
+        }
+
+        .mobile-menu-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .mobile-menu-overlay.open {
+            display: block;
+            opacity: 1;
+        }
+
         main { max-width: 1400px; margin: 0 auto; padding: 2rem; }
 
         /* ── Filter bar ── */
@@ -233,10 +366,54 @@
         #loading-indicator.visible { display: inline-block; }
 
         .rank-container { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; overflow-x: auto; }
+
+        /* ── Mobile Responsive ── */
+        @media (max-width: 768px) {
+            nav { padding: 0.75rem 1rem; }
+            nav .links { display: none; }
+            .mobile-menu-btn { display: flex; align-items: center; justify-content: center; }
+            .nav-links-mobile { display: flex; }
+            main { padding: 1rem; }
+            h1 { font-size: 1.25rem; }
+            .cards { grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+            .card { padding: 1rem; }
+            .card .value { font-size: 1.25rem; }
+            .charts-row { grid-template-columns: 1fr; }
+            .filter-bar { flex-direction: column; align-items: stretch; }
+            .filter-sep { display: none; }
+            .filter-toggle { margin-left: 0; margin-top: 0.5rem; }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+        }
+
+        @media (max-width: 480px) {
+            .cards { grid-template-columns: 1fr; }
+            .pill { padding: 0.25rem 0.4rem; font-size: 0.7rem; }
+        }
     </style>
 </head>
 <body>
 <div class="noise"></div>
+
+<!-- Mobile Menu Overlay -->
+<div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="closeMobileMenu()"></div>
+
+<!-- Mobile Navigation Drawer -->
+<div class="nav-links-mobile" id="navLinksMobile">
+    <div class="mobile-menu-header">
+        <span class="mobile-menu-title">Menu</span>
+        <button class="mobile-menu-close" onclick="closeMobileMenu()">&#10005;</button>
+    </div>
+    <a href="/ui/">&#128200; Dashboard</a>
+    <a href="/ui/analytics" class="active">&#128202; Analytics</a>
+    <a href="/ui/routing">&#128260; Routing</a>
+    <a href="/ui/models">&#129302; Models</a>
+    <a href="/ui/chat">&#128172; Chat</a>
+    <a href="/ui/settings">&#9881; Settings</a>
+    <button class="theme-toggle-mobile" onclick="toggleTheme(); closeMobileMenu();" id="themeBtnMobile">
+        <span id="themeIconMobile">&#9728;</span> Toggle Theme
+    </button>
+</div>
+
 <nav>
     <div class="logo">
         <div class="icon">&#9889;</div>
@@ -245,11 +422,19 @@
     <div class="links">
         <a href="/ui/">Dashboard</a>
         <a href="/ui/analytics" class="active">Analytics</a>
+        <a href="/ui/routing">Routing</a>
         <a href="/ui/models">Models</a>
-        <a href="/ui/playground">Playground</a>
+        <a href="/ui/chat">Chat</a>
         <a href="/ui/settings">Settings</a>
-        <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">☀</button>
+        <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">&#9728;</button>
     </div>
+    <button class="mobile-menu-btn" onclick="openMobileMenu()" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+    </button>
 </nav>
 <main>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
@@ -387,8 +572,28 @@
 function toggleTheme() {
     var isLight = document.body.classList.toggle('light');
     localStorage.setItem('theme', isLight ? 'light' : 'dark');
-    document.getElementById('themeBtn').textContent = isLight ? '🌙' : '☀';
+    var icon = isLight ? '🌙' : '☀';
+    document.getElementById('themeBtn').textContent = icon;
+    var themeIconMobile = document.getElementById('themeIconMobile');
+    if (themeIconMobile) themeIconMobile.textContent = icon;
 }
+
+// ── Mobile Menu ───────────────────────────────────────────────────────────
+function openMobileMenu() {
+    document.getElementById('navLinksMobile').classList.add('open');
+    document.getElementById('mobileMenuOverlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeMobileMenu() {
+    document.getElementById('navLinksMobile').classList.remove('open');
+    document.getElementById('mobileMenuOverlay').classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeMobileMenu();
+});
 
 // ── State ──────────────────────────────────────────────────────────────────
 var state = {

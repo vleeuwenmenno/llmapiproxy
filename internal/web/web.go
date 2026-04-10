@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/menno/llmapiproxy/internal/backend"
+	"github.com/menno/llmapiproxy/internal/chat"
 	"github.com/menno/llmapiproxy/internal/config"
 	"github.com/menno/llmapiproxy/internal/stats"
 	"gopkg.in/yaml.v3"
@@ -87,14 +89,16 @@ type UI struct {
 	collector *stats.Collector
 	registry  *backend.Registry
 	store     *stats.Store
+	chatStore *chat.ChatStore
 }
 
-func NewUI(cfgMgr *config.Manager, collector *stats.Collector, registry *backend.Registry, store *stats.Store) *UI {
+func NewUI(cfgMgr *config.Manager, collector *stats.Collector, registry *backend.Registry, store *stats.Store, chatStore *chat.ChatStore) *UI {
 	return &UI{
 		cfgMgr:    cfgMgr,
 		collector: collector,
 		registry:  registry,
 		store:     store,
+		chatStore: chatStore,
 	}
 }
 
@@ -487,20 +491,44 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build a map of model → configured backend priority for the routing dialog.
-	routingByModel := make(map[string][]string)
+	type routingModelData struct {
+		Backends []string `json:"backends"`
+		Strategy string   `json:"strategy"`
+	}
+	routingByModel := make(map[string]routingModelData)
 	for _, mr := range cfg.Routing.Models {
-		routingByModel[mr.Model] = mr.Backends
+		routingByModel[mr.Model] = routingModelData{Backends: mr.Backends, Strategy: mr.Strategy}
 	}
 
 	routingJSON, _ := json.Marshal(routingByModel)
 
+	// Build API key entries for the curl modal (masked for display, full for copy).
+	apiKeyEntries := make([]keyEntry, len(cfg.Server.APIKeys))
+	for i, k := range cfg.Server.APIKeys {
+		apiKeyEntries[i] = keyEntry{Index: i, Masked: maskKey(k), Full: k}
+	}
+
+	// Collect all model IDs from enabled backends for the curl modal selector.
+	var curlModels []string
+	for _, bc := range cfg.Backends {
+		if !bc.IsEnabled() {
+			continue
+		}
+		for _, m := range bc.Models {
+			curlModels = append(curlModels, bc.Name+"/"+m.ID)
+		}
+	}
+
 	data := map[string]any{
-		"Backends":    entries,
-		"Overlaps":    overlaps,
-		"DisplayAddr": displayAddr,
-		"SampleModel": sampleModel,
-		"Message":     r.URL.Query().Get("msg"),
-		"RoutingJSON": template.JS(routingJSON),
+		"Backends":      entries,
+		"Overlaps":      overlaps,
+		"DisplayAddr":   displayAddr,
+		"SampleModel":   sampleModel,
+		"Message":       r.URL.Query().Get("msg"),
+		"RoutingJSON":   template.JS(routingJSON),
+		"GlobalStrategy": cfg.Routing.Strategy,
+		"ServerAPIKeys": apiKeyEntries,
+		"CurlModels":    curlModels,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -673,6 +701,496 @@ func (u *UI) PlaygroundPage(w http.ResponseWriter, r *http.Request) {
 		log.Printf("template error: %v", err)
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
+}
+
+// ── Chat API Handlers ──────────────────────────────────────────────────────
+
+// ChatPage renders the interactive chat UI (sessions + messages).
+func (u *UI) ChatPage(w http.ResponseWriter, r *http.Request) {
+	cfg := u.cfgMgr.Get()
+
+	// Find the internal playground client — its API key is embedded in the
+	// page so the user never has to pick one manually.
+	playgroundAPIKey := ""
+	for _, c := range cfg.Clients {
+		if c.Name == "playground" && c.APIKey != "" {
+			playgroundAPIKey = c.APIKey
+			break
+		}
+	}
+
+	// Collect all models from enabled backends (prefixed backend/model-id).
+	var models []playgroundModel
+	for _, bc := range cfg.Backends {
+		if !bc.IsEnabled() {
+			continue
+		}
+		for _, m := range bc.Models {
+			models = append(models, playgroundModel{ID: bc.Name + "/" + m.ID})
+		}
+	}
+
+	data := map[string]any{
+		"ChatAPIKey":   playgroundAPIKey,
+		"Models":       models,
+		"TitleModel":   cfg.Server.TitleModel,
+		"DefaultModel": cfg.Server.DefaultModel,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.ExecuteTemplate(w, "chat.html", data); err != nil {
+		log.Printf("template error: %v", err)
+		http.Error(w, "template error", http.StatusInternalServerError)
+	}
+}
+
+// ChatModels returns a JSON list of all models from enabled backends with metadata.
+func (u *UI) ChatModels(w http.ResponseWriter, r *http.Request) {
+	var models []playgroundModel
+	for _, b := range u.registry.All() {
+		list, err := b.ListModels(r.Context())
+		if err != nil {
+			log.Printf("chat: error listing models from %s: %v", b.Name(), err)
+			continue
+		}
+		for _, m := range list {
+			models = append(models, playgroundModel{
+				ID:              b.Name() + "/" + m.ID,
+				ContextLength:   m.ContextLength,
+				MaxOutputTokens: m.MaxOutputTokens,
+			})
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(models)
+}
+
+// ChatListSessions returns all chat sessions with aggregate stats, ordered by last message time.
+func (u *UI) ChatListSessions(w http.ResponseWriter, r *http.Request) {
+	sessions, err := u.chatStore.ListSessionSummaries()
+	if err != nil {
+		http.Error(w, "failed to list sessions", http.StatusInternalServerError)
+		return
+	}
+	if sessions == nil {
+		sessions = []chat.SessionSummary{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sessions)
+}
+
+// ChatCreateSession creates a new chat session, optionally accepting a model from the request body.
+func (u *UI) ChatCreateSession(w http.ResponseWriter, r *http.Request) {
+	session, err := u.chatStore.CreateSession()
+	if err != nil {
+		http.Error(w, "failed to create session", http.StatusInternalServerError)
+		return
+	}
+
+	// If the client sends a model, persist it immediately.
+	var body struct {
+		Model string `json:"model"`
+	}
+	if r.Body != nil && r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&body); err == nil && body.Model != "" {
+			_ = u.chatStore.UpdateSession(session.ID, session.Title, body.Model, session.SystemPrompt, session.Temperature, session.TopP, session.MaxTokens)
+			session.Model = body.Model
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(session)
+}
+
+// ChatGetSession returns a single session with its messages.
+func (u *UI) ChatGetSession(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	session, err := u.chatStore.GetSession(id)
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	messages, err := u.chatStore.ListMessages(id)
+	if err != nil {
+		http.Error(w, "failed to load messages", http.StatusInternalServerError)
+		return
+	}
+	if messages == nil {
+		messages = []chat.Message{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"session":  session,
+		"messages": messages,
+	})
+}
+
+// ChatUpdateSession partially updates session fields.
+// Only fields present in the JSON body are applied; omitted fields keep their current values.
+func (u *UI) ChatUpdateSession(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	// Load current session to merge with partial update.
+	current, err := u.chatStore.GetSession(id)
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	// Read the full body first so we can detect omitted fields via null pointers.
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Title        *string  `json:"title"`
+		Model        *string  `json:"model"`
+		SystemPrompt *string  `json:"system_prompt"`
+		Temperature  *float64 `json:"temperature"`
+		TopP         *float64 `json:"top_p"`
+		MaxTokens    *int     `json:"max_tokens"`
+	}
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Merge: only override fields that were explicitly provided in the JSON.
+	title := current.Title
+	if req.Title != nil {
+		title = *req.Title
+	}
+	model := current.Model
+	if req.Model != nil {
+		model = *req.Model
+	}
+	sysPrompt := current.SystemPrompt
+	if req.SystemPrompt != nil {
+		sysPrompt = *req.SystemPrompt
+	}
+	temp := current.Temperature
+	if req.Temperature != nil {
+		temp = *req.Temperature
+	}
+	topP := current.TopP
+	if req.TopP != nil {
+		topP = *req.TopP
+	}
+	maxTok := current.MaxTokens
+	if req.MaxTokens != nil {
+		maxTok = *req.MaxTokens
+	}
+
+	if err := u.chatStore.UpdateSession(id, title, model, sysPrompt, temp, topP, maxTok); err != nil {
+		http.Error(w, "failed to update session", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ChatDeleteSession deletes a session and all its messages.
+func (u *UI) ChatDeleteSession(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if err := u.chatStore.DeleteSession(id); err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ChatDeleteAllSessions deletes all chat sessions and their messages.
+func (u *UI) ChatDeleteAllSessions(w http.ResponseWriter, r *http.Request) {
+	if err := u.chatStore.DeleteAllSessions(); err != nil {
+		http.Error(w, "failed to delete sessions", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ChatListMessages returns all messages for a session.
+func (u *UI) ChatListMessages(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	messages, err := u.chatStore.ListMessages(id)
+	if err != nil {
+		http.Error(w, "failed to load messages", http.StatusInternalServerError)
+		return
+	}
+	if messages == nil {
+		messages = []chat.Message{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(messages)
+}
+
+// ChatSaveMessage persists a single message to a session.
+func (u *UI) ChatSaveMessage(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Role         string  `json:"role"`
+		Content      string  `json:"content"`
+		Tokens       int     `json:"tokens"`
+		PromptTokens int     `json:"prompt_tokens"`
+		Model        string  `json:"model"`
+		DurationMs   float64 `json:"duration_ms"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	msg, err := u.chatStore.SaveMessage(id, req.Role, req.Content, req.Tokens, req.PromptTokens, req.Model, req.DurationMs)
+	if err != nil {
+		http.Error(w, "failed to save message", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(msg)
+}
+
+// ChatGenerateTitle auto-generates a title for the session using an LLM.
+func (u *UI) ChatGenerateTitle(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	cfg := u.cfgMgr.Get()
+
+	// Load the session and its messages.
+	session, err := u.chatStore.GetSession(id)
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	messages, err := u.chatStore.ListMessages(id)
+	if err != nil {
+		http.Error(w, "failed to load messages", http.StatusInternalServerError)
+		return
+	}
+
+	// Build a condensed summary of the conversation for the title prompt.
+	var conversation strings.Builder
+	for _, m := range messages {
+		role := m.Role
+		if role == "system" {
+			continue // skip system prompts for title generation
+		}
+		content := m.Content
+		if len(content) > 200 {
+			content = content[:200] + "..."
+		}
+		conversation.WriteString(fmt.Sprintf("%s: %s\n", role, content))
+	}
+
+	// Determine which model to use for title generation.
+	titleModel := cfg.Server.TitleModel
+	log.Printf("ChatGenerateTitle: session=%s config_title_model=%q session_model=%q", id, titleModel, session.Model)
+	if titleModel == "" {
+		// Fallback: use the session's model, or just truncate.
+		titleModel = session.Model
+		log.Printf("ChatGenerateTitle: config title_model empty, using session model=%q", titleModel)
+	}
+	if titleModel == "" {
+		// Last resort: just use truncated first user message.
+		log.Printf("ChatGenerateTitle: no model available, using fallback title")
+		title := generateFallbackTitle(messages)
+		if title == "" {
+			title = "New Chat"
+		}
+		_ = u.chatStore.UpdateSessionTitle(id, title)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"title": title})
+		return
+	}
+
+	// Find the backend that serves this model from config.
+	var backendName, modelID string
+	if parts := strings.SplitN(titleModel, "/", 2); len(parts) == 2 {
+		backendName, modelID = parts[0], parts[1]
+	} else {
+		modelID = titleModel
+	}
+	log.Printf("ChatGenerateTitle: resolved backend=%q model=%q", backendName, modelID)
+
+	var targetBackendCfg *config.BackendConfig
+	for i := range cfg.Backends {
+		bc := &cfg.Backends[i]
+		if !bc.IsEnabled() {
+			continue
+		}
+		if backendName != "" && bc.Name != backendName {
+			continue
+		}
+		// Accept if: (a) backend has no models allowlist (accepts everything),
+		// or (b) the model is explicitly listed, matching SupportsModel logic.
+		if len(bc.Models) == 0 {
+			targetBackendCfg = bc
+			break
+		}
+		for _, m := range bc.Models {
+			if m.ID == modelID {
+				targetBackendCfg = bc
+				break
+			}
+			if strings.HasSuffix(m.ID, "/*") {
+				prefix := strings.TrimSuffix(m.ID, "/*")
+				if strings.HasPrefix(modelID, prefix+"/") || modelID == prefix {
+					targetBackendCfg = bc
+					break
+				}
+			}
+		}
+		if targetBackendCfg != nil {
+			break
+		}
+	}
+
+	if targetBackendCfg == nil {
+		log.Printf("ChatGenerateTitle: backend/model not found, using fallback title")
+		title := generateFallbackTitle(messages)
+		if title == "" {
+			title = "New Chat"
+		}
+		_ = u.chatStore.UpdateSessionTitle(id, title)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"title": title})
+		return
+	}
+
+	// Resolve the API key: check playground client's backend_keys first, then use backend's key.
+	apiKey := targetBackendCfg.APIKey
+	for _, c := range cfg.Clients {
+		if c.Name == "playground" {
+			if bk, ok := c.BackendKeys[targetBackendCfg.Name]; ok {
+				apiKey = bk
+			}
+			break
+		}
+	}
+	log.Printf("ChatGenerateTitle: calling LLM at %s with model=%s", targetBackendCfg.BaseURL, modelID)
+
+	// Call the LLM to generate a title.
+	titleReq := map[string]any{
+		"model": modelID,
+		"messages": []map[string]string{
+			{"role": "system", "content": "You are a title generator. Generate a concise 3-5 word title for the following conversation. Reply with ONLY the title, nothing else. No quotes, no punctuation."},
+			{"role": "user", "content": conversation.String()},
+		},
+		"max_tokens":  20,
+		"temperature": 0.3,
+	}
+	reqBody, _ := json.Marshal(titleReq)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", targetBackendCfg.BaseURL+"/chat/completions", strings.NewReader(string(reqBody)))
+	if err != nil {
+		title := generateFallbackTitle(messages)
+		_ = u.chatStore.UpdateSessionTitle(id, title)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"title": title})
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("ChatGenerateTitle: LLM call failed: %v", err)
+		title := generateFallbackTitle(messages)
+		_ = u.chatStore.UpdateSessionTitle(id, title)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"title": title})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("ChatGenerateTitle: LLM returned status %d: %s", resp.StatusCode, string(body))
+		title := generateFallbackTitle(messages)
+		_ = u.chatStore.UpdateSessionTitle(id, title)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"title": title})
+		return
+	}
+
+	var titleResp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&titleResp); err != nil || len(titleResp.Choices) == 0 {
+		log.Printf("ChatGenerateTitle: failed to decode LLM response: %v, choices=%d", err, len(titleResp.Choices))
+		title := generateFallbackTitle(messages)
+		_ = u.chatStore.UpdateSessionTitle(id, title)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"title": title})
+		return
+	}
+
+	title := strings.TrimSpace(titleResp.Choices[0].Message.Content)
+	title = strings.Trim(title, `"'`)
+	if title == "" {
+		title = generateFallbackTitle(messages)
+	}
+	if title == "" {
+		title = "New Chat"
+	}
+	log.Printf("ChatGenerateTitle: generated title=%q", title)
+
+	_ = u.chatStore.UpdateSessionTitle(id, title)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"title": title})
+}
+
+// generateFallbackTitle creates a title from the first user message.
+func generateFallbackTitle(messages []chat.Message) string {
+	for _, m := range messages {
+		if m.Role == "user" && m.Content != "" {
+			title := m.Content
+			if len(title) > 50 {
+				title = title[:50] + "..."
+			}
+			title = strings.Split(title, "\n")[0] // first line only
+			return title
+		}
+	}
+	return ""
+}
+
+// ChatSetTitleModel updates the title_model config field and persists it.
+func (u *UI) ChatSetTitleModel(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TitleModel string `json:"title_model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := u.cfgMgr.UpdateTitleModel(req.TitleModel); err != nil {
+		http.Error(w, "failed to save: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"title_model": req.TitleModel})
+}
+
+// ChatSetDefaultModel updates the default_model config field and persists it.
+func (u *UI) ChatSetDefaultModel(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		DefaultModel string `json:"default_model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := u.cfgMgr.UpdateDefaultModel(req.DefaultModel); err != nil {
+		http.Error(w, "failed to save: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"default_model": req.DefaultModel})
 }
 
 // keyEntry holds display data for a single API key on the settings page.
@@ -1103,5 +1621,81 @@ func (u *UI) AnalyticsData(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		log.Printf("analytics: json encode error: %v", err)
+	}
+}
+
+// RoutingPage renders the routing analytics page.
+func (u *UI) RoutingPage(w http.ResponseWriter, r *http.Request) {
+	cfg := u.cfgMgr.Get()
+	backendNames := make([]string, 0, len(cfg.Backends))
+	for _, bc := range cfg.Backends {
+		if bc.IsEnabled() {
+			backendNames = append(backendNames, bc.Name)
+		}
+	}
+	routingJSON, _ := json.Marshal(cfg.Routing)
+	data := map[string]any{
+		"Routing":     cfg.Routing,
+		"Backends":    backendNames,
+		"RoutingJSON": template.JS(routingJSON),
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.ExecuteTemplate(w, "routing.html", data); err != nil {
+		log.Printf("template error: %v", err)
+		http.Error(w, "template error", http.StatusInternalServerError)
+	}
+}
+
+// RoutingConfigJSON returns the current routing configuration as JSON (used by
+// the models page modal to merge per-model changes without clobbering global state).
+func (u *UI) RoutingConfigJSON(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(u.cfgMgr.Get().Routing)
+}
+
+type routingDataResponse struct {
+	Models []stats.ModelRoutingStats `json:"models"`
+	Window string                    `json:"window"`
+}
+
+// RoutingData returns per-model routing analytics as JSON.
+func (u *UI) RoutingData(w http.ResponseWriter, r *http.Request) {
+	windowParam := r.URL.Query().Get("window")
+
+	windowLabels := map[string]time.Duration{
+		"1h":  time.Hour,
+		"6h":  6 * time.Hour,
+		"24h": 24 * time.Hour,
+		"7d":  7 * 24 * time.Hour,
+		"30d": 30 * 24 * time.Hour,
+	}
+	windowLabel := windowParam
+	if windowLabel == "" {
+		windowLabel = "24h"
+	}
+	windowDur := windowLabels[windowLabel]
+
+	f := stats.StatsFilter{}
+	if windowDur > 0 {
+		f.From = time.Now().Add(-windowDur)
+	}
+
+	models, err := u.store.RoutingStats(f)
+	if err != nil {
+		log.Printf("routing: stats query error: %v", err)
+		http.Error(w, "query error", http.StatusInternalServerError)
+		return
+	}
+	if models == nil {
+		models = []stats.ModelRoutingStats{}
+	}
+
+	resp := routingDataResponse{
+		Models: models,
+		Window: windowLabel,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("routing: json encode error: %v", err)
 	}
 }

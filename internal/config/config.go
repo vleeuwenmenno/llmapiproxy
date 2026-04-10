@@ -28,13 +28,26 @@ type ClientConfig struct {
 	BackendKeys map[string]string `yaml:"backend_keys,omitempty"`
 }
 
+// Valid routing strategy values.
+const (
+	StrategyPriority   = "priority"
+	StrategyRoundRobin = "round-robin"
+	StrategyRace       = "race"
+)
+
 type ModelRoutingConfig struct {
 	Model    string   `yaml:"model"`
 	Backends []string `yaml:"backends"`
+	// Strategy overrides the global routing strategy for this model.
+	// Valid values: "priority", "round-robin", "race". Empty = use global default.
+	Strategy string `yaml:"strategy,omitempty"`
 }
 
 type RoutingConfig struct {
 	Models []ModelRoutingConfig `yaml:"models,omitempty"`
+	// Strategy sets the default routing strategy when a model has multiple backends.
+	// Valid values: "priority" (default), "round-robin", "race".
+	Strategy string `yaml:"strategy,omitempty"`
 }
 
 type ServerConfig struct {
@@ -43,6 +56,9 @@ type ServerConfig struct {
 	AdminKey     string   `yaml:"admin_key"`
 	StatsPath    string   `yaml:"stats_path"`
 	DisableStats bool     `yaml:"disable_stats"`
+	ChatDBPath   string   `yaml:"chat_db_path"`
+	TitleModel   string   `yaml:"title_model"`
+	DefaultModel string   `yaml:"default_model,omitempty"`
 }
 
 // ModelConfig specifies a single model with optional metadata overrides.
@@ -160,6 +176,9 @@ func (c *Config) Validate() error {
 	if c.Server.StatsPath == "" {
 		c.Server.StatsPath = "stats.db"
 	}
+	if c.Server.ChatDBPath == "" {
+		c.Server.ChatDBPath = "chat.db"
+	}
 	if len(c.Server.APIKeys) == 0 && len(c.Clients) == 0 {
 		return fmt.Errorf("server.api_keys: at least one API key is required")
 	}
@@ -190,6 +209,27 @@ func (c *Config) Validate() error {
 		}
 		if b.Type == "" {
 			c.Backends[i].Type = "openai"
+		}
+	}
+	if err := c.Routing.validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *RoutingConfig) validate() error {
+	validStrategies := map[string]bool{
+		"":                  true,
+		StrategyPriority:   true,
+		StrategyRoundRobin: true,
+		StrategyRace:       true,
+	}
+	if !validStrategies[r.Strategy] {
+		return fmt.Errorf("routing.strategy: invalid value %q (must be one of: priority, round-robin, race)", r.Strategy)
+	}
+	for i, m := range r.Models {
+		if !validStrategies[m.Strategy] {
+			return fmt.Errorf("routing.models[%d] (%s): invalid strategy %q (must be one of: priority, round-robin, race)", i, m.Model, m.Strategy)
 		}
 	}
 	return nil
@@ -452,6 +492,42 @@ func (m *Manager) UpdateClients(clients []ClientConfig) error {
 func (m *Manager) SaveRouting(routing RoutingConfig) error {
 	m.mu.Lock()
 	m.current.Routing = routing
+	cfg := m.current
+	m.mu.Unlock()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+// UpdateTitleModel sets the server.title_model field, persists the file, and reloads.
+func (m *Manager) UpdateTitleModel(titleModel string) error {
+	m.mu.Lock()
+	m.current.Server.TitleModel = titleModel
+	cfg := m.current
+	m.mu.Unlock()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+// UpdateDefaultModel sets the server.default_model field, persists the file, and reloads.
+func (m *Manager) UpdateDefaultModel(defaultModel string) error {
+	m.mu.Lock()
+	m.current.Server.DefaultModel = defaultModel
 	cfg := m.current
 	m.mu.Unlock()
 

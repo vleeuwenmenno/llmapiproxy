@@ -105,6 +105,139 @@
         nav .links a:hover { color: var(--text); background: var(--accent-dim); }
         nav .links a.active { color: var(--accent); background: var(--accent-dim); }
 
+        /* ── Mobile Menu Styles ── */
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--text);
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 6px;
+            transition: background 0.15s;
+        }
+
+        .mobile-menu-btn:hover {
+            background: var(--accent-dim);
+        }
+
+        .mobile-menu-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .nav-links-mobile {
+            display: none;
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 280px;
+            max-width: 80vw;
+            height: 100vh;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            z-index: 1000;
+            flex-direction: column;
+            padding: 1rem;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        }
+
+        .nav-links-mobile.open {
+            transform: translateX(0);
+        }
+
+        .nav-links-mobile .mobile-menu-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 1rem;
+        }
+
+        .nav-links-mobile .mobile-menu-title {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .nav-links-mobile .mobile-menu-close {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 6px;
+            font-size: 1.25rem;
+            line-height: 1;
+            transition: all 0.15s;
+        }
+
+        .nav-links-mobile .mobile-menu-close:hover {
+            color: var(--text);
+            background: var(--accent-dim);
+        }
+
+        .nav-links-mobile a {
+            color: var(--text-dim);
+            text-decoration: none;
+            padding: 0.875rem 1rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .nav-links-mobile a:hover, .nav-links-mobile a.active {
+            color: var(--text);
+            background: var(--accent-dim);
+        }
+
+        .nav-links-mobile a.active {
+            color: var(--accent);
+        }
+
+        .nav-links-mobile .theme-toggle-mobile {
+            margin-top: auto;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            cursor: pointer;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.15s;
+        }
+
+        .nav-links-mobile .theme-toggle-mobile:hover {
+            border-color: var(--accent);
+        }
+
+        .mobile-menu-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .mobile-menu-overlay.open {
+            display: block;
+            opacity: 1;
+        }
+
         main {
             max-width: 1200px;
             margin: 0 auto;
@@ -317,6 +450,90 @@
         .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
         .copy-btn.copied { color: var(--green); border-color: var(--green); }
 
+        /* ── ctx/out/cap badges clickable ─────────────────── */
+        .ctx-badge, .out-badge, .cap-badge, .src-badge {
+            cursor: pointer;
+            transition: filter 0.12s, transform 0.12s;
+        }
+        .ctx-badge:hover, .out-badge:hover, .cap-badge:hover, .src-badge:hover {
+            filter: brightness(1.25);
+            transform: scale(1.08);
+        }
+
+        /* ── Legend strip ──────────────────────────────────── */
+        .legend-strip {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+            margin-bottom: 2rem;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+        }
+        .legend-strip .legend-label {
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 600;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            cursor: pointer;
+            padding: 0.2rem 0;
+            position: relative;
+        }
+        .legend-item .legend-arrow {
+            font-size: 0.6rem;
+            opacity: 0.5;
+            transition: opacity 0.15s;
+        }
+        .legend-item:hover .legend-arrow { opacity: 1; }
+
+        /* Popover */
+        .legend-popover {
+            display: none;
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.7rem 0.9rem;
+            font-size: 0.75rem;
+            line-height: 1.55;
+            color: var(--text);
+            width: 260px;
+            z-index: 300;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+            pointer-events: auto;
+        }
+        .legend-popover.open { display: block; }
+        .legend-popover::after {
+            content: '';
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-bottom-color: var(--border);
+        }
+        .legend-popover h4 {
+            font-size: 0.78rem;
+            font-weight: 600;
+            margin-bottom: 0.35rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .legend-popover p {
+            color: var(--text-dim);
+            font-size: 0.7rem;
+            margin: 0;
+        }
+
         .dynamic-badge {
             font-size: 0.65rem;
             background: rgba(167,139,250,0.15);
@@ -452,6 +669,20 @@
             opacity: 0.7;
         }
 
+        .overlap-chip .strat-badge {
+            display: inline-block;
+            font-size: 0.58rem;
+            font-weight: 600;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            margin-bottom: 0.3rem;
+            letter-spacing: 0.03em;
+        }
+        .overlap-chip .strat-priority   { background: rgba(34,211,238,0.12); color: var(--accent); }
+        .overlap-chip .strat-round-robin { background: rgba(167,139,250,0.15); color: #a78bfa; }
+        .overlap-chip .strat-race        { background: rgba(251,191,36,0.15);  color: var(--amber); }
+        .overlap-chip .strat-global      { background: rgba(148,163,184,0.10); color: var(--text-dim); border: 1px dashed rgba(148,163,184,0.25); }
+
         /* ── Connect section ─────────────────────────────────── */
         .connect-buttons {
             display: flex;
@@ -556,6 +787,67 @@
 
         .modal-body p strong { color: var(--text); }
 
+        /* ── Strategy radio cards ─────────────────────────────── */
+        .strat-cards { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+        .strat-option {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.65rem;
+            padding: 0.65rem 0.85rem;
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+            user-select: none;
+        }
+        .strat-option input[type="radio"] {
+            appearance: none; -webkit-appearance: none;
+            width: 16px; height: 16px;
+            border: 2px solid var(--text-dim);
+            border-radius: 50%;
+            margin-top: 2px;
+            flex-shrink: 0;
+            position: relative;
+            transition: border-color 0.15s;
+        }
+        .strat-option input[type="radio"]:checked::after {
+            content: '';
+            position: absolute;
+            top: 2px; left: 2px;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+        .strat-option input[type="radio"]:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+        .strat-option:hover { background: var(--surface-2); }
+
+        .strat-option .strat-icon { font-size: 1rem; margin-top: 1px; flex-shrink: 0; }
+        .strat-option .strat-text { display: flex; flex-direction: column; gap: 0.1rem; }
+        .strat-option .strat-label { font-size: 0.82rem; font-weight: 600; color: var(--text); }
+        .strat-option .strat-desc { font-size: 0.72rem; color: var(--text-dim); line-height: 1.45; }
+
+        /* ── Strategy-specific colours ────────────────────────── */
+        .strat-option.so-default   { border-left-color: var(--text-dim); }
+        .strat-option.so-priority  { border-left-color: #22d3ee; }
+        .strat-option.so-roundrobin { border-left-color: #a78bfa; }
+        .strat-option.so-race      { border-left-color: #fbbf24; }
+
+        .strat-option.so-default:has(input:checked)   { border-color: var(--text-dim); border-left-color: var(--text-dim); background: rgba(148,163,184,0.06); }
+        .strat-option.so-priority:has(input:checked)   { border-color: rgba(34,211,238,0.35); border-left-color: #22d3ee; background: rgba(34,211,238,0.06); box-shadow: 0 0 0 1px rgba(34,211,238,0.12); }
+        .strat-option.so-roundrobin:has(input:checked)  { border-color: rgba(167,139,250,0.35); border-left-color: #a78bfa; background: rgba(167,139,250,0.06); box-shadow: 0 0 0 1px rgba(167,139,250,0.12); }
+        .strat-option.so-race:has(input:checked)        { border-color: rgba(251,191,36,0.35); border-left-color: #fbbf24; background: rgba(251,191,36,0.06); box-shadow: 0 0 0 1px rgba(251,191,36,0.12); }
+
+        .strat-option.so-priority input:checked  { border-color: #22d3ee; }
+        .strat-option.so-roundrobin input:checked { border-color: #a78bfa; }
+        .strat-option.so-race input:checked      { border-color: #fbbf24; }
+
+        /* Fallback :checked style for browsers without :has */
+        .strat-option:has(input:checked) .strat-label { color: var(--text); }
+
         .code-block {
             position: relative;
             background: var(--bg);
@@ -587,6 +879,105 @@
             overflow-x: auto;
             white-space: pre;
         }
+
+        /* ── curl modal selectors ──────────────────────────────── */
+        .curl-config {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+        }
+        .curl-field {
+            flex: 1;
+            min-width: 200px;
+        }
+        .curl-field label {
+            display: block;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 0.35rem;
+        }
+        .curl-combo-wrap {
+            position: relative;
+        }
+        .curl-combo-input {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .curl-combo-input:focus { border-color: var(--accent); }
+        .curl-combo-input::placeholder { color: var(--text-dim); }
+        .curl-combo-chevron {
+            position: absolute;
+            right: 0.6rem;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+            color: var(--text-dim);
+        }
+        .curl-combo-list {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            max-height: 220px;
+            overflow-y: auto;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            z-index: 300;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .curl-combo-list.open { display: block; }
+        .curl-combo-item {
+            padding: 0.4rem 0.75rem;
+            font-family: var(--mono);
+            font-size: 0.78rem;
+            color: var(--text);
+            cursor: pointer;
+            transition: background 0.1s;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .curl-combo-item:hover,
+        .curl-combo-item.active { background: var(--accent-dim); color: var(--accent); }
+        .curl-combo-empty {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.78rem;
+            color: var(--text-dim);
+        }
+        .curl-key-select {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            outline: none;
+            cursor: pointer;
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.6rem center;
+            transition: border-color 0.15s;
+        }
+        .curl-key-select:focus { border-color: var(--accent); }
+        .curl-key-select option { background: var(--surface); color: var(--text); }
 
         .copy-block-btn {
             background: transparent;
@@ -669,10 +1060,49 @@
             from { opacity: 0; transform: translateY(8px); }
             to   { opacity: 1; transform: translateY(0); }
         }
+
+        /* ── Mobile Responsive ── */
+        @media (max-width: 768px) {
+            nav { padding: 0.75rem 1rem; }
+            nav .links { display: none; }
+            .mobile-menu-btn { display: flex; align-items: center; justify-content: center; }
+            .nav-links-mobile { display: flex; }
+            main { padding: 1.25rem; }
+            h1 { font-size: 1.25rem; }
+            .backend-grid { grid-template-columns: 1fr; }
+            .legend-strip { gap: 0.4rem; font-size: 0.65rem; }
+            .connect-buttons { justify-content: center; }
+        }
+
+        @media (max-width: 480px) {
+            main { padding: 1rem; }
+            .overlap-chip { padding: 0.35rem 0.6rem; }
+        }
     </style>
 </head>
 <body>
     <div class="noise"></div>
+
+    <!-- Mobile Menu Overlay -->
+    <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="closeMobileMenu()"></div>
+
+    <!-- Mobile Navigation Drawer -->
+    <div class="nav-links-mobile" id="navLinksMobile">
+        <div class="mobile-menu-header">
+            <span class="mobile-menu-title">Menu</span>
+            <button class="mobile-menu-close" onclick="closeMobileMenu()">&#10005;</button>
+        </div>
+        <a href="/ui/">&#128200; Dashboard</a>
+        <a href="/ui/analytics">&#128202; Analytics</a>
+        <a href="/ui/routing">&#128260; Routing</a>
+        <a href="/ui/models" class="active">&#129302; Models</a>
+        <a href="/ui/chat">&#128172; Chat</a>
+        <a href="/ui/settings">&#9881; Settings</a>
+        <button class="theme-toggle-mobile" onclick="toggleTheme(); closeMobileMenu();" id="themeBtnMobile">
+            <span id="themeIconMobile">&#9728;</span> Toggle Theme
+        </button>
+    </div>
+
     <nav>
         <div class="logo">
             <div class="icon">&#9889;</div>
@@ -681,16 +1111,69 @@
         <div class="links">
             <a href="/ui/">Dashboard</a>
             <a href="/ui/analytics">Analytics</a>
+            <a href="/ui/routing">Routing</a>
             <a href="/ui/models" class="active">Models</a>
-            <a href="/ui/playground">Playground</a>
+            <a href="/ui/chat">Chat</a>
             <a href="/ui/settings">Settings</a>
             <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">&#9728;</button>
         </div>
+        <button class="mobile-menu-btn" onclick="openMobileMenu()" aria-label="Open menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+        </button>
     </nav>
 
     <main>
         <h1>Available Models</h1>
         <p class="subtitle">All models accessible through this proxy. Use the prefixed ID (e.g. <code style="font-family:var(--mono);font-size:0.85em;background:var(--surface-2);padding:0.1rem 0.4rem;border-radius:3px">backend/model-id</code>) when calling the API.</p>
+
+        <div class="legend-strip" id="legend-strip">
+            <span class="legend-label">Legend:</span>
+
+            <span class="legend-item" data-legend="ctx">
+                <span class="ctx-badge">128K ctx</span>
+                <span class="legend-arrow">&#x24D8;</span>
+                <div class="legend-popover" id="popover-ctx">
+                    <h4><span class="ctx-badge">ctx</span> Context Window</h4>
+                    <p>Maximum number of tokens the model can accept as input (prompt + system + history). Larger windows allow longer conversations and bigger documents.</p>
+                </div>
+            </span>
+
+            <span class="legend-item" data-legend="out">
+                <span class="out-badge">16K out</span>
+                <span class="legend-arrow">&#x24D8;</span>
+                <div class="legend-popover" id="popover-out">
+                    <h4><span class="out-badge">out</span> Max Output</h4>
+                    <p>Maximum number of tokens the model can generate in a single response. Higher limits allow longer completions.</p>
+                </div>
+            </span>
+
+            <span class="legend-item" data-legend="cap">
+                <span class="cap-badge">vision</span>
+                <span class="legend-arrow">&#x24D8;</span>
+                <div class="legend-popover" id="popover-cap">
+                    <h4><span class="cap-badge">capability</span> Capabilities</h4>
+                    <p>Extra features supported by the model:
+                    <strong>vision</strong> &mdash; accepts images;
+                    <strong>tools</strong> &mdash; supports function/tool calling.</p>
+                </div>
+            </span>
+
+            <span class="legend-item" data-legend="src">
+                <span class="src-badge src-upstream" style="position:relative">&uarr; src</span>
+                <span class="legend-arrow">&#x24D8;</span>
+                <div class="legend-popover" id="popover-src">
+                    <h4><span class="src-badge src-upstream">source</span> Metadata Source</h4>
+                    <p>Where the model info comes from:<br>
+                    <strong>&uarr; upstream</strong> &mdash; live API response<br>
+                    <strong>&#9881; config</strong> &mdash; your config.yaml<br>
+                    <strong>&#128203; builtin</strong> &mdash; built-in database</p>
+                </div>
+            </span>
+        </div>
 
         {{if .Message}}
         <div style="padding:0.65rem 1rem;border-radius:6px;margin-bottom:1.5rem;font-size:0.875rem;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:var(--green)">{{.Message}}</div>
@@ -790,7 +1273,45 @@
                 <button class="modal-close" onclick="closeModal('modal-routing')">&#x2715;</button>
             </div>
             <div class="modal-body">
-                <p>Drag backends to set priority order. The proxy tries the first backend; on failure it falls back down the list.</p>
+                <div style="margin-bottom:1rem">
+                    <label style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim);display:block;margin-bottom:0.5rem">Strategy</label>
+                    <div class="strat-cards">
+                        <label class="strat-option so-default">
+                            <input type="radio" name="routing-strategy" value="">
+                            <span class="strat-icon">&#8226;</span>
+                            <span class="strat-text">
+                                <span class="strat-label">Use global default</span>
+                                <span class="strat-desc">Inherit the strategy configured on the Routing page.</span>
+                            </span>
+                        </label>
+                        <label class="strat-option so-priority">
+                            <input type="radio" name="routing-strategy" value="priority">
+                            <span class="strat-icon">&#8595;</span>
+                            <span class="strat-text">
+                                <span class="strat-label">Priority</span>
+                                <span class="strat-desc">Try backends in order. Fall back on failure.</span>
+                            </span>
+                        </label>
+                        <label class="strat-option so-roundrobin">
+                            <input type="radio" name="routing-strategy" value="round-robin">
+                            <span class="strat-icon">&#8634;</span>
+                            <span class="strat-text">
+                                <span class="strat-label">Round-Robin</span>
+                                <span class="strat-desc">Distribute requests evenly across all backends.</span>
+                            </span>
+                        </label>
+                        <label class="strat-option so-race">
+                            <input type="radio" name="routing-strategy" value="race">
+                            <span class="strat-icon">&#9889;</span>
+                            <span class="strat-text">
+                                <span class="strat-label">Race</span>
+                                <span class="strat-desc">Send to all backends at once, return the first response.</span>
+                                <span class="strat-desc" style="color:var(--amber);margin-top:0.15rem">&#x26A0; All backends process the request — you may be charged by every provider.</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+                <p>Backend priority order. The proxy tries the first backend; on failure it falls back down the list.</p>
                 <ul id="routing-backend-list" style="list-style:none;margin:1rem 0;display:flex;flex-direction:column;gap:0.4rem"></ul>
                 <p style="font-size:0.78rem;color:var(--text-dim);margin-bottom:1rem">
                     On <strong>network errors</strong> or <strong>5xx</strong> responses the next backend is tried automatically.
@@ -798,8 +1319,8 @@
                 </p>
                 <div id="routing-save-msg" style="font-size:0.82rem;margin-bottom:0.75rem;min-height:1.2em"></div>
                 <div style="display:flex;gap:0.75rem">
-                    <button class="connect-btn" style="background:var(--accent-dim);border-color:rgba(34,211,238,0.3);color:var(--accent)" onclick="saveRouting()">Save priority</button>
-                    <button class="connect-btn" onclick="closeModal('modal-routing')">Cancel</button>
+                    <button class="connect-btn" style="background:var(--accent-dim);border-color:rgba(34,211,238,0.3);color:var(--accent)" onclick="saveRouting()">Save</button>
+                    <button class="connect-btn" onclick="closeModal('modal-routing')">Close</button>
                 </div>
             </div>
         </div>
@@ -868,53 +1389,61 @@
                 <button class="modal-close" onclick="closeModal('modal-curl')">&#x2715;</button>
             </div>
             <div class="modal-body">
+                <div class="curl-config">
+                    <div class="curl-field">
+                        <label for="curl-model-input">Model</label>
+                        <div class="curl-combo-wrap" id="curl-model-combo">
+                            <input type="text" class="curl-combo-input" id="curl-model-input" placeholder="Search or select a model…" autocomplete="off">
+                            <svg class="curl-combo-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                            <div class="curl-combo-list" id="curl-model-list"></div>
+                        </div>
+                    </div>
+                    <div class="curl-field">
+                        <label for="curl-key-select">API Key</label>
+                        <select class="curl-key-select" id="curl-key-select">
+                            {{if .ServerAPIKeys}}
+                            {{range .ServerAPIKeys}}
+                            <option value="{{.Full}}">{{.Masked}}</option>
+                            {{end}}
+                            {{else}}
+                            <option value="your-proxy-api-key">No keys configured</option>
+                            {{end}}
+                        </select>
+                    </div>
+                </div>
+
                 <div class="step">List all models</div>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>bash</span>
-                        <button class="copy-block-btn" onclick="copyBlock(this, 'curl-models')">copy</button>
+                        <button class="copy-block-btn" onclick="copyCurlBlock(this, 'curl-models')">copy</button>
                     </div>
-                    <pre id="curl-models">curl http://{{.DisplayAddr}}/v1/models \
-  -H "Authorization: Bearer your-proxy-api-key"</pre>
+                    <pre id="curl-models"></pre>
                 </div>
 
                 <div class="step">Chat completion (non-streaming)</div>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>bash</span>
-                        <button class="copy-block-btn" onclick="copyBlock(this, 'curl-chat')">copy</button>
+                        <button class="copy-block-btn" onclick="copyCurlBlock(this, 'curl-chat')">copy</button>
                     </div>
-                    <pre id="curl-chat">curl http://{{.DisplayAddr}}/v1/chat/completions \
-  -H "Authorization: Bearer your-proxy-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "{{.SampleModel}}",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'</pre>
+                    <pre id="curl-chat"></pre>
                 </div>
 
                 <div class="step">Streaming chat completion</div>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>bash</span>
-                        <button class="copy-block-btn" onclick="copyBlock(this, 'curl-stream')">copy</button>
+                        <button class="copy-block-btn" onclick="copyCurlBlock(this, 'curl-stream')">copy</button>
                     </div>
-                    <pre id="curl-stream">curl http://{{.DisplayAddr}}/v1/chat/completions \
-  -H "Authorization: Bearer your-proxy-api-key" \
-  -H "Content-Type: application/json" \
-  --no-buffer \
-  -d '{
-    "model": "{{.SampleModel}}",
-    "messages": [{"role": "user", "content": "Count to 5"}],
-    "stream": true
-  }'</pre>
+                    <pre id="curl-stream"></pre>
                 </div>
 
                 <div class="step">Health check</div>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>bash</span>
-                        <button class="copy-block-btn" onclick="copyBlock(this, 'curl-health')">copy</button>
+                        <button class="copy-block-btn" onclick="copyCurlBlock(this, 'curl-health')">copy</button>
                     </div>
                     <pre id="curl-health">curl http://{{.DisplayAddr}}/health</pre>
                 </div>
@@ -1025,21 +1554,26 @@
         }
 
         // ── Routing modal ──────────────────────────────────────────────
-        var routingData = {{.RoutingJSON}};  // map of model → [backend, …]
+        var routingData = {{.RoutingJSON}};  // map of model → {backends, strategy}
+        var globalStrategy = {{if .GlobalStrategy}}{{.GlobalStrategy | js}}{{else}}''{{end}};
         var currentRoutingModel = '';
         var currentBackends = [];
 
         function openRoutingModal(modelID, backends) {
             currentRoutingModel = modelID;
             // Use saved order if available, otherwise show detected order
-            var saved = routingData[modelID] || [];
+            var saved = routingData[modelID] || {};
+            var savedBackends = saved.backends || [];
             // Merge: saved first (if still in detected list), then any new ones
-            var ordered = saved.filter(b => backends.includes(b));
+            var ordered = savedBackends.filter(b => backends.includes(b));
             backends.forEach(b => { if (!ordered.includes(b)) ordered.push(b); });
             currentBackends = ordered;
 
             document.getElementById('routing-model-name').textContent = modelID;
             document.getElementById('routing-save-msg').textContent = '';
+            var radio = document.querySelector('input[name="routing-strategy"][value="' + (saved.strategy || '') + '"]');
+            if (radio) radio.checked = true;
+            else document.querySelector('input[name="routing-strategy"][value=""]').checked = true;
             renderBackendList();
             openModal('modal-routing');
         }
@@ -1068,33 +1602,91 @@
         }
 
         function saveRouting() {
-            routingData[currentRoutingModel] = currentBackends.slice();
-            // Build the array format the server expects
-            var models = Object.keys(routingData).map(function(m) {
-                return { model: m, backends: routingData[m] };
-            });
+            var checked = document.querySelector('input[name="routing-strategy"]:checked');
+            var strategy = checked ? checked.value : '';
+            routingData[currentRoutingModel] = { backends: currentBackends.slice(), strategy: strategy };
+            recomputeOverlaps();
             var msg = document.getElementById('routing-save-msg');
             msg.style.color = 'var(--text-dim)';
             msg.textContent = 'Saving\u2026';
-            fetch('/ui/routing/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ models: models })
-            }).then(function(r) {
-                if (r.ok) {
-                    msg.style.color = 'var(--green)';
-                    msg.textContent = '\u2713 Saved. Routing updated.';
-                } else {
-                    r.text().then(function(t) {
-                        msg.style.color = 'var(--red)';
-                        msg.textContent = 'Error: ' + t;
+            // Fetch current global config first so we preserve the global strategy
+            // and any other per-model entries that may have been set via /ui/routing.
+            fetch('/ui/routing/config')
+                .then(function(r) { return r.ok ? r.json() : Promise.reject('fetch failed'); })
+                .then(function(cfg) {
+                    // Build merged models list from local routingData (authoritative for what
+                    // the user has configured in this page)
+                    var models = Object.keys(routingData).map(function(m) {
+                        var d = routingData[m];
+                        var obj = { model: m, backends: d.backends || [] };
+                        if (d.strategy) obj.strategy = d.strategy;
+                        return obj;
                     });
-                }
-            }).catch(function(e) {
-                msg.style.color = 'var(--red)';
-                msg.textContent = 'Error: ' + e;
-            });
+                    return fetch('/ui/routing/save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ strategy: cfg.strategy || '', models: models })
+                    });
+                })
+                .then(function(r) {
+                    if (r.ok) {
+                        msg.style.color = 'var(--green)';
+                        msg.textContent = '\u2713 Saved. Routing updated.';
+                    } else {
+                        r.text().then(function(t) {
+                            msg.style.color = 'var(--red)';
+                            msg.textContent = 'Error: ' + t;
+                        });
+                    }
+                })
+                .catch(function(e) {
+                    msg.style.color = 'var(--red)';
+                    msg.textContent = 'Error: ' + e;
+                });
         }
+
+        // ── Legend popover logic ────────────────────────────────────────
+        var openPopover = null;
+
+        function togglePopover(key) {
+            var el = document.getElementById('popover-' + key);
+            if (!el) return;
+            if (openPopover && openPopover !== el) openPopover.classList.remove('open');
+            el.classList.toggle('open');
+            openPopover = el.classList.contains('open') ? el : null;
+        }
+
+        document.addEventListener('click', function(e) {
+            // Close popover on outside click
+            if (openPopover) {
+                var item = e.target.closest('.legend-item');
+                var badge = e.target.closest('.ctx-badge, .out-badge, .cap-badge, .src-badge');
+                if (!item && !badge) {
+                    openPopover.classList.remove('open');
+                    openPopover = null;
+                }
+            }
+        });
+
+        // Legend items toggle
+        document.querySelectorAll('.legend-item[data-legend]').forEach(function(item) {
+            item.addEventListener('click', function(e) {
+                e.stopPropagation();
+                togglePopover(item.dataset.legend);
+            });
+        });
+
+        // Model badges are clickable and open the matching legend popover
+        document.addEventListener('click', function(e) {
+            var badge = e.target.closest('.model-item .ctx-badge');
+            if (badge) { e.stopPropagation(); togglePopover('ctx'); return; }
+            badge = e.target.closest('.model-item .out-badge');
+            if (badge) { e.stopPropagation(); togglePopover('out'); return; }
+            badge = e.target.closest('.model-item .cap-badge');
+            if (badge) { e.stopPropagation(); togglePopover('cap'); return; }
+            badge = e.target.closest('.model-item .src-badge');
+            if (badge) { e.stopPropagation(); togglePopover('src'); return; }
+        });
 
         // ── Lazy-load per-backend model lists ──────────────────────────
         var PREVIEW_COUNT = 12;
@@ -1147,12 +1739,21 @@
                 var entry = byCanonical[canonicalID];
 
                 // Sort backends by saved routing priority, then append any unordered ones.
-                var saved = routingData[canonicalID] || [];
+                var savedEntry = routingData[canonicalID] || {};
+                var saved = savedEntry.backends || [];
                 var ordered = saved.filter(function(b) { return entry.backends.indexOf(b) !== -1; });
                 entry.backends.forEach(function(b) { if (ordered.indexOf(b) === -1) ordered.push(b); });
 
+                var strategyLabels = { 'priority': '&#8595; Priority', 'round-robin': '&#8634; Round-Robin', 'race': '&#9889; Race' };
                 html += '<div class="overlap-chip" data-model="' + escHtml(canonicalID) + '" data-backends="' + escHtml(JSON.stringify(ordered)) + '">';
                 html += '<span class="mid">' + escHtml(canonicalID) + '</span>';
+                if (savedEntry.strategy && strategyLabels[savedEntry.strategy]) {
+                    html += '<span class="strat-badge strat-' + savedEntry.strategy + '">' + strategyLabels[savedEntry.strategy] + '</span>';
+                } else if (savedEntry.backends && savedEntry.backends.length > 0) {
+                    var gs = globalStrategy || 'priority';
+                    var gsLabel = strategyLabels[gs] || '&#8595; Priority';
+                    html += '<span class="strat-badge strat-global">Global ' + gsLabel + '</span>';
+                }
                 html += '<span class="backends">';
                 ordered.forEach(function(b, i) {
                     var mid = entry.backendModels[b] || '';
@@ -1276,6 +1877,166 @@
                     if (countEl) countEl.textContent = 'error';
                 });
         }
+
+        // ── curl modal: dynamic model & key selectors ──────────────────
+        var curlAllModels = {{json .CurlModels}};
+        var curlDisplayAddr = "{{.DisplayAddr}}";
+        var curlActiveIdx = -1;
+
+        function curlGetKey() {
+            var sel = document.getElementById('curl-key-select');
+            return sel ? sel.value : 'your-proxy-api-key';
+        }
+        function curlGetMaskedKey() {
+            var sel = document.getElementById('curl-key-select');
+            if (!sel || sel.selectedIndex < 0) return 'your-proxy-api-key';
+            return sel.options[sel.selectedIndex].text;
+        }
+        function curlGetModel() {
+            var inp = document.getElementById('curl-model-input');
+            return inp && inp.value.trim() ? inp.value.trim() : '{{.SampleModel}}';
+        }
+
+        function curlFilteredModels(q) {
+            if (!q) return curlAllModels;
+            var lq = q.toLowerCase();
+            return curlAllModels.filter(function(m) { return m.toLowerCase().indexOf(lq) !== -1; });
+        }
+
+        function curlRenderList(items) {
+            var list = document.getElementById('curl-model-list');
+            list.innerHTML = '';
+            curlActiveIdx = -1;
+            if (items.length === 0) {
+                var e = document.createElement('div');
+                e.className = 'curl-combo-empty';
+                e.textContent = 'No matches — your input will be used as-is';
+                list.appendChild(e);
+            } else {
+                items.forEach(function(m) {
+                    var el = document.createElement('div');
+                    el.className = 'curl-combo-item';
+                    el.textContent = m;
+                    el.addEventListener('mousedown', function(ev) {
+                        ev.preventDefault();
+                        document.getElementById('curl-model-input').value = m;
+                        curlCloseList();
+                        updateCurlExamples();
+                    });
+                    list.appendChild(el);
+                });
+            }
+        }
+
+        function curlOpenList(items) {
+            curlRenderList(items);
+            document.getElementById('curl-model-list').classList.add('open');
+        }
+        function curlCloseList() {
+            document.getElementById('curl-model-list').classList.remove('open');
+            curlActiveIdx = -1;
+        }
+
+        (function() {
+            var input = document.getElementById('curl-model-input');
+            var list  = document.getElementById('curl-model-list');
+
+            input.addEventListener('focus', function() { curlOpenList(curlFilteredModels(input.value)); });
+            input.addEventListener('input', function() { curlOpenList(curlFilteredModels(input.value)); });
+            input.addEventListener('blur', function() { setTimeout(curlCloseList, 150); });
+            input.addEventListener('keydown', function(e) {
+                var items = list.querySelectorAll('.curl-combo-item');
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    curlActiveIdx = Math.min(curlActiveIdx + 1, items.length - 1);
+                    items.forEach(function(el, i) { el.classList.toggle('active', i === curlActiveIdx); });
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    curlActiveIdx = Math.max(curlActiveIdx - 1, 0);
+                    items.forEach(function(el, i) { el.classList.toggle('active', i === curlActiveIdx); });
+                } else if (e.key === 'Enter' && curlActiveIdx >= 0) {
+                    e.preventDefault();
+                    input.value = items[curlActiveIdx].textContent;
+                    curlCloseList();
+                    updateCurlExamples();
+                } else if (e.key === 'Escape') {
+                    curlCloseList();
+                }
+            });
+        })();
+
+        document.getElementById('curl-key-select').addEventListener('change', updateCurlExamples);
+
+        function updateCurlExamples() {
+            var key     = curlGetKey();
+            var masked  = curlGetMaskedKey();
+            var model   = curlGetModel();
+            var addr    = curlDisplayAddr;
+
+            function set(id, display, copy) {
+                var el = document.getElementById(id);
+                el.textContent = display;
+                el.dataset.copyText = copy;
+            }
+
+            set('curl-models',
+                'curl http://' + addr + '/v1/models \\\n' +
+                '  -H "Authorization: Bearer ' + masked + '"',
+                'curl http://' + addr + '/v1/models \\\n' +
+                '  -H "Authorization: Bearer ' + key + '"'
+            );
+
+            set('curl-chat',
+                'curl http://' + addr + '/v1/chat/completions \\\n' +
+                '  -H "Authorization: Bearer ' + masked + '" \\\n' +
+                '  -H "Content-Type: application/json" \\\n' +
+                "  -d '{\n" +
+                '    "model": "' + model + '",\n' +
+                '    "messages": [{"role": "user", "content": "Hello!"}]\n' +
+                "  }'",
+                'curl http://' + addr + '/v1/chat/completions \\\n' +
+                '  -H "Authorization: Bearer ' + key + '" \\\n' +
+                '  -H "Content-Type: application/json" \\\n' +
+                "  -d '{\n" +
+                '    "model": "' + model + '",\n' +
+                '    "messages": [{"role": "user", "content": "Hello!"}]\n' +
+                "  }'"
+            );
+
+            set('curl-stream',
+                'curl http://' + addr + '/v1/chat/completions \\\n' +
+                '  -H "Authorization: Bearer ' + masked + '" \\\n' +
+                '  -H "Content-Type: application/json" \\\n' +
+                '  --no-buffer \\\n' +
+                "  -d '{\n" +
+                '    "model": "' + model + '",\n' +
+                '    "messages": [{"role": "user", "content": "Count to 5"}],\n' +
+                '    "stream": true\n' +
+                "  }'",
+                'curl http://' + addr + '/v1/chat/completions \\\n' +
+                '  -H "Authorization: Bearer ' + key + '" \\\n' +
+                '  -H "Content-Type: application/json" \\\n' +
+                '  --no-buffer \\\n' +
+                "  -d '{\n" +
+                '    "model": "' + model + '",\n' +
+                '    "messages": [{"role": "user", "content": "Count to 5"}],\n' +
+                '    "stream": true\n' +
+                "  }'"
+            );
+        }
+
+        function copyCurlBlock(btn, id) {
+            var el   = document.getElementById(id);
+            var text = el.dataset.copyText || el.textContent;
+            navigator.clipboard.writeText(text).then(function() {
+                btn.textContent = 'copied!';
+                btn.classList.add('copied');
+                setTimeout(function() { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
+            });
+        }
+
+        // Initialise curl examples with default values
+        updateCurlExamples();
 
         document.addEventListener('DOMContentLoaded', function() {
             // Wire up click handlers for any server-rendered overlap chips.
