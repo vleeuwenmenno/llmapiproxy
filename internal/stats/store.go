@@ -2,13 +2,14 @@ package stats
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
 
-const schema = `
+const baseSchema = `
 CREATE TABLE IF NOT EXISTS requests (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp         INTEGER NOT NULL,
@@ -39,12 +40,16 @@ func OpenStore(path string, c *Collector) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1) // SQLite is not concurrent for writes
 
-	if _, err := db.Exec(schema); err != nil {
+	if _, err := db.Exec(baseSchema); err != nil {
 		db.Close()
 		return nil, err
 	}
 
 	s := &Store{db: db}
+	if err := s.migrate(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if err := s.loadInto(c); err != nil {
 		db.Close()
 		return nil, err
@@ -56,8 +61,8 @@ func OpenStore(path string, c *Collector) (*Store, error) {
 func (s *Store) Save(r Record) {
 	_, err := s.db.Exec(
 		`INSERT INTO requests
-		    (timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,latency_ms,status_code,error,stream)
-		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		    (timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,latency_ms,status_code,error,stream,response_body,client)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
 		r.Timestamp.UnixMilli(),
 		r.Backend,
 		r.Model,
@@ -68,6 +73,8 @@ func (s *Store) Save(r Record) {
 		r.StatusCode,
 		r.Error,
 		boolToInt(r.Stream),
+		r.ResponseBody,
+		r.Client,
 	)
 	if err != nil {
 		log.Printf("stats: failed to save record: %v", err)
@@ -96,8 +103,8 @@ func (s *Store) Close() error {
 
 func (s *Store) loadInto(c *Collector) error {
 	rows, err := s.db.Query(
-		`SELECT timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
-		        latency_ms,status_code,error,stream
+		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
+		        latency_ms,status_code,error,stream,response_body,client
 		 FROM requests ORDER BY timestamp ASC`)
 	if err != nil {
 		return err
@@ -109,6 +116,7 @@ func (s *Store) loadInto(c *Collector) error {
 		var tsMillis int64
 		var stream int
 		if err := rows.Scan(
+			&r.ID,
 			&tsMillis,
 			&r.Backend,
 			&r.Model,
@@ -119,6 +127,8 @@ func (s *Store) loadInto(c *Collector) error {
 			&r.StatusCode,
 			&r.Error,
 			&stream,
+			&r.ResponseBody,
+			&r.Client,
 		); err != nil {
 			return err
 		}
@@ -134,4 +144,51 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+func (s *Store) migrate() error {
+	var version int
+	_ = s.db.QueryRow("PRAGMA user_version").Scan(&version)
+	if version < 1 {
+		if _, err := s.db.Exec("ALTER TABLE requests ADD COLUMN response_body TEXT NOT NULL DEFAULT ''"); err != nil {
+			return fmt.Errorf("migration 1: %w", err)
+		}
+	}
+	if version < 2 {
+		if _, err := s.db.Exec("ALTER TABLE requests ADD COLUMN client TEXT NOT NULL DEFAULT ''"); err != nil {
+			return fmt.Errorf("migration 2: %w", err)
+		}
+	}
+	_, err := s.db.Exec("PRAGMA user_version = 2")
+	return err
+}
+
+func (s *Store) GetByID(id int64) (*Record, error) {
+	row := s.db.QueryRow(
+		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
+		        latency_ms,status_code,error,stream,response_body,client
+		 FROM requests WHERE id = ?`, id)
+	var r Record
+	var tsMillis int64
+	var stream int
+	if err := row.Scan(
+		&r.ID,
+		&tsMillis,
+		&r.Backend,
+		&r.Model,
+		&r.PromptTokens,
+		&r.CompletionTokens,
+		&r.TotalTokens,
+		&r.LatencyMs,
+		&r.StatusCode,
+		&r.Error,
+		&stream,
+		&r.ResponseBody,
+		&r.Client,
+	); err != nil {
+		return nil, err
+	}
+	r.Timestamp = time.UnixMilli(tsMillis)
+	r.Stream = stream != 0
+	return &r, nil
 }

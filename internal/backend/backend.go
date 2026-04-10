@@ -13,7 +13,24 @@ type ChatCompletionRequest struct {
 	Temperature *float64  `json:"temperature,omitempty"`
 	MaxTokens   *int      `json:"max_tokens,omitempty"`
 	// RawBody preserves the original request body for passthrough.
-	RawBody []byte `json:"-"`
+	RawBody        []byte `json:"-"`
+	APIKeyOverride string `json:"-"`
+}
+
+// BackendError wraps a non-2xx backend response with its status code and body.
+type BackendError struct {
+	StatusCode int
+	Body       string
+	Err        error
+}
+
+func (e *BackendError) Error() string { return e.Err.Error() }
+func (e *BackendError) Unwrap() error { return e.Err }
+
+// RouteEntry pairs a resolved backend with the model ID to forward.
+type RouteEntry struct {
+	Backend Backend
+	ModelID string
 }
 
 type Message struct {

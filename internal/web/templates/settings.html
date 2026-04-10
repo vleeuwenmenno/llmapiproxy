@@ -666,6 +666,33 @@
             </form>
         </div>
 
+        <!-- Clients Section -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">Clients</div>
+            </div>
+            <p class="section-desc">Named clients with their own API keys. Clients appear in stats breakdowns.</p>
+            {{if .Clients}}
+            <ul class="keys-list">
+                {{range .Clients}}
+                <li>
+                    <span class="key-text">{{.Name}} — {{maskKey .APIKey}}</span>
+                    <form method="POST" action="/ui/settings/clients/delete" style="display:contents"
+                          onsubmit="return confirm('Delete client {{.Name}}?')">
+                        <input type="hidden" name="name" value="{{.Name}}">
+                        <button type="submit" class="key-delete-btn" title="Delete client">&#x2715;</button>
+                    </form>
+                </li>
+                {{end}}
+            </ul>
+            {{end}}
+            <form method="POST" action="/ui/settings/clients/add" class="add-key-form" style="display:flex;gap:0.5rem;flex-wrap:wrap">
+                <input type="text" name="name" placeholder="Client name" autocomplete="off" spellcheck="false" required style="flex:1;min-width:120px">
+                <input type="text" name="key" placeholder="API key (sk-...)" autocomplete="off" spellcheck="false" required style="flex:2;min-width:200px">
+                <button type="submit" class="btn btn-primary">&#43; Add Client</button>
+            </form>
+        </div>
+
         <!-- Theme Section -->
         <div class="section">
             <div class="section-header">

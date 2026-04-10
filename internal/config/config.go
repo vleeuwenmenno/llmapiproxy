@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"net/url"
 	"os"
@@ -12,6 +13,23 @@ import (
 type Config struct {
 	Server   ServerConfig    `yaml:"server"`
 	Backends []BackendConfig `yaml:"backends"`
+	Clients  []ClientConfig  `yaml:"clients,omitempty"`
+	Routing  RoutingConfig   `yaml:"routing,omitempty"`
+}
+
+type ClientConfig struct {
+	Name        string            `yaml:"name"`
+	APIKey      string            `yaml:"api_key"`
+	BackendKeys map[string]string `yaml:"backend_keys,omitempty"`
+}
+
+type ModelRoutingConfig struct {
+	Model    string   `yaml:"model"`
+	Backends []string `yaml:"backends"`
+}
+
+type RoutingConfig struct {
+	Models []ModelRoutingConfig `yaml:"models,omitempty"`
 }
 
 type ServerConfig struct {
@@ -44,7 +62,7 @@ func (c *Config) Validate() error {
 	if c.Server.StatsPath == "" {
 		c.Server.StatsPath = "stats.db"
 	}
-	if len(c.Server.APIKeys) == 0 {
+	if len(c.Server.APIKeys) == 0 && len(c.Clients) == 0 {
 		return fmt.Errorf("server.api_keys: at least one API key is required")
 	}
 	enabledCount := 0
@@ -77,6 +95,29 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+func (c *Config) LookupClient(token string) *ClientConfig {
+	for i := range c.Clients {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(c.Clients[i].APIKey)) == 1 {
+			return &c.Clients[i]
+		}
+	}
+	for _, k := range c.Server.APIKeys {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(k)) == 1 {
+			return &ClientConfig{Name: ""}
+		}
+	}
+	return nil
+}
+
+func (c *Config) AllAPIKeys() []string {
+	keys := make([]string, 0, len(c.Server.APIKeys)+len(c.Clients))
+	keys = append(keys, c.Server.APIKeys...)
+	for _, cl := range c.Clients {
+		keys = append(keys, cl.APIKey)
+	}
+	return keys
 }
 
 func Load(path string) (*Config, error) {
@@ -191,6 +232,38 @@ func (m *Manager) ToggleBackend(name string, enabled bool) error {
 	if !found {
 		return fmt.Errorf("backend %q not found", name)
 	}
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+func (m *Manager) UpdateClients(clients []ClientConfig) error {
+	m.mu.Lock()
+	m.current.Clients = clients
+	cfg := m.current
+	m.mu.Unlock()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+func (m *Manager) SaveRouting(routing RoutingConfig) error {
+	m.mu.Lock()
+	m.current.Routing = routing
+	cfg := m.current
+	m.mu.Unlock()
 
 	data, err := yaml.Marshal(cfg)
 	if err != nil {

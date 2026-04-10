@@ -40,6 +40,19 @@
     {{end}}
 </div>
 
+{{if .AllTime.ByClient}}
+<div class="section-title">Clients</div>
+<div class="backend-grid">
+  {{range $name, $count := .AllTime.ByClient}}
+  <div class="backend-card">
+    <div class="name"><span class="dot"></span> {{if $name}}{{$name}}{{else}}(anonymous){{end}}</div>
+    <div class="row"><span>Requests</span><span>{{$count}}</span></div>
+    <div class="row"><span>Tokens</span><span>{{index $.AllTime.TokensByClient $name}}</span></div>
+  </div>
+  {{end}}
+</div>
+{{end}}
+
 <div class="section-title" style="justify-content:space-between">
     <span>Recent Requests</span>
     {{if gt .TotalCount 0}}
@@ -59,11 +72,12 @@
             <th>Tokens</th>
             <th>Latency</th>
             <th>Stream</th>
+            <th>Client</th>
         </tr>
     </thead>
     <tbody>
     {{range .Recent}}
-        <tr>
+        <tr style="cursor:pointer" {{if gt .ID 0}}onclick="showDetail({{.ID}})"{{end}}>
             <td>{{if .Error}}<span class="status-err" title="{{.Error}}"></span>{{else}}<span class="status-ok"></span>{{end}}</td>
             <td>{{formatTime .Timestamp}}</td>
             <td>{{.Backend}}</td>
@@ -71,6 +85,7 @@
             <td>{{.TotalTokens}}</td>
             <td>{{formatDuration .LatencyMs}}</td>
             <td>{{if .Stream}}SSE{{else}}&mdash;{{end}}</td>
+            <td>{{.Client}}</td>
         </tr>
     {{end}}
     </tbody>

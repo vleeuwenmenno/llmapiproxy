@@ -1,13 +1,23 @@
 package proxy
 
 import (
-	"crypto/subtle"
+	"context"
 	"net/http"
 	"strings"
+
+	"github.com/menno/llmapiproxy/internal/config"
 )
 
-// AuthMiddleware validates the Authorization: Bearer <key> header.
-func AuthMiddleware(validKeys []string) func(http.Handler) http.Handler {
+type clientContextKey struct{}
+
+// ClientFromContext retrieves the ClientConfig stored in the context by AuthMiddleware.
+func ClientFromContext(ctx context.Context) *config.ClientConfig {
+	cl, _ := ctx.Value(clientContextKey{}).(*config.ClientConfig)
+	return cl
+}
+
+// AuthMiddleware validates the Authorization: Bearer <key> header using config.Manager.
+func AuthMiddleware(cfgMgr *config.Manager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			auth := r.Header.Get("Authorization")
@@ -17,20 +27,14 @@ func AuthMiddleware(validKeys []string) func(http.Handler) http.Handler {
 			}
 
 			token := strings.TrimPrefix(auth, "Bearer ")
-			valid := false
-			for _, key := range validKeys {
-				if subtle.ConstantTimeCompare([]byte(token), []byte(key)) == 1 {
-					valid = true
-					break
-				}
-			}
-
-			if !valid {
+			cl := cfgMgr.Get().LookupClient(token)
+			if cl == nil {
 				http.Error(w, `{"error":{"message":"Invalid API key","type":"auth_error"}}`, http.StatusUnauthorized)
 				return
 			}
 
-			next.ServeHTTP(w, r)
+			ctx := context.WithValue(r.Context(), clientContextKey{}, cl)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

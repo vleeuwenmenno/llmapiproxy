@@ -62,7 +62,7 @@ func (b *OpenAIBackend) ChatCompletion(ctx context.Context, req *ChatCompletionR
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
-	b.setHeaders(httpReq)
+	b.setHeaders(httpReq, req.APIKeyOverride)
 
 	resp, err := b.client.Do(httpReq)
 	if err != nil {
@@ -72,7 +72,7 @@ func (b *OpenAIBackend) ChatCompletion(ctx context.Context, req *ChatCompletionR
 
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("backend %s returned status %d: %s", b.name, resp.StatusCode, string(errBody))
+		return nil, &BackendError{StatusCode: resp.StatusCode, Body: string(errBody), Err: fmt.Errorf("backend %s returned status %d: %s", b.name, resp.StatusCode, string(errBody))}
 	}
 
 	var result ChatCompletionResponse
@@ -90,7 +90,7 @@ func (b *OpenAIBackend) ChatCompletionStream(ctx context.Context, req *ChatCompl
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
-	b.setHeaders(httpReq)
+	b.setHeaders(httpReq, req.APIKeyOverride)
 
 	resp, err := client.Do(httpReq)
 	if err != nil {
@@ -100,7 +100,7 @@ func (b *OpenAIBackend) ChatCompletionStream(ctx context.Context, req *ChatCompl
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, fmt.Errorf("backend %s returned status %d: %s", b.name, resp.StatusCode, string(errBody))
+		return nil, &BackendError{StatusCode: resp.StatusCode, Body: string(errBody), Err: fmt.Errorf("backend %s returned status %d: %s", b.name, resp.StatusCode, string(errBody))}
 	}
 
 	return resp.Body, nil
@@ -124,7 +124,7 @@ func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
-	b.setHeaders(httpReq)
+	b.setHeaders(httpReq, "")
 
 	resp, err := b.client.Do(httpReq)
 	if err != nil {
@@ -147,11 +147,15 @@ func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
 	return list.Data, nil
 }
 
-func (b *OpenAIBackend) setHeaders(req *http.Request) {
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+b.apiKey)
+func (b *OpenAIBackend) setHeaders(httpReq *http.Request, apiKeyOverride string) {
+	apiKey := b.apiKey
+	if apiKeyOverride != "" {
+		apiKey = apiKeyOverride
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 	for k, v := range b.extraHeaders {
-		req.Header.Set(k, v)
+		httpReq.Header.Set(k, v)
 	}
 }
 

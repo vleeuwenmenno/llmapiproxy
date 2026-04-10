@@ -17,6 +17,9 @@ type Record struct {
 	StatusCode       int       `json:"status_code"`
 	Error            string    `json:"error,omitempty"`
 	Stream           bool      `json:"stream"`
+	ResponseBody     string    `json:"response_body,omitempty"`
+	Client           string    `json:"client,omitempty"`
+	ID               int64     `json:"id,omitempty"`
 }
 
 // Summary provides aggregated statistics.
@@ -29,6 +32,8 @@ type Summary struct {
 	ByModel         map[string]int `json:"by_model"`
 	TokensByBackend map[string]int `json:"tokens_by_backend"`
 	ErrorsByBackend map[string]int `json:"errors_by_backend"`
+	ByClient        map[string]int `json:"by_client"`
+	TokensByClient  map[string]int `json:"tokens_by_client"`
 }
 
 // Collector stores request records in memory.
@@ -146,6 +151,8 @@ func (c *Collector) Summarize(since time.Duration) Summary {
 		ByModel:         make(map[string]int),
 		TokensByBackend: make(map[string]int),
 		ErrorsByBackend: make(map[string]int),
+		ByClient:        make(map[string]int),
+		TokensByClient:  make(map[string]int),
 	}
 
 	var totalLatency int64
@@ -159,6 +166,8 @@ func (c *Collector) Summarize(since time.Duration) Summary {
 		s.ByBackend[r.Backend]++
 		s.ByModel[r.Model]++
 		s.TokensByBackend[r.Backend] += r.TotalTokens
+		s.ByClient[r.Client]++
+		s.TokensByClient[r.Client] += r.TotalTokens
 		if r.Error != "" {
 			s.TotalErrors++
 			s.ErrorsByBackend[r.Backend]++

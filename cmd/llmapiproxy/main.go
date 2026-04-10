@@ -56,8 +56,8 @@ func main() {
 		log.Printf("stats logging disabled (disable_stats: true)")
 	}
 
-	proxyHandler := proxy.NewHandler(registry, collector)
-	ui := web.NewUI(cfgMgr, collector, registry)
+	proxyHandler := proxy.NewHandler(registry, collector, cfgMgr)
+	ui := web.NewUI(cfgMgr, collector, registry, store)
 
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.RealIP)
@@ -65,7 +65,7 @@ func main() {
 	r.Use(chiMiddleware.RequestID)
 
 	r.Route("/v1", func(r chi.Router) {
-		r.Use(proxy.AuthMiddleware(cfg.Server.APIKeys))
+		r.Use(proxy.AuthMiddleware(cfgMgr))
 		r.Post("/chat/completions", proxyHandler.ChatCompletions)
 		r.Get("/models", proxyHandler.ListModels)
 	})
@@ -82,6 +82,11 @@ func main() {
 		r.Post("/settings/keys/add", ui.AddAPIKey)
 		r.Post("/settings/keys/delete", ui.DeleteAPIKey)
 		r.Post("/settings/backends/toggle", ui.ToggleBackend)
+		r.Get("/stats/detail", ui.RequestDetail)
+		r.Get("/quota", ui.QuotaFragment)
+		r.Post("/settings/clients/add", ui.AddClient)
+		r.Post("/settings/clients/delete", ui.DeleteClient)
+		r.Post("/settings/routing/save", ui.SaveRouting)
 
 		staticSub, err := fs.Sub(web.StaticFS(), "static")
 		if err != nil {

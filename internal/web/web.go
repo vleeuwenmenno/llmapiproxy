@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"html/template"
@@ -10,10 +11,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/menno/llmapiproxy/internal/backend"
 	"github.com/menno/llmapiproxy/internal/config"
+	"github.com/menno/llmapiproxy/internal/quota"
 	"github.com/menno/llmapiproxy/internal/stats"
 	"gopkg.in/yaml.v3"
 )
@@ -28,6 +31,7 @@ var templates *template.Template
 
 func init() {
 	templates = template.Must(template.New("").Funcs(template.FuncMap{
+		"maskKey": maskKey,
 		"json": func(v any) template.JS {
 			b, _ := json.Marshal(v)
 			return template.JS(b)
@@ -69,13 +73,15 @@ type UI struct {
 	cfgMgr    *config.Manager
 	collector *stats.Collector
 	registry  *backend.Registry
+	store     *stats.Store
 }
 
-func NewUI(cfgMgr *config.Manager, collector *stats.Collector, registry *backend.Registry) *UI {
+func NewUI(cfgMgr *config.Manager, collector *stats.Collector, registry *backend.Registry, store *stats.Store) *UI {
 	return &UI{
 		cfgMgr:    cfgMgr,
 		collector: collector,
 		registry:  registry,
+		store:     store,
 	}
 }
 
@@ -371,6 +377,8 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 		"IsError":      strings.HasPrefix(msg, "Error"),
 		"DisableStats": cfg.Server.DisableStats,
 		"ConfigText":   configText,
+		"Clients":      cfg.Clients,
+		"ClientsJSON":  template.JS(func() []byte { b, _ := json.Marshal(cfg.Clients); return b }()),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "settings.html", data); err != nil {
@@ -450,7 +458,7 @@ func (u *UI) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui/settings?msg=Error:+index+out+of+range.", http.StatusSeeOther)
 		return
 	}
-	if len(cfg.Server.APIKeys) <= 1 {
+	if len(cfg.Server.APIKeys) <= 1 && len(cfg.Clients) == 0 {
 		http.Redirect(w, r, "/ui/settings?msg=Error:+cannot+remove+the+last+API+key.", http.StatusSeeOther)
 		return
 	}
@@ -460,6 +468,135 @@ func (u *UI) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/ui/settings?msg=API+key+deleted.", http.StatusSeeOther)
+}
+
+func (u *UI) RequestDetail(w http.ResponseWriter, r *http.Request) {
+	idStr := r.URL.Query().Get("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	if u.store == nil {
+		http.Error(w, "store not available", http.StatusServiceUnavailable)
+		return
+	}
+	rec, err := u.store.GetByID(id)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.ExecuteTemplate(w, "request_detail.html", rec); err != nil {
+		log.Printf("template error: %v", err)
+		http.Error(w, "template error", http.StatusInternalServerError)
+	}
+}
+
+type quotaResult struct {
+	BackendName string
+	BaseURL     string
+	Info        *quota.Info
+	Err         string
+}
+
+func (u *UI) QuotaFragment(w http.ResponseWriter, r *http.Request) {
+	cfg := u.cfgMgr.Get()
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	var mu sync.Mutex
+	var results []quotaResult
+	var wg sync.WaitGroup
+
+	for _, bc := range cfg.Backends {
+		if !bc.IsEnabled() {
+			continue
+		}
+		provider := quota.ForBackend(bc.BaseURL)
+		if provider == nil {
+			continue
+		}
+		localBC := bc
+		localProvider := provider
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			info, err := localProvider.Fetch(ctx, localBC.APIKey)
+			res := quotaResult{BackendName: localBC.Name, BaseURL: localBC.BaseURL}
+			if err != nil {
+				res.Err = err.Error()
+			} else {
+				res.Info = info
+			}
+			mu.Lock()
+			results = append(results, res)
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].BackendName < results[j].BackendName
+	})
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.ExecuteTemplate(w, "quota_fragment.html", results); err != nil {
+		log.Printf("template error: %v", err)
+	}
+}
+
+func (u *UI) AddClient(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/ui/settings?msg=Failed+to+parse+form.", http.StatusSeeOther)
+		return
+	}
+	name := strings.TrimSpace(r.FormValue("name"))
+	key := strings.TrimSpace(r.FormValue("key"))
+	if name == "" || key == "" {
+		http.Redirect(w, r, "/ui/settings?msg=Error:+name+and+key+are+required.", http.StatusSeeOther)
+		return
+	}
+	cfg := u.cfgMgr.Get()
+	newClients := append(append([]config.ClientConfig{}, cfg.Clients...), config.ClientConfig{Name: name, APIKey: key})
+	if err := u.cfgMgr.UpdateClients(newClients); err != nil {
+		http.Redirect(w, r, "/ui/settings?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/ui/settings?msg=Client+added.", http.StatusSeeOther)
+}
+
+func (u *UI) DeleteClient(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/ui/settings?msg=Failed+to+parse+form.", http.StatusSeeOther)
+		return
+	}
+	name := r.FormValue("name")
+	cfg := u.cfgMgr.Get()
+	newClients := make([]config.ClientConfig, 0, len(cfg.Clients))
+	for _, cl := range cfg.Clients {
+		if cl.Name != name {
+			newClients = append(newClients, cl)
+		}
+	}
+	if err := u.cfgMgr.UpdateClients(newClients); err != nil {
+		http.Redirect(w, r, "/ui/settings?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/ui/settings?msg=Client+deleted.", http.StatusSeeOther)
+}
+
+func (u *UI) SaveRouting(w http.ResponseWriter, r *http.Request) {
+	var routing config.RoutingConfig
+	if err := json.NewDecoder(r.Body).Decode(&routing); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := u.cfgMgr.SaveRouting(routing); err != nil {
+		http.Error(w, "failed to save routing: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func (u *UI) ToggleBackend(w http.ResponseWriter, r *http.Request) {

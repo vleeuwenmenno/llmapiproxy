@@ -1,0 +1,23 @@
+{{if .}}
+<div style="margin-bottom:2rem">
+  <div class="section-title">Quota</div>
+  <div class="backend-grid">
+    {{range .}}
+    <div class="backend-card">
+      <div class="name"><span class="dot"></span> {{.BackendName}}</div>
+      {{if .Err}}
+      <div class="row"><span style="color:var(--red)">Error</span><span style="color:var(--red)">{{.Err}}</span></div>
+      {{else if .Info}}
+      {{if .Info.Label}}<div class="row"><span>Label</span><span>{{.Info.Label}}</span></div>{{end}}
+      {{if gt .Info.Balance 0.0}}<div class="row"><span>Balance</span><span>{{printf "%.4f" .Info.Balance}} {{.Info.Currency}}</span></div>{{end}}
+      {{if gt .Info.Limit 0.0}}
+      <div class="row"><span>Used</span><span>{{printf "%.4f" .Info.Used}} {{.Info.Currency}}</span></div>
+      <div class="row"><span>Limit</span><span>{{printf "%.4f" .Info.Limit}} {{.Info.Currency}}</span></div>
+      <div class="row"><span>Remaining</span><span>{{printf "%.4f" .Info.Remaining}} {{.Info.Currency}}</span></div>
+      {{end}}
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}

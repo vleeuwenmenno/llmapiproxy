@@ -7,7 +7,6 @@ import (
 
 	"github.com/menno/llmapiproxy/internal/config"
 )
-
 // Registry maps model prefixes to backends and resolves routing.
 type Registry struct {
 	mu       sync.RWMutex
@@ -70,4 +69,43 @@ func (r *Registry) All() []Backend {
 		result = append(result, b)
 	}
 	return result
+}
+
+// ResolveRoute returns an ordered list of RouteEntry values for the given model,
+// consulting the explicit routing config first and falling back to prefix/wildcard resolution.
+func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]RouteEntry, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, mr := range routing.Models {
+		if mr.Model == model {
+			var entries []RouteEntry
+			for _, bName := range mr.Backends {
+				if b, ok := r.backends[bName]; ok {
+					entries = append(entries, RouteEntry{Backend: b, ModelID: model})
+				}
+			}
+			if len(entries) > 0 {
+				return entries, nil
+			}
+		}
+	}
+
+	parts := strings.SplitN(model, "/", 2)
+	if len(parts) == 2 {
+		if b, ok := r.backends[parts[0]]; ok {
+			modelID := parts[1]
+			if b.SupportsModel(modelID) {
+				return []RouteEntry{{Backend: b, ModelID: modelID}}, nil
+			}
+		}
+	}
+
+	for _, b := range r.backends {
+		if b.SupportsModel(model) {
+			return []RouteEntry{{Backend: b, ModelID: model}}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no backend found for model %q", model)
 }

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -12,18 +13,21 @@ import (
 	"time"
 
 	"github.com/menno/llmapiproxy/internal/backend"
+	"github.com/menno/llmapiproxy/internal/config"
 	"github.com/menno/llmapiproxy/internal/stats"
 )
 
 type Handler struct {
 	registry  *backend.Registry
 	collector *stats.Collector
+	cfgMgr    *config.Manager
 }
 
-func NewHandler(registry *backend.Registry, collector *stats.Collector) *Handler {
+func NewHandler(registry *backend.Registry, collector *stats.Collector, cfgMgr *config.Manager) *Handler {
 	return &Handler{
 		registry:  registry,
 		collector: collector,
+		cfgMgr:    cfgMgr,
 	}
 }
 
@@ -52,72 +56,152 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	b, modelID, err := h.registry.Resolve(req.Model)
+	entries, err := h.registry.ResolveRoute(req.Model, h.cfgMgr.Get().Routing)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	originalModel := req.Model
-	req.Model = modelID
+	cl := ClientFromContext(r.Context())
+	clientName := ""
+	if cl != nil {
+		clientName = cl.Name
+	}
 
+	originalModel := req.Model
 	start := time.Now()
 
 	if req.Stream {
-		h.handleStream(r.Context(), w, b, &req, originalModel, start)
+		h.handleStream(r.Context(), w, entries, &req, originalModel, start, clientName, cl)
 	} else {
-		h.handleNonStream(r.Context(), w, b, &req, originalModel, start)
+		h.handleNonStream(r.Context(), w, entries, &req, originalModel, start, clientName, cl)
 	}
 }
 
-func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, b backend.Backend, req *backend.ChatCompletionRequest, originalModel string, start time.Time) {
-	resp, err := b.ChatCompletion(ctx, req)
-	latency := time.Since(start).Milliseconds()
+func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, entries []backend.RouteEntry, req *backend.ChatCompletionRequest, originalModel string, start time.Time, clientName string, cl *config.ClientConfig) {
+	var lastErr error
+	var lastBE *backend.BackendError
+	var lastBackend string
 
-	rec := stats.Record{
-		Timestamp: start,
-		Backend:   b.Name(),
-		Model:     originalModel,
-		LatencyMs: latency,
-		Stream:    false,
-	}
+	for i, entry := range entries {
+		reqCopy := *req
+		reqCopy.Model = entry.ModelID
+		if cl != nil && cl.BackendKeys != nil {
+			if k, ok := cl.BackendKeys[entry.Backend.Name()]; ok {
+				reqCopy.APIKeyOverride = k
+			}
+		}
 
-	if err != nil {
-		rec.StatusCode = http.StatusBadGateway
-		rec.Error = err.Error()
+		resp, err := entry.Backend.ChatCompletion(ctx, &reqCopy)
+		if err != nil {
+			lastErr = err
+			lastBackend = entry.Backend.Name()
+			var be *backend.BackendError
+			if errors.As(err, &be) {
+				lastBE = be
+				if be.StatusCode >= 400 && be.StatusCode < 500 {
+					break
+				}
+			}
+			if i < len(entries)-1 {
+				continue
+			}
+			break
+		}
+
+		latency := time.Since(start).Milliseconds()
+		rec := stats.Record{
+			Timestamp: start,
+			Backend:   entry.Backend.Name(),
+			Model:     originalModel,
+			LatencyMs: latency,
+			Stream:    false,
+			Client:    clientName,
+		}
+		if resp.Usage != nil {
+			rec.PromptTokens = resp.Usage.PromptTokens
+			rec.CompletionTokens = resp.Usage.CompletionTokens
+			rec.TotalTokens = resp.Usage.TotalTokens
+		}
+		rec.StatusCode = http.StatusOK
 		h.collector.Record(rec)
-		writeError(w, http.StatusBadGateway, "backend error: "+err.Error())
+
+		resp.Model = originalModel
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
 		return
 	}
 
-	if resp.Usage != nil {
-		rec.PromptTokens = resp.Usage.PromptTokens
-		rec.CompletionTokens = resp.Usage.CompletionTokens
-		rec.TotalTokens = resp.Usage.TotalTokens
+	latency := time.Since(start).Milliseconds()
+	rec := stats.Record{
+		Timestamp:  start,
+		Backend:    lastBackend,
+		Model:      originalModel,
+		LatencyMs:  latency,
+		StatusCode: http.StatusBadGateway,
+		Error:      lastErr.Error(),
+		Stream:     false,
+		Client:     clientName,
 	}
-	rec.StatusCode = http.StatusOK
+	if lastBE != nil {
+		rec.ResponseBody = lastBE.Body
+	}
 	h.collector.Record(rec)
-
-	resp.Model = originalModel
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())
 }
 
-func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, b backend.Backend, req *backend.ChatCompletionRequest, originalModel string, start time.Time) {
-	stream, err := b.ChatCompletionStream(ctx, req)
-	if err != nil {
+func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entries []backend.RouteEntry, req *backend.ChatCompletionRequest, originalModel string, start time.Time, clientName string, cl *config.ClientConfig) {
+	var stream io.ReadCloser
+	var lastErr error
+	var lastBE *backend.BackendError
+	var lastBackend string
+
+	for i, entry := range entries {
+		reqCopy := *req
+		reqCopy.Model = entry.ModelID
+		if cl != nil && cl.BackendKeys != nil {
+			if k, ok := cl.BackendKeys[entry.Backend.Name()]; ok {
+				reqCopy.APIKeyOverride = k
+			}
+		}
+
+		var err error
+		stream, err = entry.Backend.ChatCompletionStream(ctx, &reqCopy)
+		if err != nil {
+			lastErr = err
+			lastBackend = entry.Backend.Name()
+			var be *backend.BackendError
+			if errors.As(err, &be) {
+				lastBE = be
+				if be.StatusCode >= 400 && be.StatusCode < 500 {
+					break
+				}
+			}
+			if i < len(entries)-1 {
+				continue
+			}
+			break
+		}
+		lastBackend = entry.Backend.Name()
+		break
+	}
+
+	if stream == nil {
 		rec := stats.Record{
 			Timestamp:  start,
-			Backend:    b.Name(),
+			Backend:    lastBackend,
 			Model:      originalModel,
 			LatencyMs:  time.Since(start).Milliseconds(),
 			StatusCode: http.StatusBadGateway,
-			Error:      err.Error(),
+			Error:      lastErr.Error(),
 			Stream:     true,
+			Client:     clientName,
+		}
+		if lastBE != nil {
+			rec.ResponseBody = lastBE.Body
 		}
 		h.collector.Record(rec)
-		writeError(w, http.StatusBadGateway, "backend error: "+err.Error())
+		writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())
 		return
 	}
 	defer stream.Close()
@@ -134,9 +218,10 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, b bac
 
 	rec := stats.Record{
 		Timestamp: start,
-		Backend:   b.Name(),
+		Backend:   lastBackend,
 		Model:     originalModel,
 		Stream:    true,
+		Client:    clientName,
 	}
 
 	scanner := bufio.NewScanner(stream)
@@ -238,3 +323,4 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 		},
 	})
 }
+
