@@ -419,6 +419,30 @@
         .overlap-chip .backends {
             color: var(--text-dim);
             font-size: 0.65rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+
+        .overlap-chip .backend-row {
+            display: flex;
+            align-items: baseline;
+            gap: 0.35rem;
+        }
+
+        .overlap-chip .backend-name {
+            color: var(--text-dim);
+            font-size: 0.65rem;
+        }
+
+        .overlap-chip .backend-modelid {
+            font-family: var(--mono);
+            color: var(--accent);
+            font-size: 0.62rem;
+        }
+
+        .overlap-chip .backend-modelid.same {
+            color: var(--text-dim);
         }
 
         .overlap-chip .configure-hint {
@@ -720,9 +744,18 @@
         </p>
         <div class="overlap-list">
             {{range .Overlaps}}
+            {{$entry := .}}
             <div class="overlap-chip" onclick="openRoutingModal('{{.ModelID}}', {{json .Backends}})">
                 <span class="mid">{{.ModelID}}</span>
-                <span class="backends">{{range $i,$b := .Backends}}{{if $i}}, {{end}}{{$b}}{{end}}</span>
+                <span class="backends">
+                    {{range .Backends}}
+                    {{$mid := index $entry.BackendModels .}}
+                    <span class="backend-row">
+                        <span class="backend-name">{{.}}</span>
+                        <span class="backend-modelid{{if eq $mid $entry.ModelID}} same{{end}}">{{$mid}}</span>
+                    </span>
+                    {{end}}
+                </span>
                 <span class="configure-hint">⚙ click to configure routing</span>
             </div>
             {{end}}
@@ -1114,13 +1147,14 @@ code --install-extension llmapiproxy-vscode-chat-*.vsix</pre>
 
         function renderModelItem(m) {
             var srcSym = { upstream: '\u2191', config: '\u2699', builtin: '\uD83D\uDCCB' };
+            var displayId = m.BareID || m.FullID;
             return '<div class="model-item">'
-                + '<span class="model-id">' + escHtml(m.FullID) + '</span>'
+                + '<span class="model-id">' + escHtml(displayId) + '</span>'
                 + (m.ContextLength ? '<span class="ctx-badge" title="Context window">' + fmtN(m.ContextLength) + 'ctx</span>' : '')
                 + (m.MaxOutputTokens ? '<span class="out-badge" title="Max output tokens">' + fmtN(m.MaxOutputTokens) + 'out</span>' : '')
                 + (m.Capabilities || []).map(function(c) { return '<span class="cap-badge">' + escHtml(c) + '</span>'; }).join('')
                 + (m.DataSource ? '<span class="src-badge src-' + escHtml(m.DataSource) + '" title="Metadata source: ' + escHtml(m.DataSource) + '">' + (srcSym[m.DataSource] || '') + '</span>' : '')
-                + '<button class="copy-btn" data-copy="' + escHtml(m.FullID) + '" onclick="copyText(this,this.dataset.copy)">copy</button>'
+                + '<button class="copy-btn" data-copy="' + escHtml(m.FullID) + '" title="Copy full ID: ' + escHtml(m.FullID) + '" onclick="copyText(this,this.dataset.copy)">copy</button>'
                 + '</div>';
         }
 

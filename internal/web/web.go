@@ -388,8 +388,18 @@ func iconForBackend(name string) string {
 
 // OverlapEntry is a model ID that appears across multiple backends.
 type OverlapEntry struct {
-	ModelID  string
-	Backends []string
+	ModelID      string            // canonical (last-path-segment) model ID
+	Backends     []string          // backend names that have this model
+	BackendModels map[string]string // backendName → actual model ID used by that backend
+}
+
+// lastPathSegment returns the last "/"-delimited segment of s.
+// E.g. "z-ai/glm-5.1" → "glm-5.1", "glm-5.1" → "glm-5.1".
+func lastPathSegment(s string) string {
+	if i := strings.LastIndex(s, "/"); i >= 0 {
+		return s[i+1:]
+	}
+	return s
 }
 
 func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
@@ -397,7 +407,13 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 
 	// Build skeleton entries from config only — no network calls.
 	// Model metadata is loaded lazily per-card by the browser via BackendModels.
-	modelBackends := make(map[string][]string) // bare model ID → backend names (config-only, for overlaps)
+	//
+	// modelBackends: canonical model ID → backend names (for overlap detection).
+	// backendModelIDs: canonical model ID → (backendName → actual model ID used).
+	// Normalisation: the canonical key is the last path segment of the config model ID,
+	// so "z-ai/glm-5.1" and "glm-5.1" both map to canonical key "glm-5.1".
+	modelBackends := make(map[string][]string)
+	backendModelIDs := make(map[string]map[string]string) // canonical → (backend → actual ID)
 	entries := make([]BackendEntry, 0, len(cfg.Backends))
 
 	for _, bc := range cfg.Backends {
@@ -418,7 +434,12 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 					BareID: mc.ID,
 				})
 				if bc.IsEnabled() {
-					modelBackends[mc.ID] = append(modelBackends[mc.ID], bc.Name)
+					canonical := lastPathSegment(mc.ID)
+					modelBackends[canonical] = append(modelBackends[canonical], bc.Name)
+					if backendModelIDs[canonical] == nil {
+						backendModelIDs[canonical] = make(map[string]string)
+					}
+					backendModelIDs[canonical][bc.Name] = mc.ID
 				}
 			}
 		}
@@ -436,9 +457,13 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 
 	// Compute overlaps from config only (no live fetch).
 	var overlaps []OverlapEntry
-	for modelID, backends := range modelBackends {
+	for canonicalID, backends := range modelBackends {
 		if len(backends) >= 2 {
-			overlaps = append(overlaps, OverlapEntry{ModelID: modelID, Backends: backends})
+			overlaps = append(overlaps, OverlapEntry{
+				ModelID:       canonicalID,
+				Backends:      backends,
+				BackendModels: backendModelIDs[canonicalID],
+			})
 		}
 	}
 	sort.Slice(overlaps, func(i, j int) bool { return overlaps[i].ModelID < overlaps[j].ModelID })
