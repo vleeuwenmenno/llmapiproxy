@@ -446,5 +446,3 @@ func (s *Store) FilteredRecords(f StatsFilter, page, pageSize int) ([]Record, in
 	}
 	return records, total, rows.Err()
 }
-
-

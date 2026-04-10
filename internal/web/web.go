@@ -1011,7 +1011,7 @@ func (u *UI) AnalyticsPage(w http.ResponseWriter, r *http.Request) {
 
 // analyticsDataResponse is the JSON envelope returned by AnalyticsData.
 type analyticsDataResponse struct {
-	Summary     stats.Summary    `json:"summary"`
+	Summary     stats.Summary     `json:"summary"`
 	Percentiles stats.Percentiles `json:"percentiles"`
 	TimeSeries  []stats.TimePoint `json:"time_series"`
 	TopModels   []stats.RankRow   `json:"top_models"`
