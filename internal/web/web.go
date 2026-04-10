@@ -267,9 +267,11 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 	for _, bc := range cfg.Backends {
 		isDynamic := len(bc.Models) == 0
 		prefixed := make([]string, 0, len(bc.Models))
+		seen := make(map[string]bool)
 		for _, m := range bc.Models {
 			prefixed = append(prefixed, bc.Name+"/"+m)
-			if bc.IsEnabled() {
+			if bc.IsEnabled() && !seen[m] {
+				seen[m] = true
 				modelBackends[m] = append(modelBackends[m], bc.Name)
 			}
 		}
@@ -309,12 +311,21 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Build a map of model → configured backend priority for the routing dialog.
+	routingByModel := make(map[string][]string)
+	for _, mr := range cfg.Routing.Models {
+		routingByModel[mr.Model] = mr.Backends
+	}
+
+	routingJSON, _ := json.Marshal(routingByModel)
+
 	data := map[string]any{
 		"Backends":    entries,
 		"Overlaps":    overlaps,
 		"DisplayAddr": displayAddr,
 		"SampleModel": sampleModel,
 		"Message":     r.URL.Query().Get("msg"),
+		"RoutingJSON": template.JS(routingJSON),
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -328,6 +339,24 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 type playgroundKeyEntry struct {
 	Label string
 	Value string
+}
+
+// PlaygroundModels returns a JSON list of all models from enabled backends,
+// prefixed with backend name. Used by the playground JS to populate the model combobox.
+func (u *UI) PlaygroundModels(w http.ResponseWriter, r *http.Request) {
+	var models []string
+	for _, b := range u.registry.All() {
+		list, err := b.ListModels(r.Context())
+		if err != nil {
+			log.Printf("playground: error listing models from %s: %v", b.Name(), err)
+			continue
+		}
+		for _, m := range list {
+			models = append(models, b.Name()+"/"+m.ID)
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(models)
 }
 
 // PlaygroundPage renders the interactive model playground.

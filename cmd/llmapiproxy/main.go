@@ -78,6 +78,7 @@ func main() {
 		r.Post("/config/save", ui.SaveConfig)
 		r.Get("/settings", ui.SettingsPage)
 		r.Get("/playground", ui.PlaygroundPage)
+		r.Get("/playground/models", ui.PlaygroundModels)
 		r.Post("/settings/clear-stats", ui.ClearStats)
 		r.Post("/settings/toggle-stats", ui.ToggleStats)
 		r.Post("/settings/keys/add", ui.AddAPIKey)
@@ -87,7 +88,7 @@ func main() {
 		r.Get("/quota", ui.QuotaFragment)
 		r.Post("/settings/clients/add", ui.AddClient)
 		r.Post("/settings/clients/delete", ui.DeleteClient)
-		r.Post("/settings/routing/save", ui.SaveRouting)
+		r.Post("/routing/save", ui.SaveRouting)
 
 		staticSub, err := fs.Sub(web.StaticFS(), "static")
 		if err != nil {

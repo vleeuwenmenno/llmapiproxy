@@ -106,20 +106,100 @@ func (b *OpenAIBackend) ChatCompletionStream(ctx context.Context, req *ChatCompl
 	return resp.Body, nil
 }
 
+// upstreamModel captures extra fields that some providers (e.g. OpenRouter) include
+// in their /v1/models response.
+type upstreamModel struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	OwnedBy string `json:"owned_by"`
+
+	// OpenRouter-style fields
+	ContextLength *int64 `json:"context_length,omitempty"`
+	Architecture  *struct {
+		Modality string `json:"modality"` // e.g. "text->text", "text+image->text"
+	} `json:"architecture,omitempty"`
+	TopProvider *struct {
+		MaxCompletionTokens *int64 `json:"max_completion_tokens,omitempty"`
+	} `json:"top_provider,omitempty"`
+
+	// Standard OpenAI-compatible fields some providers expose
+	MaxModelLen     *int64 `json:"max_model_len,omitempty"`
+	MaxOutputTokens *int64 `json:"max_output_tokens,omitempty"`
+}
+
+func (u *upstreamModel) toModel(ownerOverride string) Model {
+	m := Model{
+		ID:      u.ID,
+		Object:  u.Object,
+		Created: u.Created,
+		OwnedBy: ownerOverride,
+	}
+
+	// Context window: prefer explicit context_length, fall back to max_model_len
+	if u.ContextLength != nil {
+		m.ContextLength = u.ContextLength
+	} else if u.MaxModelLen != nil {
+		m.ContextLength = u.MaxModelLen
+	}
+
+	// Max output tokens
+	if u.MaxOutputTokens != nil {
+		m.MaxOutputTokens = u.MaxOutputTokens
+	} else if u.TopProvider != nil && u.TopProvider.MaxCompletionTokens != nil {
+		m.MaxOutputTokens = u.TopProvider.MaxCompletionTokens
+	}
+
+	// Capabilities from modality (e.g. "text+image->text" → vision)
+	if u.Architecture != nil {
+		modality := strings.ToLower(u.Architecture.Modality)
+		if strings.Contains(modality, "image") || strings.Contains(modality, "vision") {
+			m.Capabilities = append(m.Capabilities, "vision")
+		}
+	}
+
+	return m
+}
+
+type upstreamModelList struct {
+	Object string          `json:"object"`
+	Data   []upstreamModel `json:"data"`
+}
+
 func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
 	if len(b.models) > 0 {
+		// Static model list — try to enrich from upstream, ignore errors.
+		upstreamMap := b.fetchUpstreamModelMap(ctx)
 		models := make([]Model, 0, len(b.models))
-		for _, m := range b.models {
-			models = append(models, Model{
-				ID:      m,
-				Object:  "model",
-				Created: time.Now().Unix(),
-				OwnedBy: b.name,
-			})
+		for _, id := range b.models {
+			if u, ok := upstreamMap[id]; ok {
+				models = append(models, u.toModel(b.name))
+			} else {
+				models = append(models, Model{
+					ID:      id,
+					Object:  "model",
+					Created: time.Now().Unix(),
+					OwnedBy: b.name,
+				})
+			}
 		}
 		return models, nil
 	}
 
+	// Dynamic: fetch full model list from upstream.
+	upstreamModels, err := b.fetchUpstreamModels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	models := make([]Model, 0, len(upstreamModels))
+	for _, u := range upstreamModels {
+		models = append(models, u.toModel(b.name))
+	}
+	return models, nil
+}
+
+// fetchUpstreamModels fetches and returns the raw upstream model list.
+func (b *OpenAIBackend) fetchUpstreamModels(ctx context.Context) ([]upstreamModel, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, b.baseURL+"/models", nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
@@ -136,15 +216,22 @@ func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
 		return nil, nil
 	}
 
-	var list ModelList
+	var list upstreamModelList
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
 		return nil, fmt.Errorf("decoding models: %w", err)
 	}
-
-	for i := range list.Data {
-		list.Data[i].OwnedBy = b.name
-	}
 	return list.Data, nil
+}
+
+// fetchUpstreamModelMap returns a map of model ID → upstream model for enrichment.
+// Errors are silently ignored — it is only used as a best-effort enrichment.
+func (b *OpenAIBackend) fetchUpstreamModelMap(ctx context.Context) map[string]upstreamModel {
+	models, _ := b.fetchUpstreamModels(ctx)
+	m := make(map[string]upstreamModel, len(models))
+	for _, u := range models {
+		m[u.ID] = u
+	}
+	return m
 }
 
 func (b *OpenAIBackend) setHeaders(httpReq *http.Request, apiKeyOverride string) {

@@ -61,10 +61,14 @@ type Usage struct {
 }
 
 type Model struct {
-	ID      string `json:"id"`
-	Object  string `json:"object"`
-	Created int64  `json:"created"`
-	OwnedBy string `json:"owned_by"`
+	ID              string `json:"id"`
+	Object          string `json:"object"`
+	Created         int64  `json:"created"`
+	OwnedBy         string `json:"owned_by"`
+	ContextLength   *int64 `json:"context_length,omitempty"`
+	MaxOutputTokens *int64 `json:"max_output_tokens,omitempty"`
+	// Capabilities lists supported features, e.g. ["vision", "tools"].
+	Capabilities []string `json:"capabilities,omitempty"`
 }
 
 type ModelList struct {

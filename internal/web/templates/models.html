@@ -316,6 +316,13 @@
             border-radius: 8px;
             padding: 0.45rem 0.8rem;
             font-size: 0.75rem;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+        }
+
+        .overlap-chip:hover {
+            border-color: rgba(251,191,36,0.7);
+            background: rgba(251,191,36,0.06);
         }
 
         .overlap-chip .mid {
@@ -328,6 +335,13 @@
         .overlap-chip .backends {
             color: var(--text-dim);
             font-size: 0.65rem;
+        }
+
+        .overlap-chip .configure-hint {
+            color: var(--text-dim);
+            font-size: 0.6rem;
+            margin-top: 0.25rem;
+            opacity: 0.7;
         }
 
         /* ── Connect section ─────────────────────────────────── */
@@ -617,13 +631,14 @@
         {{if .Overlaps}}
         <div class="section-title">Overlapping Models</div>
         <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1rem;line-height:1.6">
-            These model IDs appear in more than one backend. The proxy will route using the <strong>prefixed</strong> form (e.g. <code style="font-family:var(--mono);font-size:0.85em">backend/model-id</code>) to target a specific backend, or the bare name to use the first match.
+            These model IDs appear in more than one backend. Click a chip to configure which backend is tried first and what happens on failure.
         </p>
         <div class="overlap-list">
             {{range .Overlaps}}
-            <div class="overlap-chip">
+            <div class="overlap-chip" onclick="openRoutingModal('{{.ModelID}}', {{json .Backends}})">
                 <span class="mid">{{.ModelID}}</span>
                 <span class="backends">{{range $i,$b := .Backends}}{{if $i}}, {{end}}{{$b}}{{end}}</span>
+                <span class="configure-hint">⚙ click to configure routing</span>
             </div>
             {{end}}
         </div>
@@ -642,12 +657,39 @@
                 <img class="connect-icon" src="/ui/static/icons/vscode.svg" alt="VS Code">
                 VS Code Continue
             </button>
+            <button class="connect-btn" onclick="openModal('modal-copilot-ext')">
+                <img class="connect-icon" src="/ui/static/icons/vscode-alt.svg" alt="VS Code">
+                VS Code Copilot
+            </button>
             <button class="connect-btn" onclick="openModal('modal-curl')">
-                <img class="connect-icon mono" src="/ui/static/icons/openai-white.svg" alt="API">
+                <img class="connect-icon" src="/ui/static/icons/terminal.svg" alt="API">
                 curl / HTTP
             </button>
         </div>
     </main>
+
+    <!-- ── Routing Config Modal ──────────────────────────────────────── -->
+    <div class="modal-overlay" id="modal-routing" onclick="closeOnBackdrop(event, 'modal-routing')">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>⚙ Routing — <span id="routing-model-name" style="font-family:var(--mono);color:var(--amber)"></span></h2>
+                <button class="modal-close" onclick="closeModal('modal-routing')">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+                <p>Drag backends to set priority order. The proxy tries the first backend; on failure it falls back down the list.</p>
+                <ul id="routing-backend-list" style="list-style:none;margin:1rem 0;display:flex;flex-direction:column;gap:0.4rem"></ul>
+                <p style="font-size:0.78rem;color:var(--text-dim);margin-bottom:1rem">
+                    On <strong>network errors</strong> or <strong>5xx</strong> responses the next backend is tried automatically.
+                    On <strong>4xx</strong> errors the request fails immediately (client error, not a backend issue).
+                </p>
+                <div id="routing-save-msg" style="font-size:0.82rem;margin-bottom:0.75rem;min-height:1.2em"></div>
+                <div style="display:flex;gap:0.75rem">
+                    <button class="connect-btn" style="background:var(--accent-dim);border-color:rgba(34,211,238,0.3);color:var(--accent)" onclick="saveRouting()">Save priority</button>
+                    <button class="connect-btn" onclick="closeModal('modal-routing')">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- ── Zed Modal ─────────────────────────────────────────────── -->
     <div class="modal-overlay" id="modal-zed" onclick="closeOnBackdrop(event, 'modal-zed')">
@@ -796,6 +838,55 @@
         </div>
     </div>
 
+    <!-- ── VS Code Copilot Extension Modal ───────────────────────── -->
+    <div class="modal-overlay" id="modal-copilot-ext" onclick="closeOnBackdrop(event, 'modal-copilot-ext')">
+        <div class="modal">
+            <div class="modal-header">
+                <h2><img src="/ui/static/icons/vscode-alt.svg" style="width:18px;height:18px;vertical-align:middle;margin-right:0.4rem">VS Code Copilot Extension</h2>
+                <button class="modal-close" onclick="closeModal('modal-copilot-ext')">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+                <p>
+                    A companion VS Code extension that discovers models from this proxy dynamically and surfaces them
+                    directly in the <strong>GitHub Copilot Chat</strong> model picker — no hardcoding required.
+                </p>
+                <div style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);border-radius:8px;padding:0.65rem 1rem;margin:0.75rem 0 1.25rem;font-size:0.82rem;color:var(--amber)">
+                    🛒 <strong>Marketplace release coming soon.</strong> Install from source for now.
+                </div>
+
+                <div class="step">Step 1 — Build &amp; install from source</div>
+                <div class="code-block">
+                    <div class="code-block-header">
+                        <span>bash</span>
+                        <button class="copy-block-btn" onclick="copyBlock(this, 'ext-install')">copy</button>
+                    </div>
+                    <pre id="ext-install">git clone https://github.com/vleeuwenmenno/llmapiproxy-vscode-extension
+cd llmapiproxy-vscode-extension
+npm install
+npm run package          # produces llmapiproxy-vscode-chat-*.vsix
+code --install-extension llmapiproxy-vscode-chat-*.vsix</pre>
+                </div>
+
+                <div class="step">Step 2 — Connect to this proxy</div>
+                <p>Open the Command Palette (<kbd>Ctrl+Shift+P</kbd>) and run <strong>LLM API Proxy: Manage Connection</strong>, then:</p>
+                <ul style="font-size:0.85rem;color:var(--text);margin:0.5rem 0 1rem 1.25rem;line-height:1.9">
+                    <li>Choose <strong>Set / Update API Key</strong> and enter your proxy API key</li>
+                    <li>Choose <strong>Change Proxy URL</strong> and set it to <code style="font-family:var(--mono);font-size:0.85em;background:var(--bg);padding:0.1rem 0.4rem;border-radius:3px">http://{{.DisplayAddr}}</code></li>
+                </ul>
+
+                <div class="step">Step 3 — Use it</div>
+                <p>Open Copilot Chat (<kbd>Ctrl+Alt+I</kbd>), click the model selector, and pick any model prefixed with a backend name. Run <strong>LLM API Proxy: Refresh Available Models</strong> any time to re-sync.</p>
+
+                <p style="margin-top:1rem">
+                    <a href="https://github.com/vleeuwenmenno/llmapiproxy-vscode-extension" target="_blank"
+                       style="color:var(--accent);text-decoration:none;font-size:0.85rem">
+                        ↗ View on GitHub
+                    </a>
+                </p>
+            </div>
+        </div>
+    </div>
+
     <script>
         function openModal(id) {
             document.getElementById(id).classList.add('open');
@@ -843,6 +934,78 @@
             var isLight = document.body.classList.toggle('light');
             localStorage.setItem('theme', isLight ? 'light' : 'dark');
             document.getElementById('themeBtn').textContent = isLight ? '\uD83C\uDF19' : '\u2600';
+        }
+
+        // ── Routing modal ──────────────────────────────────────────────
+        var routingData = {{.RoutingJSON}};  // map of model → [backend, …]
+        var currentRoutingModel = '';
+        var currentBackends = [];
+
+        function openRoutingModal(modelID, backends) {
+            currentRoutingModel = modelID;
+            // Use saved order if available, otherwise show detected order
+            var saved = routingData[modelID] || [];
+            // Merge: saved first (if still in detected list), then any new ones
+            var ordered = saved.filter(b => backends.includes(b));
+            backends.forEach(b => { if (!ordered.includes(b)) ordered.push(b); });
+            currentBackends = ordered;
+
+            document.getElementById('routing-model-name').textContent = modelID;
+            document.getElementById('routing-save-msg').textContent = '';
+            renderBackendList();
+            openModal('modal-routing');
+        }
+
+        function renderBackendList() {
+            var ul = document.getElementById('routing-backend-list');
+            ul.innerHTML = '';
+            currentBackends.forEach(function(b, i) {
+                var li = document.createElement('li');
+                li.style.cssText = 'display:flex;align-items:center;gap:0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.5rem 0.75rem;font-family:var(--mono);font-size:0.82rem';
+                li.innerHTML = '<span style="color:var(--text-dim);min-width:1.2rem">#' + (i+1) + '</span>'
+                    + '<span style="flex:1;color:var(--text)">' + b + '</span>'
+                    + (i > 0 ? '<button onclick="moveBackend(' + i + ',-1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1rem" title="Move up">↑</button>' : '<span style="width:1.6rem"></span>')
+                    + (i < currentBackends.length-1 ? '<button onclick="moveBackend(' + i + ',1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1rem" title="Move down">↓</button>' : '<span style="width:1.6rem"></span>');
+                ul.appendChild(li);
+            });
+        }
+
+        function moveBackend(idx, dir) {
+            var newIdx = idx + dir;
+            if (newIdx < 0 || newIdx >= currentBackends.length) return;
+            var tmp = currentBackends[idx];
+            currentBackends[idx] = currentBackends[newIdx];
+            currentBackends[newIdx] = tmp;
+            renderBackendList();
+        }
+
+        function saveRouting() {
+            routingData[currentRoutingModel] = currentBackends.slice();
+            // Build the array format the server expects
+            var models = Object.keys(routingData).map(function(m) {
+                return { model: m, backends: routingData[m] };
+            });
+            var msg = document.getElementById('routing-save-msg');
+            msg.style.color = 'var(--text-dim)';
+            msg.textContent = 'Saving…';
+            fetch('/ui/routing/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ models: models })
+            }).then(function(r) {
+                if (r.ok) {
+                    msg.style.color = 'var(--green)';
+                    msg.textContent = '✓ Saved. Routing updated.';
+                } else {
+                    r.text().then(function(t) {
+                        msg.style.color = 'var(--red)';
+                        msg.textContent = 'Error: ' + t;
+                    });
+                }
+            }).catch(function(e) {
+                msg.style.color = 'var(--red)';
+                msg.textContent = 'Error: ' + e;
+            });
         }
     </script>
 </body>

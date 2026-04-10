@@ -172,6 +172,52 @@
             padding-right: 2rem;
         }
 
+        /* ── Model combobox ── */
+        .combo-wrap { position: relative; }
+        .combo-input {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.5rem 2rem 0.5rem 0.75rem;
+            font-size: 0.8rem;
+            font-family: var(--sans);
+            color: var(--text);
+            transition: border-color 0.15s;
+        }
+        .combo-input:focus { border-color: var(--accent); outline: none; }
+        .combo-input::placeholder { color: var(--text-dim); }
+        .combo-chevron {
+            position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+            pointer-events: none; color: var(--text-dim);
+        }
+        .combo-list {
+            position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 200;
+            background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+            max-height: 220px; overflow-y: auto;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+            display: none;
+        }
+        .combo-list.open { display: block; }
+        .combo-item {
+            padding: 0.45rem 0.75rem;
+            font-size: 0.78rem;
+            font-family: var(--mono);
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text);
+        }
+        .combo-item:hover, .combo-item.active { background: var(--accent-dim); color: var(--accent); }
+        .combo-spinner {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            display: flex; align-items: center; gap: 0.4rem;
+        }
+        .combo-empty { padding: 0.5rem 0.75rem; font-size: 0.78rem; color: var(--text-dim); font-style: italic; }
+
         .range-row { display: flex; align-items: center; gap: 0.5rem; }
         .range-row input[type=range] { flex: 1; accent-color: var(--accent); }
         .range-val { font-family: var(--mono); font-size: 0.7rem; color: var(--text-dim); min-width: 2.75rem; text-align: right; }
@@ -411,12 +457,12 @@
             <hr class="divider">
             <div class="section-label">Model</div>
             <div class="field">
-                <label for="model-select">Model</label>
-                <select id="model-select">
-                    {{range .Models}}
-                    <option value="{{.}}">{{.}}</option>
-                    {{end}}
-                </select>
+                <label for="model-input">Model</label>
+                <div class="combo-wrap" id="model-combo">
+                    <input type="text" class="combo-input" id="model-input" placeholder="Search or type a model…" autocomplete="off">
+                    <svg class="combo-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                    <div class="combo-list" id="model-list"></div>
+                </div>
             </div>
 
             <hr class="divider">
@@ -521,6 +567,107 @@ var errorBanner = document.getElementById('error-banner');
 var statusDot   = document.getElementById('status-dot');
 var statusText  = document.getElementById('status-text');
 
+// === MODEL COMBOBOX ===
+var allModels = {{json .Models}};
+var activeIdx = -1;
+
+function renderList(items) {
+    var list = document.getElementById('model-list');
+    list.innerHTML = '';
+    activeIdx = -1;
+    if (items.length === 0) {
+        var e = document.createElement('div');
+        e.className = 'combo-empty';
+        e.textContent = 'No matches — your input will be used as-is';
+        list.appendChild(e);
+    } else {
+        items.forEach(function(m, i) {
+            var el = document.createElement('div');
+            el.className = 'combo-item';
+            el.textContent = m;
+            el.addEventListener('mousedown', function(ev) {
+                ev.preventDefault();
+                document.getElementById('model-input').value = m;
+                closeList();
+            });
+            list.appendChild(el);
+        });
+    }
+}
+
+function openList(items) {
+    renderList(items);
+    document.getElementById('model-list').classList.add('open');
+}
+
+function closeList() {
+    document.getElementById('model-list').classList.remove('open');
+    activeIdx = -1;
+}
+
+function filteredModels(q) {
+    if (!q) return allModels;
+    var lq = q.toLowerCase();
+    return allModels.filter(function(m) { return m.toLowerCase().indexOf(lq) !== -1; });
+}
+
+(function() {
+    var input = document.getElementById('model-input');
+    var list  = document.getElementById('model-list');
+
+    input.addEventListener('focus', function() {
+        openList(filteredModels(input.value));
+    });
+    input.addEventListener('input', function() {
+        openList(filteredModels(input.value));
+    });
+    input.addEventListener('blur', function() {
+        setTimeout(closeList, 150);
+    });
+    input.addEventListener('keydown', function(e) {
+        var items = list.querySelectorAll('.combo-item');
+        if (!items.length) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIdx = Math.min(activeIdx + 1, items.length - 1);
+            items.forEach(function(el, i) { el.classList.toggle('active', i === activeIdx); });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIdx = Math.max(activeIdx - 1, 0);
+            items.forEach(function(el, i) { el.classList.toggle('active', i === activeIdx); });
+        } else if (e.key === 'Enter' && activeIdx >= 0) {
+            e.preventDefault();
+            input.value = items[activeIdx].textContent;
+            closeList();
+        } else if (e.key === 'Escape') {
+            closeList();
+        }
+    });
+})();
+
+async function fetchModels() {
+    var list = document.getElementById('model-list');
+    list.innerHTML = '<div class="combo-spinner"><div class="dots"><span></span><span></span><span></span></div> Loading models…</div>';
+    list.classList.add('open');
+    try {
+        var resp = await fetch('/ui/playground/models');
+        if (!resp.ok) throw new Error(resp.status);
+        var data = await resp.json();
+        allModels = data || [];
+        var input = document.getElementById('model-input');
+        openList(filteredModels(input.value));
+        if (!input.value && allModels.length > 0) {
+            input.value = allModels[0];
+            closeList();
+        }
+    } catch(e) {
+        list.innerHTML = '<div class="combo-empty">Failed to load models</div>';
+    }
+}
+
+// Fetch models on page load
+fetchModels();
+
 // === TOKEN SLIDER HELPERS ===
 function posToTokens(pos) {
     var minLog = Math.log(512);
@@ -595,7 +742,7 @@ async function sendMessage() {
 
     try {
         var apiKey      = document.getElementById('api-key-select').value;
-        var modelId     = document.getElementById('model-select').value;
+        var modelId     = document.getElementById('model-input').value.trim();
         var sysPrompt   = document.getElementById('sys-prompt').value.trim();
         var temperature = parseFloat(document.getElementById('temperature').value);
         var maxTokens   = posToTokens(parseInt(document.getElementById('max-tokens').value));
