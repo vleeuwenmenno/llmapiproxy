@@ -381,7 +381,6 @@
         </div>
     </nav>
     <main>
-        <div id="quota-section" hx-get="/ui/quota" hx-trigger="load" hx-swap="innerHTML"></div>
         <div id="stats-content" hx-get="/ui/stats" hx-trigger="every 10s" hx-swap="innerHTML">
             {{template "stats_fragment.html" .}}
         </div>

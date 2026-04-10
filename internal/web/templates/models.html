@@ -249,9 +249,9 @@
         .model-item {
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            flex-wrap: wrap;
             padding: 0.45rem 1.1rem;
-            gap: 0.5rem;
+            gap: 0.35rem;
             transition: background 0.1s;
         }
 
@@ -262,7 +262,43 @@
             font-size: 0.72rem;
             color: var(--text);
             word-break: break-all;
+            flex: 1;
+            min-width: 0;
         }
+
+        /* ── Context / output / capability / source badges ── */
+        .ctx-badge, .out-badge, .cap-badge, .src-badge {
+            font-family: var(--mono);
+            font-size: 0.6rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .ctx-badge {
+            background: rgba(34,211,238,0.1);
+            color: var(--accent);
+            border: 1px solid rgba(34,211,238,0.25);
+        }
+        .out-badge {
+            background: rgba(167,139,250,0.1);
+            color: var(--purple);
+            border: 1px solid rgba(167,139,250,0.25);
+        }
+        .cap-badge {
+            background: rgba(251,191,36,0.1);
+            color: var(--amber);
+            border: 1px solid rgba(251,191,36,0.25);
+        }
+        .src-badge {
+            font-size: 0.65rem;
+            padding: 0.1rem 0.3rem;
+            opacity: 0.65;
+            cursor: default;
+        }
+        .src-upstream { background: rgba(52,211,153,0.08); color: var(--green); border: 1px solid rgba(52,211,153,0.2); }
+        .src-config   { background: rgba(251,191,36,0.08);  color: var(--amber); border: 1px solid rgba(251,191,36,0.2); }
+        .src-builtin  { background: rgba(100,116,139,0.12); color: var(--text-dim); border: 1px solid rgba(100,116,139,0.2); }
 
         .copy-btn {
             background: transparent;
@@ -301,6 +337,54 @@
             padding: 0.15rem 0.5rem;
             border-radius: 10px;
         }
+
+        /* ── Spinner ─────────────────────────────────────────── */
+        .model-loading {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.85rem 1.1rem;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+        }
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(34,211,238,0.15);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Show-more toggle ────────────────────────────────── */
+        .show-more-btn {
+            width: 100%;
+            background: transparent;
+            border: none;
+            border-top: 1px solid var(--border);
+            color: var(--text-dim);
+            font-family: var(--mono);
+            font-size: 0.68rem;
+            padding: 0.55rem 1.1rem;
+            cursor: pointer;
+            text-align: left;
+            transition: color 0.1s, background 0.1s;
+        }
+        .show-more-btn:hover { color: var(--accent); background: var(--accent-dim); }
+
+        /* ── Collapsible card ────────────────────────────────── */
+        .backend-card.collapsed .model-list { display: none; }
+        .collapse-chevron {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            transition: transform 0.2s;
+            margin-left: 0.2rem;
+            flex-shrink: 0;
+        }
+        .backend-card.collapsed .collapse-chevron { transform: rotate(-90deg); }
+        .backend-header { cursor: pointer; user-select: none; }
 
         /* ── Overlap section ─────────────────────────────────── */
         .overlap-list {
@@ -589,17 +673,16 @@
 
         <div class="section-title">Backends</div>
         <div class="backend-grid">
-            {{range .Backends}}
-            <div class="backend-card{{if not .Enabled}} disabled{{end}}">
-                <div class="backend-header">
+        {{range .Backends}}
+            <div class="backend-card{{if not .Enabled}} disabled{{end}}{{if .IsDynamic}} collapsed{{end}}" data-backend="{{.Name}}">
+                <div class="backend-header" onclick="toggleCard(event, '{{.Name}}')">
                     <div class="backend-name">
                         {{if .IconURL}}<img class="backend-icon" src="{{.IconURL}}" alt="{{.Name}}">{{else}}<div class="dot"></div>{{end}}
                         {{.Name}}
+                        <span class="collapse-chevron">&#x25BE;</span>
                     </div>
-                    <div style="display:flex;align-items:center;gap:0.5rem">
-                    {{if not .IsDynamic}}
-                    <span class="model-count">{{len .Models}} models</span>
-                    {{end}}
+                    <div style="display:flex;align-items:center;gap:0.5rem" onclick="event.stopPropagation()">
+                    <span class="model-count" id="count-{{.Name}}">{{if .StaticCount}}{{.StaticCount}} models{{else}}&hellip;{{end}}</span>
                     <form method="POST" action="/ui/settings/backends/toggle" style="display:contents">
                         <input type="hidden" name="name" value="{{.Name}}">
                         <input type="hidden" name="enabled" value="{{if .Enabled}}false{{else}}true{{end}}">
@@ -611,15 +694,16 @@
                     </form>
                     </div>
                 </div>
-                <div class="model-list">
+                <div class="model-list" id="models-{{.Name}}">
                     <div style="padding:0.3rem 1.1rem 0.2rem;font-family:var(--mono);font-size:0.65rem;color:var(--text-dim)">{{.BaseURL}}</div>
                     {{if .IsDynamic}}
-                    <span class="dynamic-badge">&#x221E; dynamic — uses /v1/models from upstream</span>
+                    <span class="dynamic-badge">&#x221E; dynamic &#x2014; uses /v1/models from upstream</span>
+                    <div class="model-loading"><div class="spinner"></div><span>Loading models&#x2026;</span></div>
                     {{else}}
                     {{range .Models}}
                     <div class="model-item">
-                        <span class="model-id">{{.}}</span>
-                        <button class="copy-btn" onclick="copyText(this, '{{.}}')">copy</button>
+                        <span class="model-id">{{.FullID}}</span>
+                        <button class="copy-btn" onclick="copyText(this, '{{.FullID}}')">copy</button>
                     </div>
                     {{end}}
                     {{end}}
@@ -714,8 +798,8 @@
       "available_models": [
         {{- range $i, $b := .Backends}}{{if $b.Enabled}}{{range $j, $m := $b.Models}}{{if or $i $j}},
         {{end}}{
-          "name": "{{$m}}",
-          "display_name": "{{$m}} (proxy)",
+          "name": "{{$m.FullID}}",
+          "display_name": "{{$m.FullID}} (proxy)",
           "max_tokens": 8192
         }{{end}}{{end}}{{end}}
       ]
@@ -763,9 +847,9 @@
                     </div>
                     <pre id="continue-config">models:
 {{- range $i, $b := .Backends}}{{if $b.Enabled}}{{range $b.Models}}
-  - name: "{{.}} (proxy)"
+  - name: "{{.FullID}} (proxy)"
     provider: openai
-    model: "{{.}}"
+    model: "{{.FullID}}"
     apiBase: "http://{{$.DisplayAddr}}/v1"
     apiKey: "your-proxy-api-key"
 {{end}}{{end}}{{end}}</pre>
@@ -987,7 +1071,7 @@ code --install-extension llmapiproxy-vscode-chat-*.vsix</pre>
             });
             var msg = document.getElementById('routing-save-msg');
             msg.style.color = 'var(--text-dim)';
-            msg.textContent = 'Saving…';
+            msg.textContent = 'Saving\u2026';
             fetch('/ui/routing/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -995,7 +1079,7 @@ code --install-extension llmapiproxy-vscode-chat-*.vsix</pre>
             }).then(function(r) {
                 if (r.ok) {
                     msg.style.color = 'var(--green)';
-                    msg.textContent = '✓ Saved. Routing updated.';
+                    msg.textContent = '\u2713 Saved. Routing updated.';
                 } else {
                     r.text().then(function(t) {
                         msg.style.color = 'var(--red)';
@@ -1007,6 +1091,105 @@ code --install-extension llmapiproxy-vscode-chat-*.vsix</pre>
                 msg.textContent = 'Error: ' + e;
             });
         }
+
+        // ── Lazy-load per-backend model lists ──────────────────────────
+        var PREVIEW_COUNT = 12;
+
+        function toggleCard(ev, name) {
+            var card = document.querySelector('.backend-card[data-backend="' + name + '"]');
+            if (card) card.classList.toggle('collapsed');
+        }
+
+        function fmtN(n) {
+            if (!n) return '';
+            if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+            if (n >= 1000) return Math.round(n / 1000) + 'K';
+            return String(n);
+        }
+
+        function escHtml(s) {
+            return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function renderModelItem(m) {
+            var srcSym = { upstream: '\u2191', config: '\u2699', builtin: '\uD83D\uDCCB' };
+            return '<div class="model-item">'
+                + '<span class="model-id">' + escHtml(m.FullID) + '</span>'
+                + (m.ContextLength ? '<span class="ctx-badge" title="Context window">' + fmtN(m.ContextLength) + 'ctx</span>' : '')
+                + (m.MaxOutputTokens ? '<span class="out-badge" title="Max output tokens">' + fmtN(m.MaxOutputTokens) + 'out</span>' : '')
+                + (m.Capabilities || []).map(function(c) { return '<span class="cap-badge">' + escHtml(c) + '</span>'; }).join('')
+                + (m.DataSource ? '<span class="src-badge src-' + escHtml(m.DataSource) + '" title="Metadata source: ' + escHtml(m.DataSource) + '">' + (srcSym[m.DataSource] || '') + '</span>' : '')
+                + '<button class="copy-btn" data-copy="' + escHtml(m.FullID) + '" onclick="copyText(this,this.dataset.copy)">copy</button>'
+                + '</div>';
+        }
+
+        function toggleMore(name, totalRest) {
+            var rest = document.getElementById('rest-' + name);
+            var btn = document.getElementById('showmore-' + name);
+            if (!rest || !btn) return;
+            if (rest.style.display === 'none' || rest.style.display === '') {
+                rest.style.display = 'block';
+                btn.innerHTML = '\u25B4 Show less';
+            } else {
+                rest.style.display = 'none';
+                btn.innerHTML = '\u25BE Show ' + totalRest + ' more models';
+            }
+        }
+
+        function loadBackendModels(name) {
+            var listEl = document.getElementById('models-' + name);
+            var countEl = document.getElementById('count-' + name);
+            if (!listEl) return;
+
+            // Preserve the base-url line and dynamic badge if present.
+            var baseUrlEl = listEl.querySelector(':scope > div:first-child');
+            var dynBadgeEl = listEl.querySelector('.dynamic-badge');
+            var baseUrlHtml = baseUrlEl ? baseUrlEl.outerHTML : '';
+            var dynHtml = dynBadgeEl ? dynBadgeEl.outerHTML : '';
+
+            // Replace content with spinner (keep header elements).
+            listEl.innerHTML = baseUrlHtml + dynHtml
+                + '<div class="model-loading"><div class="spinner"></div><span>Loading models\u2026</span></div>';
+
+            fetch('/ui/backends/' + encodeURIComponent(name) + '/models')
+                .then(function(res) {
+                    if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+                    return res.json();
+                })
+                .then(function(models) {
+                    models = models || [];
+                    if (countEl) countEl.textContent = models.length + ' model' + (models.length !== 1 ? 's' : '');
+
+                    var preview = models.slice(0, PREVIEW_COUNT);
+                    var rest = models.slice(PREVIEW_COUNT);
+                    var html = baseUrlHtml + dynHtml;
+                    html += preview.map(renderModelItem).join('');
+                    if (rest.length > 0) {
+                        html += '<div class="model-rest" id="rest-' + name + '" style="display:none">'
+                            + rest.map(renderModelItem).join('') + '</div>';
+                        html += '<button class="show-more-btn" id="showmore-' + name + '" onclick="toggleMore(\'' + name + '\',' + rest.length + ')">'
+                            + '\u25BE Show ' + rest.length + ' more models</button>';
+                    }
+                    listEl.innerHTML = html;
+
+                    // Auto-expand dynamic backends once their models are loaded.
+                    var card = listEl.closest('.backend-card');
+                    if (card && card.dataset.backend && card.classList.contains('collapsed')) {
+                        card.classList.remove('collapsed');
+                    }
+                })
+                .catch(function(e) {
+                    listEl.innerHTML = baseUrlHtml + dynHtml
+                        + '<div style="padding:0.75rem 1.1rem;font-size:0.75rem;color:var(--red);font-family:var(--mono)">\u2717 ' + escHtml(e.message) + '</div>';
+                    if (countEl) countEl.textContent = 'error';
+                });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.backend-card[data-backend]').forEach(function(card) {
+                loadBackendModels(card.dataset.backend);
+            });
+        });
     </script>
 </body>
 </html>

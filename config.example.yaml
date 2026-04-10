@@ -41,10 +41,15 @@ backends:
     base_url: https://api.z.ai/api/paas/v4
     api_key: "your-zai-api-key"
     models:
-      - glm-5.1
+      # Simple string form — context window is auto-fetched from upstream or looked up from the built-in database.
       - glm-5-turbo
       - glm-4.7
       - glm-4.5-air
+      # Object form — use this to pin explicit context/output limits that override upstream data.
+      # Useful when the provider doesn't expose this info or you want to restrict it.
+      - id: glm-5.1
+        context_length: 131072
+        max_output_tokens: 8192
 
   # ── Z.ai Coding Plan ──────────────────────────────────────
   # Dedicated coding endpoint (uses Coding Plan subscription quota).

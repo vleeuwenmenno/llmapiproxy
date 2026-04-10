@@ -19,7 +19,7 @@ type OpenAIBackend struct {
 	baseURL      string
 	apiKey       string
 	extraHeaders map[string]string
-	models       []string
+	models       []config.ModelConfig
 	client       *http.Client
 }
 
@@ -43,11 +43,11 @@ func (b *OpenAIBackend) SupportsModel(modelID string) bool {
 		return true
 	}
 	for _, m := range b.models {
-		if m == modelID {
+		if m.ID == modelID {
 			return true
 		}
-		if strings.HasSuffix(m, "/*") {
-			prefix := strings.TrimSuffix(m, "/*")
+		if strings.HasSuffix(m.ID, "/*") {
+			prefix := strings.TrimSuffix(m.ID, "/*")
 			if strings.HasPrefix(modelID, prefix+"/") || modelID == prefix {
 				return true
 			}
@@ -171,16 +171,26 @@ func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
 		// Static model list — try to enrich from upstream, ignore errors.
 		upstreamMap := b.fetchUpstreamModelMap(ctx)
 		models := make([]Model, 0, len(b.models))
-		for _, id := range b.models {
-			if u, ok := upstreamMap[id]; ok {
-				models = append(models, u.toModel(b.name))
+		for _, mc := range b.models {
+			if u, ok := upstreamMap[mc.ID]; ok {
+				// Upstream data found — use it, but let config overrides + known DB win.
+				m := u.toModel(b.name)
+				b.applyConfigOverrides(&m, mc)
+				b.applyKnownDefaults(&m, mc.ID)
+				models = append(models, m)
 			} else {
-				models = append(models, Model{
-					ID:      id,
+				// No upstream data — build from config overrides + built-in database.
+				m := Model{
+					ID:      mc.ID,
 					Object:  "model",
 					Created: time.Now().Unix(),
 					OwnedBy: b.name,
-				})
+				}
+				// Apply config overrides first.
+				b.applyConfigOverrides(&m, mc)
+				// Then fill remaining gaps from built-in database.
+				b.applyKnownDefaults(&m, mc.ID)
+				models = append(models, m)
 			}
 		}
 		return models, nil
@@ -193,9 +203,50 @@ func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
 	}
 	models := make([]Model, 0, len(upstreamModels))
 	for _, u := range upstreamModels {
-		models = append(models, u.toModel(b.name))
+		m := u.toModel(b.name)
+		b.applyKnownDefaults(&m, u.ID)
+		models = append(models, m)
 	}
 	return models, nil
+}
+
+// applyConfigOverrides fills Model fields from config-level overrides when set.
+func (b *OpenAIBackend) applyConfigOverrides(m *Model, mc config.ModelConfig) {
+	if mc.ContextLength != nil {
+		m.ContextLength = mc.ContextLength
+	}
+	if mc.MaxOutputTokens != nil {
+		m.MaxOutputTokens = mc.MaxOutputTokens
+	}
+}
+
+// applyKnownDefaults fills missing Model fields from the built-in model database.
+func (b *OpenAIBackend) applyKnownDefaults(m *Model, modelID string) {
+	info := LookupKnownModel(modelID)
+	if info == nil {
+		return
+	}
+	if m.DisplayName == "" && info.DisplayName != "" {
+		m.DisplayName = info.DisplayName
+	}
+	if m.ContextLength == nil {
+		m.ContextLength = &info.ContextLength
+	}
+	if m.MaxOutputTokens == nil {
+		m.MaxOutputTokens = &info.MaxOutputTokens
+	}
+	if info.Vision {
+		hasVision := false
+		for _, c := range m.Capabilities {
+			if c == "vision" {
+				hasVision = true
+				break
+			}
+		}
+		if !hasVision {
+			m.Capabilities = append(m.Capabilities, "vision")
+		}
+	}
 }
 
 // fetchUpstreamModels fetches and returns the raw upstream model list.

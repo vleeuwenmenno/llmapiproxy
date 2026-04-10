@@ -200,16 +200,19 @@
         }
         .combo-list.open { display: block; }
         .combo-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
             padding: 0.45rem 0.75rem;
             font-size: 0.78rem;
             font-family: var(--mono);
             cursor: pointer;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
             color: var(--text);
         }
         .combo-item:hover, .combo-item.active { background: var(--accent-dim); color: var(--accent); }
+        .combo-model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+        .combo-model-meta { font-size: 0.65rem; color: var(--text-dim); white-space: nowrap; flex-shrink: 0; }
         .combo-spinner {
             padding: 0.5rem 0.75rem;
             font-size: 0.78rem;
@@ -571,6 +574,26 @@ var statusText  = document.getElementById('status-text');
 var allModels = {{json .Models}};
 var activeIdx = -1;
 
+function fmtCtx(n) {
+    if (!n) return '';
+    if (n >= 1000000) return Math.round(n/1000000) + 'M';
+    if (n >= 1000)    return Math.round(n/1000) + 'K';
+    return String(n);
+}
+
+function modelLabel(m) {
+    if (typeof m === 'string') return m;
+    var label = m.id;
+    var tags = [];
+    if (m.context_length)   tags.push(fmtCtx(m.context_length) + ' ctx');
+    if (m.max_output_tokens) tags.push(fmtCtx(m.max_output_tokens) + ' out');
+    return label + (tags.length ? '  (' + tags.join(', ') + ')' : '');
+}
+
+function modelID(m) {
+    return (typeof m === 'string') ? m : m.id;
+}
+
 function renderList(items) {
     var list = document.getElementById('model-list');
     list.innerHTML = '';
@@ -584,10 +607,23 @@ function renderList(items) {
         items.forEach(function(m, i) {
             var el = document.createElement('div');
             el.className = 'combo-item';
-            el.textContent = m;
+            var id = modelID(m);
+            var nameSpan = document.createElement('span');
+            nameSpan.className = 'combo-model-name';
+            nameSpan.textContent = id;
+            el.appendChild(nameSpan);
+            if (typeof m === 'object' && (m.context_length || m.max_output_tokens)) {
+                var metaSpan = document.createElement('span');
+                metaSpan.className = 'combo-model-meta';
+                var tags = [];
+                if (m.context_length)    tags.push(fmtCtx(m.context_length) + ' ctx');
+                if (m.max_output_tokens) tags.push(fmtCtx(m.max_output_tokens) + ' out');
+                metaSpan.textContent = tags.join('  ');
+                el.appendChild(metaSpan);
+            }
             el.addEventListener('mousedown', function(ev) {
                 ev.preventDefault();
-                document.getElementById('model-input').value = m;
+                document.getElementById('model-input').value = id;
                 closeList();
             });
             list.appendChild(el);
@@ -608,7 +644,7 @@ function closeList() {
 function filteredModels(q) {
     if (!q) return allModels;
     var lq = q.toLowerCase();
-    return allModels.filter(function(m) { return m.toLowerCase().indexOf(lq) !== -1; });
+    return allModels.filter(function(m) { return modelID(m).toLowerCase().indexOf(lq) !== -1; });
 }
 
 (function() {
@@ -637,7 +673,7 @@ function filteredModels(q) {
             items.forEach(function(el, i) { el.classList.toggle('active', i === activeIdx); });
         } else if (e.key === 'Enter' && activeIdx >= 0) {
             e.preventDefault();
-            input.value = items[activeIdx].textContent;
+            input.value = items[activeIdx].dataset.modelId || items[activeIdx].querySelector('.combo-model-name').textContent;
             closeList();
         } else if (e.key === 'Escape') {
             closeList();
@@ -657,7 +693,7 @@ async function fetchModels() {
         var input = document.getElementById('model-input');
         openList(filteredModels(input.value));
         if (!input.value && allModels.length > 0) {
-            input.value = allModels[0];
+            input.value = modelID(allModels[0]);
             closeList();
         }
     } catch(e) {

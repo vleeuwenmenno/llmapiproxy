@@ -40,14 +40,107 @@ type ServerConfig struct {
 	DisableStats bool     `yaml:"disable_stats"`
 }
 
+// ModelConfig specifies a single model with optional metadata overrides.
+// It supports both shorthand string form ("gpt-4o") and object form:
+//
+//	- id: gpt-4o
+//	  context_length: 128000
+//	  max_output_tokens: 16384
+type ModelConfig struct {
+	ID              string `yaml:"id"`
+	ContextLength   *int64 `yaml:"context_length,omitempty"`
+	MaxOutputTokens *int64 `yaml:"max_output_tokens,omitempty"`
+}
+
+// BackendConfig holds the configuration for a single backend provider.
 type BackendConfig struct {
 	Name         string            `yaml:"name"`
 	Type         string            `yaml:"type"`
 	BaseURL      string            `yaml:"base_url"`
 	APIKey       string            `yaml:"api_key"`
 	ExtraHeaders map[string]string `yaml:"extra_headers,omitempty"`
-	Models       []string          `yaml:"models,omitempty"`
+	Models       []ModelConfig     `yaml:"models,omitempty"`
 	Enabled      *bool             `yaml:"enabled,omitempty"`
+}
+
+// ModelIDs returns the list of model IDs as plain strings (backward compat).
+func (b *BackendConfig) ModelIDs() []string {
+	ids := make([]string, len(b.Models))
+	for i, m := range b.Models {
+		ids[i] = m.ID
+	}
+	return ids
+}
+
+// UnmarshalYAML implements custom YAML unmarshaling for BackendConfig
+// to support both "- model-name" (string) and "- id: model-name" (object)
+// in the models list.
+func (bc *BackendConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// Use a shadow type to avoid infinite recursion.
+	type raw struct {
+		Name         string            `yaml:"name"`
+		Type         string            `yaml:"type"`
+		BaseURL      string            `yaml:"base_url"`
+		APIKey       string            `yaml:"api_key"`
+		ExtraHeaders map[string]string `yaml:"extra_headers,omitempty"`
+		ModelsRaw    interface{}       `yaml:"models,omitempty"`
+		Enabled      *bool             `yaml:"enabled,omitempty"`
+	}
+	var r raw
+	if err := unmarshal(&r); err != nil {
+		return err
+	}
+	bc.Name = r.Name
+	bc.Type = r.Type
+	bc.BaseURL = r.BaseURL
+	bc.APIKey = r.APIKey
+	bc.ExtraHeaders = r.ExtraHeaders
+	bc.Enabled = r.Enabled
+
+	if r.ModelsRaw != nil {
+		models, err := parseModelsField(r.ModelsRaw)
+		if err != nil {
+			return fmt.Errorf("backends[%s].models: %w", r.Name, err)
+		}
+		bc.Models = models
+	}
+	return nil
+}
+
+// parseModelsField handles both string and object entries in the models list.
+func parseModelsField(raw interface{}) ([]ModelConfig, error) {
+	// YAML unmarshals a list of strings as []interface{} containing strings,
+	// and a list of maps as []interface{} containing map[string]interface{}.
+	list, ok := raw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("expected a list")
+	}
+	result := make([]ModelConfig, 0, len(list))
+	for i, item := range list {
+		switch v := item.(type) {
+		case string:
+			result = append(result, ModelConfig{ID: v})
+		case map[string]interface{}:
+			mc := ModelConfig{}
+			if id, ok := v["id"].(string); ok {
+				mc.ID = id
+			} else {
+				return nil, fmt.Errorf("entry %d: missing or non-string 'id' field", i)
+			}
+			if cl, ok := v["context_length"].(int); ok {
+				val := int64(cl)
+				mc.ContextLength = &val
+			}
+			if mot, ok := v["max_output_tokens"].(int); ok {
+				val := int64(mot)
+				mc.MaxOutputTokens = &val
+			}
+			result = append(result, mc)
+		default:
+			return nil, fmt.Errorf("entry %d: expected string or map, got %T", i, item)
+		}
+	}
+	return result, nil
 }
 
 // IsEnabled returns true unless the backend is explicitly disabled.

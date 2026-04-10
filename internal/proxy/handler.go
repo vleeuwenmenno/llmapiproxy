@@ -271,17 +271,48 @@ func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var allModels []backend.Model
+	// Collect models from all backends and deduplicate by model ID.
+	// For duplicates, merge metadata: largest context/output windows, union of capabilities.
+	seen := make(map[string]*backend.Model)
+	var order []string
+
 	for _, b := range h.registry.All() {
 		models, err := b.ListModels(r.Context())
 		if err != nil {
 			log.Printf("error listing models from %s: %v", b.Name(), err)
 			continue
 		}
-		for i := range models {
-			models[i].ID = b.Name() + "/" + models[i].ID
+		for _, m := range models {
+			if existing, ok := seen[m.ID]; ok {
+				// Merge: keep largest context_length and max_output_tokens.
+				if m.ContextLength != nil && (existing.ContextLength == nil || *m.ContextLength > *existing.ContextLength) {
+					existing.ContextLength = m.ContextLength
+				}
+				if m.MaxOutputTokens != nil && (existing.MaxOutputTokens == nil || *m.MaxOutputTokens > *existing.MaxOutputTokens) {
+					existing.MaxOutputTokens = m.MaxOutputTokens
+				}
+				// Union capabilities.
+				capSet := make(map[string]bool, len(existing.Capabilities))
+				for _, c := range existing.Capabilities {
+					capSet[c] = true
+				}
+				for _, c := range m.Capabilities {
+					if !capSet[c] {
+						existing.Capabilities = append(existing.Capabilities, c)
+					}
+				}
+			} else {
+				mCopy := m
+				mCopy.OwnedBy = "llmapiproxy"
+				seen[m.ID] = &mCopy
+				order = append(order, m.ID)
+			}
 		}
-		allModels = append(allModels, models...)
+	}
+
+	allModels := make([]backend.Model, 0, len(order))
+	for _, id := range order {
+		allModels = append(allModels, *seen[id])
 	}
 
 	w.Header().Set("Content-Type", "application/json")

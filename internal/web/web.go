@@ -12,12 +12,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/menno/llmapiproxy/internal/backend"
 	"github.com/menno/llmapiproxy/internal/config"
-	"github.com/menno/llmapiproxy/internal/quota"
 	"github.com/menno/llmapiproxy/internal/stats"
 	"gopkg.in/yaml.v3"
 )
@@ -45,6 +44,19 @@ func init() {
 				return time.Duration(ms * int64(time.Millisecond)).String()
 			}
 			return time.Duration(ms * int64(time.Millisecond)).Round(time.Millisecond).String()
+		},
+		"formatTokenCount": func(n *int64) string {
+			if n == nil {
+				return ""
+			}
+			v := *n
+			if v >= 1_000_000 {
+				return fmt.Sprintf("%.1fM ", float64(v)/1_000_000)
+			}
+			if v >= 1000 {
+				return fmt.Sprintf("%dK ", v/1000)
+			}
+			return fmt.Sprintf("%d ", v)
 		},
 		"gt": func(a, b int) bool {
 			return a > b
@@ -223,12 +235,23 @@ func renderConfigMessage(w http.ResponseWriter, configText string, message strin
 
 // BackendEntry holds display info for the models page.
 type BackendEntry struct {
-	Name      string
-	BaseURL   string
-	Models    []string // prefixed with backend name for proxy use
-	IsDynamic bool     // true when no explicit model list (accepts all)
-	IconURL   string   // path to SVG icon, empty if unknown
-	Enabled   bool     // false when backend is explicitly disabled
+	Name        string
+	BaseURL     string
+	Models      []ModelEntry // enriched model metadata (nil for dynamic backends)
+	IsDynamic   bool         // true when no explicit model list (accepts all)
+	IconURL     string       // path to SVG icon, empty if unknown
+	Enabled     bool         // false when backend is explicitly disabled
+	StaticCount int          // pre-computed count for statically-configured backends
+}
+
+// ModelEntry holds display data for a single model in the UI.
+type ModelEntry struct {
+	FullID          string // backend/model-id
+	BareID          string // model-id without backend prefix
+	ContextLength   *int64
+	MaxOutputTokens *int64
+	Capabilities    []string
+	DataSource      string // "upstream", "config", "builtin", or ""
 }
 
 // iconForBackend maps a backend name to a static icon URL.
@@ -261,30 +284,41 @@ type OverlapEntry struct {
 func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 	cfg := u.cfgMgr.Get()
 
-	modelBackends := make(map[string][]string) // bare model ID → backend names
+	// Build skeleton entries from config only — no network calls.
+	// Model metadata is loaded lazily per-card by the browser via BackendModels.
+	modelBackends := make(map[string][]string) // bare model ID → backend names (config-only, for overlaps)
 	entries := make([]BackendEntry, 0, len(cfg.Backends))
 
 	for _, bc := range cfg.Backends {
 		isDynamic := len(bc.Models) == 0
-		prefixed := make([]string, 0, len(bc.Models))
-		seen := make(map[string]bool)
-		for _, m := range bc.Models {
-			prefixed = append(prefixed, bc.Name+"/"+m)
-			if bc.IsEnabled() && !seen[m] {
-				seen[m] = true
-				modelBackends[m] = append(modelBackends[m], bc.Name)
+
+		// For static backends, build config-only entries (no live metadata yet).
+		// These render immediately; JS will update them with metadata badges.
+		var modelEntries []ModelEntry
+		if !isDynamic {
+			for _, mc := range bc.Models {
+				modelEntries = append(modelEntries, ModelEntry{
+					FullID: bc.Name + "/" + mc.ID,
+					BareID: mc.ID,
+				})
+				if bc.IsEnabled() {
+					modelBackends[mc.ID] = append(modelBackends[mc.ID], bc.Name)
+				}
 			}
 		}
+
 		entries = append(entries, BackendEntry{
-			Name:      bc.Name,
-			BaseURL:   bc.BaseURL,
-			Models:    prefixed,
-			IsDynamic: isDynamic,
-			IconURL:   iconForBackend(bc.Name),
-			Enabled:   bc.IsEnabled(),
+			Name:        bc.Name,
+			BaseURL:     bc.BaseURL,
+			Models:      modelEntries, // nil for dynamic; IDs-only for static
+			IsDynamic:   isDynamic,
+			IconURL:     iconForBackend(bc.Name),
+			Enabled:     bc.IsEnabled(),
+			StaticCount: len(modelEntries),
 		})
 	}
 
+	// Compute overlaps from config only (no live fetch).
 	var overlaps []OverlapEntry
 	for modelID, backends := range modelBackends {
 		if len(backends) >= 2 {
@@ -302,11 +336,11 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		displayAddr = listen
 	}
 
-	// Find a sample model string (backend/model-id) for use in code examples.
+	// Find a sample model string from config (no live fetch needed).
 	sampleModel := "backend/model-id"
 	for _, e := range entries {
 		if e.Enabled && len(e.Models) > 0 {
-			sampleModel = e.Models[0]
+			sampleModel = e.Models[0].FullID
 			break
 		}
 	}
@@ -335,16 +369,122 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// BackendModels returns a JSON array of ModelEntry for a single named backend.
+// Called by the models page JS to lazy-load each backend card independently.
+func (u *UI) BackendModels(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	cfg := u.cfgMgr.Get()
+
+	var bc *config.BackendConfig
+	for i := range cfg.Backends {
+		if cfg.Backends[i].Name == name {
+			bc = &cfg.Backends[i]
+			break
+		}
+	}
+	if bc == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	var b backend.Backend
+	for _, bb := range u.registry.All() {
+		if bb.Name() == name {
+			b = bb
+			break
+		}
+	}
+	if b == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	liveModels, _ := b.ListModels(ctx)
+	liveByID := make(map[string]backend.Model, len(liveModels))
+	for _, m := range liveModels {
+		liveByID[m.ID] = m
+	}
+
+	isDynamic := len(bc.Models) == 0
+	var entries []ModelEntry
+
+	if isDynamic {
+		for _, m := range liveModels {
+			entries = append(entries, ModelEntry{
+				FullID:          bc.Name + "/" + m.ID,
+				BareID:          m.ID,
+				ContextLength:   m.ContextLength,
+				MaxOutputTokens: m.MaxOutputTokens,
+				Capabilities:    m.Capabilities,
+				DataSource:      "upstream",
+			})
+		}
+	} else {
+		for _, mc := range bc.Models {
+			entry := ModelEntry{
+				FullID: bc.Name + "/" + mc.ID,
+				BareID: mc.ID,
+			}
+			if live, ok := liveByID[mc.ID]; ok {
+				entry.ContextLength = live.ContextLength
+				entry.MaxOutputTokens = live.MaxOutputTokens
+				entry.Capabilities = live.Capabilities
+				entry.DataSource = "upstream"
+			}
+			if mc.ContextLength != nil {
+				entry.ContextLength = mc.ContextLength
+				entry.DataSource = "config"
+			}
+			if mc.MaxOutputTokens != nil {
+				entry.MaxOutputTokens = mc.MaxOutputTokens
+				entry.DataSource = "config"
+			}
+			if entry.ContextLength == nil || entry.MaxOutputTokens == nil {
+				if info := backend.LookupKnownModel(mc.ID); info != nil {
+					if entry.ContextLength == nil {
+						entry.ContextLength = &info.ContextLength
+						if entry.DataSource == "" {
+							entry.DataSource = "builtin"
+						}
+					}
+					if entry.MaxOutputTokens == nil {
+						entry.MaxOutputTokens = &info.MaxOutputTokens
+						if entry.DataSource == "" {
+							entry.DataSource = "builtin"
+						}
+					}
+				}
+			}
+			entries = append(entries, entry)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(entries); err != nil {
+		log.Printf("BackendModels: encode error: %v", err)
+	}
+}
+
 // playgroundKeyEntry holds a label and the actual key value for the playground dropdown.
 type playgroundKeyEntry struct {
 	Label string
 	Value string
 }
 
-// PlaygroundModels returns a JSON list of all models from enabled backends,
-// prefixed with backend name. Used by the playground JS to populate the model combobox.
+// playgroundModel is a compact model descriptor sent to the playground JS.
+type playgroundModel struct {
+	ID              string `json:"id"`
+	ContextLength   *int64 `json:"context_length,omitempty"`
+	MaxOutputTokens *int64 `json:"max_output_tokens,omitempty"`
+}
+
+// PlaygroundModels returns a JSON list of all models from enabled backends with metadata.
+// Used by the playground JS to populate the model combobox.
 func (u *UI) PlaygroundModels(w http.ResponseWriter, r *http.Request) {
-	var models []string
+	var models []playgroundModel
 	for _, b := range u.registry.All() {
 		list, err := b.ListModels(r.Context())
 		if err != nil {
@@ -352,7 +492,11 @@ func (u *UI) PlaygroundModels(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		for _, m := range list {
-			models = append(models, b.Name()+"/"+m.ID)
+			models = append(models, playgroundModel{
+				ID:              b.Name() + "/" + m.ID,
+				ContextLength:   m.ContextLength,
+				MaxOutputTokens: m.MaxOutputTokens,
+			})
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -381,13 +525,13 @@ func (u *UI) PlaygroundPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Collect all models from enabled backends (prefixed backend/model-id).
-	var models []string
+	var models []playgroundModel
 	for _, bc := range cfg.Backends {
 		if !bc.IsEnabled() {
 			continue
 		}
 		for _, m := range bc.Models {
-			models = append(models, bc.Name+"/"+m)
+			models = append(models, playgroundModel{ID: bc.Name + "/" + m.ID})
 		}
 	}
 
@@ -571,59 +715,6 @@ func (u *UI) RequestDetail(w http.ResponseWriter, r *http.Request) {
 	if err := templates.ExecuteTemplate(w, "request_detail.html", rec); err != nil {
 		log.Printf("template error: %v", err)
 		http.Error(w, "template error", http.StatusInternalServerError)
-	}
-}
-
-type quotaResult struct {
-	BackendName string
-	BaseURL     string
-	Info        *quota.Info
-	Err         string
-}
-
-func (u *UI) QuotaFragment(w http.ResponseWriter, r *http.Request) {
-	cfg := u.cfgMgr.Get()
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	var mu sync.Mutex
-	var results []quotaResult
-	var wg sync.WaitGroup
-
-	for _, bc := range cfg.Backends {
-		if !bc.IsEnabled() {
-			continue
-		}
-		provider := quota.ForBackend(bc.BaseURL)
-		if provider == nil {
-			continue
-		}
-		localBC := bc
-		localProvider := provider
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			info, err := localProvider.Fetch(ctx, localBC.APIKey)
-			res := quotaResult{BackendName: localBC.Name, BaseURL: localBC.BaseURL}
-			if err != nil {
-				res.Err = err.Error()
-			} else {
-				res.Info = info
-			}
-			mu.Lock()
-			results = append(results, res)
-			mu.Unlock()
-		}()
-	}
-	wg.Wait()
-
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].BackendName < results[j].BackendName
-	})
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := templates.ExecuteTemplate(w, "quota_fragment.html", results); err != nil {
-		log.Printf("template error: %v", err)
 	}
 }
 
