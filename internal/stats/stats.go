@@ -281,4 +281,3 @@ type ModelRoutingStats struct {
 	FallbackRate float64               `json:"fallback_rate"`
 	AvgLatMs     int64                 `json:"avg_lat_ms"`
 }
-

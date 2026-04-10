@@ -520,15 +520,15 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
-		"Backends":      entries,
-		"Overlaps":      overlaps,
-		"DisplayAddr":   displayAddr,
-		"SampleModel":   sampleModel,
-		"Message":       r.URL.Query().Get("msg"),
-		"RoutingJSON":   template.JS(routingJSON),
+		"Backends":       entries,
+		"Overlaps":       overlaps,
+		"DisplayAddr":    displayAddr,
+		"SampleModel":    sampleModel,
+		"Message":        r.URL.Query().Get("msg"),
+		"RoutingJSON":    template.JS(routingJSON),
 		"GlobalStrategy": cfg.Routing.Strategy,
-		"ServerAPIKeys": apiKeyEntries,
-		"CurlModels":    curlModels,
+		"ServerAPIKeys":  apiKeyEntries,
+		"CurlModels":     curlModels,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

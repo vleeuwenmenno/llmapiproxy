@@ -7,6 +7,7 @@ import (
 
 	"github.com/menno/llmapiproxy/internal/config"
 )
+
 // Registry maps model prefixes to backends and resolves routing.
 type Registry struct {
 	mu        sync.RWMutex

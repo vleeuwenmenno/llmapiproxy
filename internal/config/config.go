@@ -219,7 +219,7 @@ func (c *Config) Validate() error {
 
 func (r *RoutingConfig) validate() error {
 	validStrategies := map[string]bool{
-		"":                  true,
+		"":                 true,
 		StrategyPriority:   true,
 		StrategyRoundRobin: true,
 		StrategyRace:       true,

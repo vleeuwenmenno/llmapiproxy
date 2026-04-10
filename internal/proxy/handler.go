@@ -301,10 +301,10 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 
 // raceResult holds the outcome of a single backend attempt in race mode.
 type raceResult struct {
-	resp    *backend.ChatCompletionResponse
-	be      backend.Backend
-	err     error
-	beErr   *backend.BackendError
+	resp  *backend.ChatCompletionResponse
+	be    backend.Backend
+	err   error
+	beErr *backend.BackendError
 }
 
 func (h *Handler) handleRaceNonStream(ctx context.Context, w http.ResponseWriter, entries []backend.RouteEntry, req *backend.ChatCompletionRequest, originalModel string, start time.Time, clientName string, cl *config.ClientConfig) {
