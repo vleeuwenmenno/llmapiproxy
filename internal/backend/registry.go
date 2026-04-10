@@ -3,10 +3,12 @@ package backend
 import (
 	"fmt"
 	"log"
+	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/menno/llmapiproxy/internal/config"
+	"github.com/menno/llmapiproxy/internal/oauth"
 )
 
 // Registry maps model prefixes to backends and resolves routing.
@@ -24,9 +26,6 @@ func NewRegistry() *Registry {
 // LoadFromConfig creates backends from config and registers them.
 // Only enabled backends are registered for routing.
 // Supports backend types: openai, copilot, codex.
-// For copilot and codex, placeholder backends are registered when the
-// full backend implementations are not yet available; they will be
-// replaced by the actual implementations in subsequent features.
 func (r *Registry) LoadFromConfig(cfg *config.Config) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -49,10 +48,7 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 func (r *Registry) createBackend(bc config.BackendConfig) (Backend, error) {
 	switch bc.Type {
 	case "copilot":
-		// CopilotBackend will be implemented in a subsequent feature.
-		// For now, register an OpenAI-compatible placeholder that uses the
-		// Copilot base URL and empty API key (actual auth via OAuth).
-		return NewOpenAI(bc), nil
+		return newCopilotBackendFromConfig(bc)
 	case "codex":
 		// CodexBackend will be implemented in a subsequent feature.
 		// For now, register an OpenAI-compatible placeholder.
@@ -62,6 +58,30 @@ func (r *Registry) createBackend(bc config.BackendConfig) (Backend, error) {
 	default:
 		return nil, fmt.Errorf("unknown backend type %q", bc.Type)
 	}
+}
+
+// newCopilotBackendFromConfig creates a CopilotBackend with its token store,
+// discoverer, and exchanger properly wired.
+func newCopilotBackendFromConfig(bc config.BackendConfig) (*CopilotBackend, error) {
+	// Determine token file path.
+	tokenPath := "copilot-token.json"
+	if bc.OAuth != nil && bc.OAuth.TokenPath != "" {
+		tokenPath = bc.OAuth.TokenPath
+	}
+	// Use a per-backend token file to support multiple Copilot backends.
+	if !strings.Contains(tokenPath, "/") {
+		tokenPath = filepath.Join("tokens", bc.Name+"-token.json")
+	}
+
+	ts, err := oauth.NewTokenStore(tokenPath)
+	if err != nil {
+		return nil, fmt.Errorf("creating token store: %w", err)
+	}
+
+	discoverer := oauth.NewDiscoverer(oauth.WithTokenStore(ts))
+	exchanger := oauth.NewCopilotExchanger(ts)
+
+	return NewCopilotBackend(bc, discoverer, exchanger, ts), nil
 }
 
 // Resolve parses a model string like "openrouter/openai/gpt-5.2" and returns
