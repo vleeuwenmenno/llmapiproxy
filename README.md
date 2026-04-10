@@ -34,13 +34,13 @@ If you have subscriptions at several LLM providers, you end up juggling:
 
 Any OpenAI-compatible HTTP API works. The example config includes:
 
-| Provider | Backend type | Notes |
-|---|---|---|
-| [Z.ai](https://z.ai) | `openai` | GLM models; separate general & coding plan endpoints |
-| [OpenRouter](https://openrouter.ai) | `openai` | 200+ models from many providers |
-| [OpenCode Zen](https://opencode.ai) | `openai` | Curated coding models, pay-as-you-go |
-| [OpenCode Go](https://opencode.ai) | `openai` | Subscription tier for coding models |
-| Any OpenAI-compatible API | `openai` | Self-hosted, Azure OpenAI, etc. |
+| Provider                            | Backend type | Notes                                                |
+| ----------------------------------- | ------------ | ---------------------------------------------------- |
+| [Z.ai](https://z.ai)                | `openai`     | GLM models; separate general & coding plan endpoints |
+| [OpenRouter](https://openrouter.ai) | `openai`     | 200+ models from many providers                      |
+| [OpenCode Zen](https://opencode.ai) | `openai`     | Curated coding models, pay-as-you-go                 |
+| [OpenCode Go](https://opencode.ai)  | `openai`     | Subscription tier for coding models                  |
+| Any OpenAI-compatible API           | `openai`     | Self-hosted, Azure OpenAI, etc.                      |
 
 ---
 
@@ -70,7 +70,7 @@ Edit `config.yaml` and fill in your provider API keys:
 server:
   listen: ":8080"
   api_keys:
-    - "my-secret-proxy-key"   # clients use this to authenticate
+    - "my-secret-proxy-key" # clients use this to authenticate
 
 backends:
   - name: zai
@@ -141,10 +141,10 @@ Set the API base URL to `http://localhost:8080/v1` and the API key to your proxy
 
 Navigate to [http://localhost:8080/ui/](http://localhost:8080/ui/) to access the dashboard.
 
-| Page | Path | Description |
-|---|---|---|
-| Dashboard | `/ui/` | Live request feed, token totals, per-backend breakdown, latency stats |
-| Config editor | `/ui/config` | Edit `config.yaml` in the browser and save with hot reload |
+| Page          | Path         | Description                                                           |
+| ------------- | ------------ | --------------------------------------------------------------------- |
+| Dashboard     | `/ui/`       | Live request feed, token totals, per-backend breakdown, latency stats |
+| Config editor | `/ui/config` | Edit `config.yaml` in the browser and save with hot reload            |
 
 Stats auto-refresh every few seconds. Up to 10,000 recent requests are kept in memory.
 
@@ -165,10 +165,10 @@ server:
   # admin_key: "your-admin-key"
 
 backends:
-  - name: my-backend          # used as the model prefix
-    type: openai              # only supported type currently
-    base_url: https://...     # provider API base URL
-    api_key: "..."            # your provider API key
+  - name: my-backend # used as the model prefix
+    type: openai # only supported type currently
+    base_url: https://... # provider API base URL
+    api_key: "..." # your provider API key
 
     # Optional: restrict to specific models (if omitted, all models are accepted)
     models:
