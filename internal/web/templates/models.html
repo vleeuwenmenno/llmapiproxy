@@ -727,8 +727,8 @@
                     {{else}}
                     {{range .Models}}
                     <div class="model-item">
-                        <span class="model-id">{{.FullID}}</span>
-                        <button class="copy-btn" onclick="copyText(this, '{{.FullID}}')">copy</button>
+                        <span class="model-id">{{.BareID}}</span>
+                        <button class="copy-btn" onclick="copyText(this, '{{.FullID}}')" title="Copy full ID: {{.FullID}}">copy</button>
                     </div>
                     {{end}}
                     {{end}}
@@ -737,7 +737,7 @@
             {{end}}
         </div>
 
-        {{if .Overlaps}}
+        <div id="overlap-section">{{if .Overlaps}}
         <div class="section-title">Overlapping Models</div>
         <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1rem;line-height:1.6">
             These model IDs appear in more than one backend. Click a chip to configure which backend is tried first and what happens on failure.
@@ -745,7 +745,7 @@
         <div class="overlap-list">
             {{range .Overlaps}}
             {{$entry := .}}
-            <div class="overlap-chip" onclick="openRoutingModal('{{.ModelID}}', {{json .Backends}})">
+            <div class="overlap-chip" data-model="{{.ModelID}}" data-backends="{{json .Backends}}">
                 <span class="mid">{{.ModelID}}</span>
                 <span class="backends">
                     {{range .Backends}}
@@ -756,11 +756,11 @@
                     </span>
                     {{end}}
                 </span>
-                <span class="configure-hint">⚙ click to configure routing</span>
+                <span class="configure-hint">&#x2699; click to configure routing</span>
             </div>
             {{end}}
         </div>
-        {{end}}
+        {{end}}</div>
 
         <div class="section-title">Quick Connect</div>
         <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1.25rem;line-height:1.6">
@@ -1175,14 +1175,20 @@ code --install-extension llmapiproxy-vscode-chat-*.vsix</pre>
 
             overlaps.forEach(function(canonicalID) {
                 var entry = byCanonical[canonicalID];
-                html += '<div class="overlap-chip" data-model="' + escHtml(canonicalID) + '" data-backends="' + escHtml(JSON.stringify(entry.backends)) + '">';
+
+                // Sort backends by saved routing priority, then append any unordered ones.
+                var saved = routingData[canonicalID] || [];
+                var ordered = saved.filter(function(b) { return entry.backends.indexOf(b) !== -1; });
+                entry.backends.forEach(function(b) { if (ordered.indexOf(b) === -1) ordered.push(b); });
+
+                html += '<div class="overlap-chip" data-model="' + escHtml(canonicalID) + '" data-backends="' + escHtml(JSON.stringify(ordered)) + '">';
                 html += '<span class="mid">' + escHtml(canonicalID) + '</span>';
                 html += '<span class="backends">';
-                entry.backends.forEach(function(b) {
+                ordered.forEach(function(b, i) {
                     var mid = entry.backendModels[b] || '';
                     var sameClass = mid === canonicalID ? ' same' : '';
                     html += '<span class="backend-row">'
-                        + '<span class="backend-name">' + escHtml(b) + '</span>'
+                        + '<span class="backend-name">' + (saved.length > 0 ? '#' + (i+1) + ' ' : '') + escHtml(b) + '</span>'
                         + '<span class="backend-modelid' + sameClass + '">' + escHtml(mid) + '</span>'
                         + '</span>';
                 });

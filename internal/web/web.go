@@ -388,8 +388,8 @@ func iconForBackend(name string) string {
 
 // OverlapEntry is a model ID that appears across multiple backends.
 type OverlapEntry struct {
-	ModelID      string            // canonical (last-path-segment) model ID
-	Backends     []string          // backend names that have this model
+	ModelID       string            // canonical (last-path-segment) model ID
+	Backends      []string          // backend names that have this model
 	BackendModels map[string]string // backendName → actual model ID used by that backend
 }
 
@@ -609,12 +609,6 @@ func (u *UI) BackendModels(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// playgroundKeyEntry holds a label and the actual key value for the playground dropdown.
-type playgroundKeyEntry struct {
-	Label string
-	Value string
-}
-
 // playgroundModel is a compact model descriptor sent to the playground JS.
 type playgroundModel struct {
 	ID              string `json:"id"`
@@ -648,20 +642,13 @@ func (u *UI) PlaygroundModels(w http.ResponseWriter, r *http.Request) {
 func (u *UI) PlaygroundPage(w http.ResponseWriter, r *http.Request) {
 	cfg := u.cfgMgr.Get()
 
-	// Collect API keys: server-level keys and per-client keys.
-	var keys []playgroundKeyEntry
-	for i, k := range cfg.Server.APIKeys {
-		keys = append(keys, playgroundKeyEntry{
-			Label: fmt.Sprintf("Server key %d (%s)", i+1, maskKey(k)),
-			Value: k,
-		})
-	}
+	// Find the internal playground client — its API key is embedded in the
+	// page so the user never has to pick one manually.
+	playgroundAPIKey := ""
 	for _, c := range cfg.Clients {
-		if c.APIKey != "" {
-			keys = append(keys, playgroundKeyEntry{
-				Label: fmt.Sprintf("%s (%s)", c.Name, maskKey(c.APIKey)),
-				Value: c.APIKey,
-			})
+		if c.Name == "playground" && c.APIKey != "" {
+			playgroundAPIKey = c.APIKey
+			break
 		}
 	}
 
@@ -677,8 +664,8 @@ func (u *UI) PlaygroundPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
-		"APIKeys": keys,
-		"Models":  models,
+		"PlaygroundAPIKey": playgroundAPIKey,
+		"Models":           models,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -735,6 +722,15 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Filter out the internal "playground" client — it is managed
+	// automatically and should not be shown or deletable from the UI.
+	visibleClients := make([]config.ClientConfig, 0, len(cfg.Clients))
+	for _, c := range cfg.Clients {
+		if c.Name != "playground" {
+			visibleClients = append(visibleClients, c)
+		}
+	}
+
 	data := map[string]any{
 		"LegacyKeys":   keys, // server.api_keys entries (unnamed, for migration notice only)
 		"Backends":     backends,
@@ -743,8 +739,8 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 		"IsError":      strings.HasPrefix(msg, "Error"),
 		"DisableStats": cfg.Server.DisableStats,
 		"ConfigText":   configText,
-		"Clients":      cfg.Clients,
-		"ClientsJSON":  template.JS(func() []byte { b, _ := json.Marshal(cfg.Clients); return b }()),
+		"Clients":      visibleClients,
+		"ClientsJSON":  template.JS(func() []byte { b, _ := json.Marshal(visibleClients); return b }()),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "settings.html", data); err != nil {

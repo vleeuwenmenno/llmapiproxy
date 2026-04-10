@@ -448,17 +448,9 @@
     <div class="workspace">
         <!-- Sidebar -->
         <aside class="sidebar">
-            <div class="section-label">API Key</div>
-            <div class="field">
-                <label for="api-key-select">Key</label>
-                <select id="api-key-select">
-                    {{range .APIKeys}}
-                    <option value="{{.Value}}">{{.Label}}</option>
-                    {{end}}
-                </select>
-            </div>
+            <!-- The playground authenticates automatically using an internal "playground" client key — no manual key selection needed. -->
+            <input type="hidden" id="api-key" value="{{.PlaygroundAPIKey}}">
 
-            <hr class="divider">
             <div class="section-label">Model</div>
             <div class="field">
                 <label for="model-input">Model</label>
@@ -513,7 +505,7 @@
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                     </svg>
-                    <p>Select a model and API key, then start chatting.</p>
+                    <p>Select a model and start chatting.</p>
                 </div>
             </div>
 
@@ -778,7 +770,7 @@ async function sendMessage() {
 
 
     try {
-        var apiKey      = document.getElementById('api-key-select').value;
+        var apiKey      = document.getElementById('api-key').value;
         var modelId     = document.getElementById('model-input').value.trim();
         var sysPrompt   = document.getElementById('sys-prompt').value.trim();
         var temperature = parseFloat(document.getElementById('temperature').value);
