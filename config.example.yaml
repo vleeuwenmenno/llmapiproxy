@@ -100,3 +100,35 @@ backends:
       - mimo-v2-omni
       - minimax-m2.5
       - minimax-m2.7
+
+# ── Clients ──────────────────────────────────────────────────
+# Named clients each get their own API key. The name shows up in
+# request analytics so you can see which app made which call.
+#
+# There is one special client called "playground" — the built-in
+# Playground web UI authenticates with this key automatically. It
+# is hidden from the Settings → API Keys page to prevent accidental
+# deletion. Simply add it alongside your other clients:
+#
+#   - name: playground
+#     api_key: "sk-proxy-internal-playground-<random>"
+#
+clients:
+  # # ── Playground (built-in web UI) ─────────────────────────
+  # # This internal client is used by the Playground page.
+  # # It is automatically excluded from the Settings → API Keys list.
+  # # Generate a random key and paste it below.
+  # - name: playground
+  #   api_key: "sk-proxy-internal-playground-YOUR-KEY-HERE"
+
+  # # ── Your apps ────────────────────────────────────────────
+  # - name: vscode
+  #   api_key: "sk-proxy-your-vscode-key"
+
+# ── Routing ──────────────────────────────────────────────────
+# routing:
+#   models:
+#     - model: glm-5.1
+#       backends:
+#         - zai-coding
+#         - zen
