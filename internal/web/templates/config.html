@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM API Proxy — Config</title>
+    <script src="/ui/static/htmx.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --bg: #0a0e17;
+            --surface: #111827;
+            --surface-2: #1a2332;
+            --border: #1e2d3d;
+            --text: #e2e8f0;
+            --text-dim: #64748b;
+            --accent: #22d3ee;
+            --accent-dim: rgba(34, 211, 238, 0.1);
+            --green: #34d399;
+            --red: #f87171;
+            --mono: 'JetBrains Mono', monospace;
+            --sans: 'Outfit', sans-serif;
+        }
+
+        body.light {
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --surface-2: #f1f5f9;
+            --border: #e2e8f0;
+            --text: #0f172a;
+            --text-dim: #64748b;
+            --accent: #0891b2;
+            --accent-dim: rgba(8, 145, 178, 0.1);
+            --green: #059669;
+            --red: #dc2626;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        .noise {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            backdrop-filter: blur(12px);
+        }
+
+        nav .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 700;
+            font-size: 1.1rem;
+            letter-spacing: -0.02em;
+        }
+
+        nav .logo .icon {
+            width: 28px;
+            height: 28px;
+            background: linear-gradient(135deg, var(--accent), #818cf8);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+        }
+
+        nav .links {
+            display: flex;
+            gap: 0.25rem;
+        }
+
+        nav .links a {
+            color: var(--text-dim);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.15s;
+        }
+
+        nav .links a:hover, nav .links a.active {
+            color: var(--text);
+            background: var(--accent-dim);
+        }
+
+        nav .links a.active {
+            color: var(--accent);
+        }
+
+        main {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            letter-spacing: -0.03em;
+        }
+
+        .message {
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+            font-weight: 500;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .message.success {
+            background: rgba(52, 211, 153, 0.1);
+            border: 1px solid rgba(52, 211, 153, 0.3);
+            color: var(--green);
+        }
+
+        .message.error {
+            background: rgba(248, 113, 113, 0.1);
+            border: 1px solid rgba(248, 113, 113, 0.3);
+            color: var(--red);
+        }
+
+        .editor-wrap {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .editor-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface-2);
+        }
+
+        .editor-header .filename {
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 500px;
+            padding: 1rem;
+            background: var(--surface);
+            color: var(--text);
+            border: none;
+            outline: none;
+            resize: vertical;
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            line-height: 1.6;
+            tab-size: 2;
+        }
+
+        textarea::placeholder {
+            color: var(--text-dim);
+        }
+
+        .actions {
+            display: flex;
+            justify-content: flex-end;
+            padding: 0.75rem 1rem;
+            border-top: 1px solid var(--border);
+            background: var(--surface-2);
+            gap: 0.75rem;
+        }
+
+        button {
+            font-family: var(--sans);
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 0.5rem 1.25rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        button.primary {
+            background: var(--accent);
+            color: var(--bg);
+            border-color: var(--accent);
+        }
+
+        button.primary:hover {
+            background: #06b6d4;
+            box-shadow: 0 0 16px rgba(34, 211, 238, 0.3);
+        }
+
+        button.secondary {
+            background: transparent;
+            color: var(--text-dim);
+        }
+
+        button.secondary:hover {
+            color: var(--text);
+            background: var(--accent-dim);
+        }
+
+        .hint {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 1rem;
+            line-height: 1.6;
+        }
+
+        .hint code {
+            font-family: var(--mono);
+            background: var(--surface-2);
+            padding: 0.15rem 0.4rem;
+            border-radius: 3px;
+            font-size: 0.7rem;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .theme-toggle {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 0.4rem 0.6rem;
+            border-radius: 6px;
+            font-size: 1rem;
+            line-height: 1;
+            transition: all 0.15s;
+            margin-left: 0.5rem;
+        }
+
+        .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+        body { transition: background 0.2s, color 0.2s; }
+    </style>
+</head>
+<body>
+    <div class="noise"></div>
+    <nav>
+        <div class="logo">
+            <div class="icon">&#9889;</div>
+            LLM API Proxy
+        </div>
+        <div class="links">
+            <a href="/ui/">Dashboard</a>
+            <a href="/ui/models">Models</a>
+            <a href="/ui/config" class="active">Config</a>
+            <a href="/ui/settings">Settings</a>
+            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">&#9728;</button>
+        </div>
+    </nav>
+    <main>
+        <h1>Configuration</h1>
+
+        {{if .Message}}
+        <div class="message {{if eq (printf "%.5s" .Message) "Error"}}error{{else}}success{{end}}">
+            {{.Message}}
+        </div>
+        {{end}}
+
+        <form method="POST" action="/ui/config/save">
+            <div class="editor-wrap">
+                <div class="editor-header">
+                    <span class="filename">config.yaml</span>
+                </div>
+                <textarea name="config" spellcheck="false" placeholder="# YAML configuration...">{{.Config}}</textarea>
+                <div class="actions">
+                    <button type="button" class="secondary" onclick="window.location.reload()">Reset</button>
+                    <button type="submit" class="primary">Save &amp; Reload</button>
+                </div>
+            </div>
+        </form>
+
+        <div class="hint">
+            Changes are validated before saving. The proxy will reload backends automatically.
+            Configuration is stored at the path specified by <code>-config</code> flag.
+        </div>
+    </main>
+</body>
+<script>
+(function() {
+    var saved = localStorage.getItem('theme') || 'dark';
+    if (saved === 'light') document.body.classList.add('light');
+    else if (saved === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches) document.body.classList.add('light');
+    document.getElementById('themeBtn').textContent = document.body.classList.contains('light') ? '\uD83C\uDF19' : '\u2600';
+})();
+function toggleTheme() {
+    var isLight = document.body.classList.toggle('light');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    document.getElementById('themeBtn').textContent = isLight ? '\uD83C\uDF19' : '\u2600';
+}
+</script>
+</html>

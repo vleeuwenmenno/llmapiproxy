@@ -1,0 +1,97 @@
+# LLM API Proxy - Example Configuration
+# Copy this file to config.yaml and fill in your API keys.
+
+server:
+  # Address to listen on (host:port)
+  listen: ":8000"
+
+  # API keys that clients must use to authenticate with this proxy.
+  # Clients send: Authorization: Bearer <one-of-these-keys>
+  api_keys:
+    - "your-proxy-api-key-here"
+
+  # Optional: separate admin key for the web UI config editor.
+  # If not set, the web UI is accessible without auth (bind to localhost!).
+  # admin_key: "your-admin-key-here"
+
+  # Path to the SQLite database used to persist request statistics.
+  # Defaults to stats.db in the current working directory.
+  # stats_path: "stats.db"
+
+backends:
+  # ── OpenRouter ─────────────────────────────────────────────
+  # Fully OpenAI-compatible. Supports hundreds of models.
+  # Get your API key: https://openrouter.ai/keys
+  # Models: openrouter/openai/gpt-5.2, openrouter/anthropic/claude-sonnet-4, etc.
+  - name: openrouter
+    type: openai
+    base_url: https://openrouter.ai/api/v1
+    api_key: "sk-or-v1-your-openrouter-key"
+    extra_headers:
+      HTTP-Referer: "https://your-app.example.com"
+      X-OpenRouter-Title: "LLM API Proxy"
+
+  # ── Z.ai General API ──────────────────────────────────────
+  # OpenAI-compatible API for GLM models.
+  # Get your API key: https://z.ai/manage-apikey/apikey-list
+  # For Z.ai GLM Coding Plan, use the same API key but the following base_url: https://api.z.ai/api/coding/paas/v4
+  # Models: zai/glm-5.1, zai/glm-5-turbo, zai/glm-4.7, etc.
+  - name: zai
+    type: openai
+    base_url: https://api.z.ai/api/paas/v4
+    api_key: "your-zai-api-key"
+    models:
+      - glm-5.1
+      - glm-5-turbo
+      - glm-4.7
+      - glm-4.5-air
+
+  # ── Z.ai Coding Plan ──────────────────────────────────────
+  # Dedicated coding endpoint (uses Coding Plan subscription quota).
+  # Same API key as Z.ai General.
+  # Models: zai-coding/glm-5.1, zai-coding/glm-4.7, etc.
+  - name: zai-coding
+    type: openai
+    base_url: https://api.z.ai/api/coding/paas/v4
+    api_key: "your-zai-api-key"
+    models:
+      - glm-5.1
+      - glm-5-turbo
+      - glm-4.7
+      - glm-4.5-air
+
+  # ── OpenCode Zen ───────────────────────────────────────────
+  # Curated models for coding agents. Pay-as-you-go.
+  # Get your API key: https://opencode.ai/auth
+  # Only chat/completions-compatible models in this config (Phase 1).
+  # Models: zen/minimax-m2.5, zen/glm-5.1, zen/kimi-k2.5, etc.
+  - name: zen
+    type: openai
+    base_url: https://opencode.ai/zen/v1
+    api_key: "your-opencode-zen-key"
+    models:
+      - minimax-m2.5
+      - minimax-m2.5-free
+      - glm-5.1
+      - glm-5
+      - kimi-k2.5
+      - big-pickle
+      - qwen3.6-plus-free
+      - nemotron-3-super-free
+
+  # ── OpenCode Go ────────────────────────────────────────────
+  # Low-cost subscription for open coding models. $5 first month, $10/month.
+  # Uses the same API key as Zen.
+  # Models: go/glm-5.1, go/kimi-k2.5, go/minimax-m2.5, etc.
+  - name: go
+    type: openai
+    base_url: https://opencode.ai/zen/go/v1
+    api_key: "your-opencode-go-key"
+    models:
+      - glm-5.1
+      - glm-5
+      - kimi-k2.5
+      - mimo-v2-pro
+      - mimo-v2-omni
+      - minimax-m2.5
+      - minimax-m2.7

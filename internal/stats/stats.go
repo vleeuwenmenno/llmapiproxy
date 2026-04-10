@@ -1,0 +1,172 @@
+package stats
+
+import (
+	"sync"
+	"time"
+)
+
+// Record represents a single proxied request.
+type Record struct {
+	Timestamp        time.Time `json:"timestamp"`
+	Backend          string    `json:"backend"`
+	Model            string    `json:"model"`
+	PromptTokens     int       `json:"prompt_tokens"`
+	CompletionTokens int       `json:"completion_tokens"`
+	TotalTokens      int       `json:"total_tokens"`
+	LatencyMs        int64     `json:"latency_ms"`
+	StatusCode       int       `json:"status_code"`
+	Error            string    `json:"error,omitempty"`
+	Stream           bool      `json:"stream"`
+}
+
+// Summary provides aggregated statistics.
+type Summary struct {
+	TotalRequests   int            `json:"total_requests"`
+	TotalTokens     int            `json:"total_tokens"`
+	TotalErrors     int            `json:"total_errors"`
+	AvgLatencyMs    int64          `json:"avg_latency_ms"`
+	ByBackend       map[string]int `json:"by_backend"`
+	ByModel         map[string]int `json:"by_model"`
+	TokensByBackend map[string]int `json:"tokens_by_backend"`
+	ErrorsByBackend map[string]int `json:"errors_by_backend"`
+}
+
+// Collector stores request records in memory.
+type Collector struct {
+	mu      sync.RWMutex
+	records []Record
+	maxSize int
+	store   *Store
+}
+
+func NewCollector(maxSize int) *Collector {
+	if maxSize <= 0 {
+		maxSize = 10000
+	}
+	return &Collector{
+		records: make([]Record, 0, maxSize),
+		maxSize: maxSize,
+	}
+}
+
+// SetStore attaches a persistent store; every subsequent Record call will also write to it.
+func (c *Collector) SetStore(s *Store) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.store = s
+}
+
+func (c *Collector) Record(r Record) {
+	c.mu.Lock()
+	if len(c.records) >= c.maxSize {
+		drop := c.maxSize / 10
+		if drop == 0 {
+			drop = 1
+		}
+		c.records = c.records[drop:]
+	}
+	c.records = append(c.records, r)
+	store := c.store
+	c.mu.Unlock()
+
+	if store != nil {
+		store.Save(r)
+	}
+}
+
+// Recent returns the last n records, newest first.
+func (c *Collector) Recent(n int) []Record {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	total := len(c.records)
+	if n > total {
+		n = total
+	}
+	result := make([]Record, n)
+	for i := 0; i < n; i++ {
+		result[i] = c.records[total-1-i]
+	}
+	return result
+}
+
+// RecentPaged returns one page of records (newest first) and the total count.
+// Page is 0-indexed; pageSize is the number of records per page.
+func (c *Collector) RecentPaged(page, pageSize int) ([]Record, int) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	total := len(c.records)
+	offset := page * pageSize
+	if offset >= total {
+		return nil, total
+	}
+	end := total - offset
+	start := end - pageSize
+	if start < 0 {
+		start = 0
+	}
+	result := make([]Record, end-start)
+	for i := range result {
+		result[i] = c.records[end-1-i]
+	}
+	return result, total
+}
+
+// TotalCount returns the number of records held in memory.
+func (c *Collector) TotalCount() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return len(c.records)
+}
+
+// Clear removes all in-memory records and clears the persistent store if set.
+func (c *Collector) Clear() {
+	c.mu.Lock()
+	c.records = c.records[:0]
+	store := c.store
+	c.mu.Unlock()
+	if store != nil {
+		store.DeleteAll()
+	}
+}
+
+// Summarize returns aggregate stats over a given duration (0 = all time).
+func (c *Collector) Summarize(since time.Duration) Summary {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	cutoff := time.Time{}
+	if since > 0 {
+		cutoff = time.Now().Add(-since)
+	}
+
+	s := Summary{
+		ByBackend:       make(map[string]int),
+		ByModel:         make(map[string]int),
+		TokensByBackend: make(map[string]int),
+		ErrorsByBackend: make(map[string]int),
+	}
+
+	var totalLatency int64
+	for _, r := range c.records {
+		if !cutoff.IsZero() && r.Timestamp.Before(cutoff) {
+			continue
+		}
+		s.TotalRequests++
+		s.TotalTokens += r.TotalTokens
+		totalLatency += r.LatencyMs
+		s.ByBackend[r.Backend]++
+		s.ByModel[r.Model]++
+		s.TokensByBackend[r.Backend] += r.TotalTokens
+		if r.Error != "" {
+			s.TotalErrors++
+			s.ErrorsByBackend[r.Backend]++
+		}
+	}
+
+	if s.TotalRequests > 0 {
+		s.AvgLatencyMs = totalLatency / int64(s.TotalRequests)
+	}
+	return s
+}

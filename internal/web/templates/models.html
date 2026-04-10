@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM API Proxy — Models</title>
+    <script src="/ui/static/htmx.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --bg: #0a0e17;
+            --surface: #111827;
+            --surface-2: #1a2332;
+            --border: #1e2d3d;
+            --text: #e2e8f0;
+            --text-dim: #64748b;
+            --accent: #22d3ee;
+            --accent-dim: rgba(34, 211, 238, 0.1);
+            --green: #34d399;
+            --red: #f87171;
+            --amber: #fbbf24;
+            --purple: #a78bfa;
+            --mono: 'JetBrains Mono', monospace;
+            --sans: 'Outfit', sans-serif;
+        }
+
+        body.light {
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --surface-2: #f1f5f9;
+            --border: #e2e8f0;
+            --text: #0f172a;
+            --text-dim: #64748b;
+            --accent: #0891b2;
+            --accent-dim: rgba(8, 145, 178, 0.1);
+            --green: #059669;
+            --red: #dc2626;
+            --amber: #d97706;
+            --purple: #7c3aed;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        .noise {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            backdrop-filter: blur(12px);
+        }
+
+        nav .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 700;
+            font-size: 1.1rem;
+            letter-spacing: -0.02em;
+        }
+
+        nav .logo .icon {
+            width: 28px;
+            height: 28px;
+            background: linear-gradient(135deg, var(--accent), #818cf8);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+        }
+
+        nav .links { display: flex; gap: 0.25rem; align-items: center; }
+
+        nav .links a {
+            color: var(--text-dim);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.15s;
+        }
+
+        nav .links a:hover { color: var(--text); background: var(--accent-dim); }
+        nav .links a.active { color: var(--accent); background: var(--accent-dim); }
+
+        main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.03em;
+        }
+
+        .subtitle {
+            color: var(--text-dim);
+            font-size: 0.875rem;
+            margin-bottom: 2rem;
+        }
+
+        .section-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-dim);
+            margin-bottom: 1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .section-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        /* ── Backend cards ────────────────────────────────────── */
+        .backend-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .backend-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            animation: fadeIn 0.3s ease both;
+            transition: border-color 0.2s;
+        }
+
+        .backend-card:hover { border-color: rgba(34,211,238,0.25); }
+
+        .backend-card.disabled {
+            opacity: 0.55;
+            filter: grayscale(0.3);
+        }
+        .backend-card.disabled:hover { border-color: var(--border); }
+
+        .disabled-badge {
+            font-size: 0.6rem;
+            background: rgba(248,113,113,0.15);
+            color: var(--red);
+            border: 1px solid rgba(248,113,113,0.3);
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-family: var(--mono);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+
+        .backend-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.9rem 1.1rem;
+            background: var(--surface-2);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .backend-name {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 8px rgba(52,211,153,0.4);
+            flex-shrink: 0;
+        }
+
+        .backend-icon {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            object-fit: contain;
+            /* currentColor SVGs are black by default; invert for dark theme */
+            filter: brightness(0) invert(1);
+            opacity: 0.85;
+        }
+
+        .connect-icon {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+            object-fit: contain;
+        }
+
+        .connect-icon.mono {
+            filter: brightness(0) invert(1);
+            opacity: 0.8;
+        }
+
+        /* When button is hovered, boost icon visibility */
+        .connect-btn:hover .connect-icon.mono { opacity: 1; }
+
+        .base-url {
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .model-list {
+            padding: 0.5rem 0;
+        }
+
+        .model-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.45rem 1.1rem;
+            gap: 0.5rem;
+            transition: background 0.1s;
+        }
+
+        .model-item:hover { background: var(--accent-dim); }
+
+        .model-id {
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            color: var(--text);
+            word-break: break-all;
+        }
+
+        .copy-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.1s;
+            flex-shrink: 0;
+        }
+
+        .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+        .copy-btn.copied { color: var(--green); border-color: var(--green); }
+
+        .dynamic-badge {
+            font-size: 0.65rem;
+            background: rgba(167,139,250,0.15);
+            color: var(--purple);
+            border: 1px solid rgba(167,139,250,0.3);
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            margin: 0.5rem 1.1rem;
+            display: inline-block;
+            font-family: var(--mono);
+        }
+
+        .model-count {
+            font-size: 0.7rem;
+            font-family: var(--mono);
+            color: var(--text-dim);
+            background: var(--surface-2);
+            padding: 0.15rem 0.5rem;
+            border-radius: 10px;
+        }
+
+        /* ── Overlap section ─────────────────────────────────── */
+        .overlap-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .overlap-chip {
+            background: var(--surface);
+            border: 1px solid rgba(251,191,36,0.3);
+            border-radius: 8px;
+            padding: 0.45rem 0.8rem;
+            font-size: 0.75rem;
+        }
+
+        .overlap-chip .mid {
+            font-family: var(--mono);
+            color: var(--amber);
+            display: block;
+            margin-bottom: 0.2rem;
+        }
+
+        .overlap-chip .backends {
+            color: var(--text-dim);
+            font-size: 0.65rem;
+        }
+
+        /* ── Connect section ─────────────────────────────────── */
+        .connect-buttons {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-bottom: 2.5rem;
+        }
+
+        .connect-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-family: var(--sans);
+            font-size: 0.85rem;
+            font-weight: 500;
+            padding: 0.65rem 1.1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .connect-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .connect-btn .icon-label {
+            font-size: 1rem;
+        }
+
+        /* ── Modal ───────────────────────────────────────────── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-overlay.open { display: flex; }
+
+        .modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            width: 100%;
+            max-width: 680px;
+            max-height: 90vh;
+            overflow: auto;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: var(--surface);
+            z-index: 1;
+        }
+
+        .modal-header h2 {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            font-size: 1.25rem;
+            cursor: pointer;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            line-height: 1;
+            transition: color 0.1s;
+        }
+
+        .modal-close:hover { color: var(--text); }
+
+        .modal-body {
+            padding: 1.25rem;
+        }
+
+        .modal-body p {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+
+        .modal-body p strong { color: var(--text); }
+
+        .code-block {
+            position: relative;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 1.25rem;
+        }
+
+        .code-block-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem 0.75rem;
+            background: var(--surface-2);
+            border-bottom: 1px solid var(--border);
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            font-family: var(--mono);
+        }
+
+        .code-block pre {
+            margin: 0;
+            padding: 1rem;
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            line-height: 1.6;
+            color: var(--text);
+            overflow-x: auto;
+            white-space: pre;
+        }
+
+        .copy-block-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+
+        .copy-block-btn:hover { color: var(--accent); border-color: var(--accent); }
+        .copy-block-btn.copied { color: var(--green); border-color: var(--green); }
+
+        .step {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.4rem;
+            margin-top: 1rem;
+        }
+
+        .step:first-child { margin-top: 0; }
+
+        .theme-toggle {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 0.4rem 0.6rem;
+            border-radius: 6px;
+            font-size: 1rem;
+            line-height: 1;
+            transition: all 0.15s;
+            margin-left: 0.5rem;
+        }
+        .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+        body { transition: background 0.2s, color 0.2s; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="noise"></div>
+    <nav>
+        <div class="logo">
+            <div class="icon">&#9889;</div>
+            LLM API Proxy
+        </div>
+        <div class="links">
+            <a href="/ui/">Dashboard</a>
+            <a href="/ui/models" class="active">Models</a>
+            <a href="/ui/config">Config</a>
+            <a href="/ui/settings">Settings</a>
+            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">&#9728;</button>
+        </div>
+    </nav>
+
+    <main>
+        <h1>Available Models</h1>
+        <p class="subtitle">All models accessible through this proxy. Use the prefixed ID (e.g. <code style="font-family:var(--mono);font-size:0.85em;background:var(--surface-2);padding:0.1rem 0.4rem;border-radius:3px">backend/model-id</code>) when calling the API.</p>
+
+        <div class="section-title">Backends</div>
+        <div class="backend-grid">
+            {{range .Backends}}
+            <div class="backend-card{{if not .Enabled}} disabled{{end}}">
+                <div class="backend-header">
+                    <div class="backend-name">
+                        {{if .IconURL}}<img class="backend-icon" src="{{.IconURL}}" alt="{{.Name}}">{{else}}<div class="dot"></div>{{end}}
+                        {{.Name}}
+                    </div>
+                    <div style="display:flex;align-items:center;gap:0.5rem">
+                    {{if not .Enabled}}<span class="disabled-badge">Disabled</span>{{end}}
+                    {{if not .IsDynamic}}
+                    <span class="model-count">{{len .Models}} models</span>
+                    {{end}}
+                    </div>
+                </div>
+                <div class="model-list">
+                    <div style="padding:0.3rem 1.1rem 0.2rem;font-family:var(--mono);font-size:0.65rem;color:var(--text-dim)">{{.BaseURL}}</div>
+                    {{if .IsDynamic}}
+                    <span class="dynamic-badge">&#x221E; dynamic — uses /v1/models from upstream</span>
+                    {{else}}
+                    {{range .Models}}
+                    <div class="model-item">
+                        <span class="model-id">{{.}}</span>
+                        <button class="copy-btn" onclick="copyText(this, '{{.}}')">copy</button>
+                    </div>
+                    {{end}}
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
+        </div>
+
+        {{if .Overlaps}}
+        <div class="section-title">Overlapping Models</div>
+        <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1rem;line-height:1.6">
+            These model IDs appear in more than one backend. The proxy will route using the <strong>prefixed</strong> form (e.g. <code style="font-family:var(--mono);font-size:0.85em">backend/model-id</code>) to target a specific backend, or the bare name to use the first match.
+        </p>
+        <div class="overlap-list">
+            {{range .Overlaps}}
+            <div class="overlap-chip">
+                <span class="mid">{{.ModelID}}</span>
+                <span class="backends">{{range $i,$b := .Backends}}{{if $i}}, {{end}}{{$b}}{{end}}</span>
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+
+        <div class="section-title">Quick Connect</div>
+        <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1.25rem;line-height:1.6">
+            This proxy exposes a standard OpenAI-compatible API at <strong>http://{{.DisplayAddr}}/v1</strong>. Point any OpenAI-compatible client at that URL with your proxy API key.
+        </p>
+        <div class="connect-buttons">
+            <button class="connect-btn" onclick="openModal('modal-zed')">
+                <img class="connect-icon" src="/ui/static/icons/zed-logo-white.svg" alt="Zed">
+                Zed Editor
+            </button>
+            <button class="connect-btn" onclick="openModal('modal-continue')">
+                <img class="connect-icon" src="/ui/static/icons/vscode.svg" alt="VS Code">
+                VS Code Continue
+            </button>
+            <button class="connect-btn" onclick="openModal('modal-curl')">
+                <img class="connect-icon mono" src="/ui/static/icons/openai-white.svg" alt="API">
+                curl / HTTP
+            </button>
+        </div>
+    </main>
+
+    <!-- ── Zed Modal ─────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="modal-zed" onclick="closeOnBackdrop(event, 'modal-zed')">
+        <div class="modal">
+            <div class="modal-header">
+                <h2><img src="/ui/static/icons/zed-logo-white.svg" style="width:18px;height:18px;vertical-align:middle;margin-right:0.4rem">Connect Zed Editor</h2>
+                <button class="modal-close" onclick="closeModal('modal-zed')">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+                <p>Zed uses the OpenAI provider for custom endpoints. Add the following to your <strong>~/.config/zed/settings.json</strong>:</p>
+
+                <div class="step">Step 1 — Add to settings.json</div>
+                <div class="code-block">
+                    <div class="code-block-header">
+                        <span>~/.config/zed/settings.json</span>
+                        <button class="copy-block-btn" onclick="copyBlock(this, 'zed-config')">copy</button>
+                    </div>
+                    <pre id="zed-config">{
+  "language_models": {
+    "openai": {
+      "api_url": "http://{{.DisplayAddr}}/v1",
+      "available_models": [
+        {{- range $i, $b := .Backends}}{{if $b.Enabled}}{{range $j, $m := $b.Models}}{{if or $i $j}},
+        {{end}}{
+          "name": "{{$m}}",
+          "display_name": "{{$m}} (proxy)",
+          "max_tokens": 8192
+        }{{end}}{{end}}{{end}}
+      ]
+    }
+  },
+  "assistant": {
+    "default_model": {
+      "provider": "openai",
+      "model": "{{.SampleModel}}"
+    },
+    "version": "2"
+  }
+}</pre>
+                </div>
+
+                <div class="step">Step 2 — Set your API key</div>
+                <p>Zed reads the OpenAI key from <strong>OPENAI_API_KEY</strong>. Set it in your shell profile:</p>
+                <div class="code-block">
+                    <div class="code-block-header">
+                        <span>~/.zshrc or ~/.bashrc</span>
+                        <button class="copy-block-btn" onclick="copyBlock(this, 'zed-env')">copy</button>
+                    </div>
+                    <pre id="zed-env">export OPENAI_API_KEY="your-proxy-api-key"</pre>
+                </div>
+
+                <p>Reload Zed after saving. The models will appear in the assistant panel under the OpenAI provider.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Continue Modal ────────────────────────────────────────── -->
+    <div class="modal-overlay" id="modal-continue" onclick="closeOnBackdrop(event, 'modal-continue')">
+        <div class="modal">
+            <div class="modal-header">
+                <h2><img src="/ui/static/icons/vscode.svg" style="width:18px;height:18px;vertical-align:middle;margin-right:0.4rem">Connect VS Code Continue</h2>
+                <button class="modal-close" onclick="closeModal('modal-continue')">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+                <p>Open the Continue extension settings (<strong>Ctrl+Shift+P → Continue: Open config</strong>) and add the following models to your <strong>~/.continue/config.yaml</strong>:</p>
+
+                <div class="code-block">
+                    <div class="code-block-header">
+                        <span>~/.continue/config.yaml</span>
+                        <button class="copy-block-btn" onclick="copyBlock(this, 'continue-config')">copy</button>
+                    </div>
+                    <pre id="continue-config">models:
+{{- range $i, $b := .Backends}}{{if $b.Enabled}}{{range $b.Models}}
+  - name: "{{.}} (proxy)"
+    provider: openai
+    model: "{{.}}"
+    apiBase: "http://{{$.DisplayAddr}}/v1"
+    apiKey: "your-proxy-api-key"
+{{end}}{{end}}{{end}}</pre>
+                </div>
+
+                <p>Replace <strong>your-proxy-api-key</strong> with one of the keys from your proxy <code style="font-family:var(--mono);font-size:0.85em;background:var(--bg);padding:0.1rem 0.4rem;border-radius:3px">config.yaml</code>. Save the file — Continue reloads automatically.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── curl Modal ────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="modal-curl" onclick="closeOnBackdrop(event, 'modal-curl')">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>curl / HTTP Examples</h2>
+                <button class="modal-close" onclick="closeModal('modal-curl')">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+                <div class="step">List all models</div>
+                <div class="code-block">
+                    <div class="code-block-header">
+                        <span>bash</span>
+                        <button class="copy-block-btn" onclick="copyBlock(this, 'curl-models')">copy</button>
+                    </div>
+                    <pre id="curl-models">curl http://{{.DisplayAddr}}/v1/models \
+  -H "Authorization: Bearer your-proxy-api-key"</pre>
+                </div>
+
+                <div class="step">Chat completion (non-streaming)</div>
+                <div class="code-block">
+                    <div class="code-block-header">
+                        <span>bash</span>
+                        <button class="copy-block-btn" onclick="copyBlock(this, 'curl-chat')">copy</button>
+                    </div>
+                    <pre id="curl-chat">curl http://{{.DisplayAddr}}/v1/chat/completions \
+  -H "Authorization: Bearer your-proxy-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "{{.SampleModel}}",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'</pre>
+                </div>
+
+                <div class="step">Streaming chat completion</div>
+                <div class="code-block">
+                    <div class="code-block-header">
+                        <span>bash</span>
+                        <button class="copy-block-btn" onclick="copyBlock(this, 'curl-stream')">copy</button>
+                    </div>
+                    <pre id="curl-stream">curl http://{{.DisplayAddr}}/v1/chat/completions \
+  -H "Authorization: Bearer your-proxy-api-key" \
+  -H "Content-Type: application/json" \
+  --no-buffer \
+  -d '{
+    "model": "{{.SampleModel}}",
+    "messages": [{"role": "user", "content": "Count to 5"}],
+    "stream": true
+  }'</pre>
+                </div>
+
+                <div class="step">Health check</div>
+                <div class="code-block">
+                    <div class="code-block-header">
+                        <span>bash</span>
+                        <button class="copy-block-btn" onclick="copyBlock(this, 'curl-health')">copy</button>
+                    </div>
+                    <pre id="curl-health">curl http://{{.DisplayAddr}}/health</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openModal(id) {
+            document.getElementById(id).classList.add('open');
+            document.body.style.overflow = 'hidden';
+        }
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('open');
+            document.body.style.overflow = '';
+        }
+        function closeOnBackdrop(e, id) {
+            if (e.target === document.getElementById(id)) closeModal(id);
+        }
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal-overlay.open').forEach(el => {
+                    closeModal(el.id);
+                });
+            }
+        });
+
+        function copyText(btn, text) {
+            navigator.clipboard.writeText(text).then(() => {
+                btn.textContent = 'copied!';
+                btn.classList.add('copied');
+                setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
+            });
+        }
+
+        function copyBlock(btn, id) {
+            const text = document.getElementById(id).textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                btn.textContent = 'copied!';
+                btn.classList.add('copied');
+                setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
+            });
+        }
+
+        (function() {
+            var saved = localStorage.getItem('theme') || 'dark';
+            if (saved === 'light') document.body.classList.add('light');
+            else if (saved === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches) document.body.classList.add('light');
+            document.getElementById('themeBtn').textContent = document.body.classList.contains('light') ? '\uD83C\uDF19' : '\u2600';
+        })();
+        function toggleTheme() {
+            var isLight = document.body.classList.toggle('light');
+            localStorage.setItem('theme', isLight ? 'light' : 'dark');
+            document.getElementById('themeBtn').textContent = isLight ? '\uD83C\uDF19' : '\u2600';
+        }
+    </script>
+</body>
+</html>
