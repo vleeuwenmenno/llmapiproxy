@@ -1,11 +1,11 @@
 {
   "milestone": "oauth-foundation",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "assertionsSummary": {
     "total": 65,
-    "passed": 60,
-    "failed": 5,
+    "passed": 65,
+    "failed": 0,
     "blocked": 0
   },
   "passedAssertions": [
@@ -21,45 +21,15 @@
     "VAL-COPILOT-001", "VAL-COPILOT-002", "VAL-COPILOT-003", "VAL-COPILOT-004",
     "VAL-COPILOT-005", "VAL-COPILOT-006", "VAL-COPILOT-007", "VAL-COPILOT-008",
     "VAL-COPILOT-009", "VAL-COPILOT-010", "VAL-COPILOT-011",
+    "VAL-COPILOT-012", "VAL-COPILOT-013",
     "VAL-COPILOT-014", "VAL-COPILOT-015", "VAL-COPILOT-016", "VAL-COPILOT-017",
-    "VAL-COPILOT-018", "VAL-COPILOT-019", "VAL-COPILOT-021", "VAL-COPILOT-022",
-    "VAL-COPILOT-023", "VAL-COPILOT-026", "VAL-COPILOT-027", "VAL-COPILOT-028",
-    "VAL-COPILOT-024", "VAL-COPILOT-025"
+    "VAL-COPILOT-018", "VAL-COPILOT-019", "VAL-COPILOT-020", "VAL-COPILOT-021",
+    "VAL-COPILOT-022", "VAL-COPILOT-023", "VAL-COPILOT-024", "VAL-COPILOT-025",
+    "VAL-COPILOT-026", "VAL-COPILOT-027", "VAL-COPILOT-028", "VAL-COPILOT-029",
+    "VAL-COPILOT-030"
   ],
-  "failedAssertions": [
-    {
-      "id": "VAL-COPILOT-012",
-      "reason": "Fallback/failover is a proxy-layer feature (internal/proxy/handler.go). No tests exist for routing chains with fallback on 5xx errors. The registry supports backend resolution, but failover logic is untested."
-    },
-    {
-      "id": "VAL-COPILOT-013",
-      "reason": "No-fallback on 4xx is a proxy-layer feature. No tests verify that 4xx errors from Copilot backend do not trigger fallback to another backend."
-    },
-    {
-      "id": "VAL-COPILOT-020",
-      "reason": "Per-client backend key overrides for non-Copilot backends is a proxy-layer feature. No tests confirm overrides work while Copilot is registered alongside."
-    },
-    {
-      "id": "VAL-COPILOT-029",
-      "reason": "Stats recording for Copilot backend happens in proxy handler layer (internal/proxy/handler.go). No proxy-layer tests exist to verify stats entries."
-    },
-    {
-      "id": "VAL-COPILOT-030",
-      "reason": "Stats recording for streaming Copilot requests happens in proxy handler layer. No proxy-layer tests exist."
-    }
-  ],
+  "failedAssertions": [],
   "blockedAssertions": [],
-  "appliedUpdates": [
-    {
-      "target": "user-testing.md",
-      "description": "Added environment observations: gh auth token lacks Copilot scopes (404 on /copilot_internal/v2/token), proxy config flag is -config, test config created at config-test-oauth.yaml",
-      "source": "setup"
-    },
-    {
-      "target": "user-testing.md",
-      "description": "Added Flow Validator Guidance for API Surface with isolation rules, boundaries, and tool setup",
-      "source": "setup"
-    }
-  ],
-  "previousRound": null
+  "appliedUpdates": [],
+  "previousRound": ".factory/validation/oauth-foundation/user-testing/synthesis.json"
 }
