@@ -1128,6 +1128,77 @@ code --install-extension llmapiproxy-vscode-chat-*.vsix</pre>
 
         // ── Lazy-load per-backend model lists ──────────────────────────
         var PREVIEW_COUNT = 12;
+        var allBackendModels = {}; // backendName → model array (populated as each backend loads)
+        var pendingLoads = 0;      // counts outstanding loadBackendModels calls
+
+        function jsLastPathSegment(s) {
+            var i = s.lastIndexOf('/');
+            return i >= 0 ? s.slice(i + 1) : s;
+        }
+
+        // Recompute overlaps from allBackendModels and re-render #overlap-section.
+        // Called once all pending backend loads (success or error) have completed.
+        function recomputeOverlaps() {
+            var byCanonical = {}; // canonical → {backends: [], backendModels: {}}
+            Object.keys(allBackendModels).forEach(function(backendName) {
+                var seen = {};
+                (allBackendModels[backendName] || []).forEach(function(m) {
+                    var bareID = m.BareID || m.FullID.slice(m.FullID.indexOf('/') + 1);
+                    var canonical = jsLastPathSegment(bareID);
+                    if (seen[canonical]) return; // dedup within one backend
+                    seen[canonical] = true;
+                    if (!byCanonical[canonical]) byCanonical[canonical] = { backends: [], backendModels: {} };
+                    var entry = byCanonical[canonical];
+                    if (entry.backends.indexOf(backendName) === -1) {
+                        entry.backends.push(backendName);
+                        entry.backendModels[backendName] = bareID;
+                    }
+                });
+            });
+
+            var overlaps = Object.keys(byCanonical).filter(function(k) {
+                return byCanonical[k].backends.length >= 2;
+            }).sort();
+
+            var sec = document.getElementById('overlap-section');
+            if (!sec) return;
+
+            if (overlaps.length === 0) {
+                sec.innerHTML = '';
+                return;
+            }
+
+            var html = '<div class="section-title">Overlapping Models</div>'
+                + '<p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1rem;line-height:1.6">'
+                + 'These model IDs appear in more than one backend. Click a chip to configure which backend is tried first and what happens on failure.'
+                + '</p><div class="overlap-list">';
+
+            overlaps.forEach(function(canonicalID) {
+                var entry = byCanonical[canonicalID];
+                html += '<div class="overlap-chip" data-model="' + escHtml(canonicalID) + '" data-backends="' + escHtml(JSON.stringify(entry.backends)) + '">';
+                html += '<span class="mid">' + escHtml(canonicalID) + '</span>';
+                html += '<span class="backends">';
+                entry.backends.forEach(function(b) {
+                    var mid = entry.backendModels[b] || '';
+                    var sameClass = mid === canonicalID ? ' same' : '';
+                    html += '<span class="backend-row">'
+                        + '<span class="backend-name">' + escHtml(b) + '</span>'
+                        + '<span class="backend-modelid' + sameClass + '">' + escHtml(mid) + '</span>'
+                        + '</span>';
+                });
+                html += '</span><span class="configure-hint">&#x2699; click to configure routing</span></div>';
+            });
+
+            html += '</div>';
+            sec.innerHTML = html;
+
+            // Attach click handlers via data attributes to avoid inline-onclick quoting issues.
+            sec.querySelectorAll('.overlap-chip[data-model]').forEach(function(chip) {
+                chip.addEventListener('click', function() {
+                    openRoutingModal(chip.dataset.model, JSON.parse(chip.dataset.backends));
+                });
+            });
+        }
 
         function toggleCard(ev, name) {
             var card = document.querySelector('.backend-card[data-backend="' + name + '"]');
@@ -1193,6 +1264,12 @@ code --install-extension llmapiproxy-vscode-chat-*.vsix</pre>
                 })
                 .then(function(models) {
                     models = models || [];
+
+                    // Track for client-side overlap recomputation.
+                    allBackendModels[name] = models;
+                    pendingLoads--;
+                    if (pendingLoads <= 0) recomputeOverlaps();
+
                     if (countEl) countEl.textContent = models.length + ' model' + (models.length !== 1 ? 's' : '');
 
                     var preview = models.slice(0, PREVIEW_COUNT);
@@ -1214,6 +1291,10 @@ code --install-extension llmapiproxy-vscode-chat-*.vsix</pre>
                     }
                 })
                 .catch(function(e) {
+                    allBackendModels[name] = []; // treat as empty so pending count still completes
+                    pendingLoads--;
+                    if (pendingLoads <= 0) recomputeOverlaps();
+
                     listEl.innerHTML = baseUrlHtml + dynHtml
                         + '<div style="padding:0.75rem 1.1rem;font-size:0.75rem;color:var(--red);font-family:var(--mono)">\u2717 ' + escHtml(e.message) + '</div>';
                     if (countEl) countEl.textContent = 'error';
@@ -1221,7 +1302,20 @@ code --install-extension llmapiproxy-vscode-chat-*.vsix</pre>
         }
 
         document.addEventListener('DOMContentLoaded', function() {
-            document.querySelectorAll('.backend-card[data-backend]').forEach(function(card) {
+            // Wire up click handlers for any server-rendered overlap chips.
+            var sec = document.getElementById('overlap-section');
+            if (sec) {
+                sec.querySelectorAll('.overlap-chip[data-model]').forEach(function(chip) {
+                    chip.addEventListener('click', function() {
+                        openRoutingModal(chip.dataset.model, JSON.parse(chip.dataset.backends));
+                    });
+                });
+            }
+
+            var cards = document.querySelectorAll('.backend-card[data-backend]');
+            pendingLoads = cards.length;
+            if (pendingLoads === 0) { recomputeOverlaps(); return; }
+            cards.forEach(function(card) {
                 loadBackendModels(card.dataset.backend);
             });
         });

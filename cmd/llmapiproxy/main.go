@@ -30,8 +30,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
+	defer cfgMgr.Close()
 	cfg := cfgMgr.Get()
 	log.Printf("loaded config from %s with %d backends", *configPath, len(cfg.Backends))
+
+	if err := cfgMgr.WatchFile(); err != nil {
+		log.Printf("warning: config file watching disabled: %v", err)
+	} else {
+		log.Printf("watching config file %s for changes", *configPath)
+	}
 
 	registry := backend.NewRegistry()
 	registry.LoadFromConfig(cfg)

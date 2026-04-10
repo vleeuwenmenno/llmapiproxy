@@ -3,10 +3,15 @@ package config
 import (
 	"crypto/subtle"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sync"
+	"sync/atomic"
+	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"gopkg.in/yaml.v3"
 )
 
@@ -234,10 +239,13 @@ func Parse(data []byte) (*Config, error) {
 
 // Manager holds the current config and supports atomic reload.
 type Manager struct {
-	mu       sync.RWMutex
-	path     string
-	current  *Config
-	onChange []func(*Config)
+	mu          sync.RWMutex
+	path        string
+	current     *Config
+	onChange    []func(*Config)
+	selfWriteAt atomic.Int64 // unix-ms timestamp of last programmatic write
+	watcher     *fsnotify.Watcher
+	done        chan struct{}
 }
 
 func NewManager(path string) (*Manager, error) {
@@ -280,11 +288,97 @@ func (m *Manager) Path() string {
 	return m.path
 }
 
+// markSelfWrite records the current time as the last programmatic write.
+// The file watcher uses this to skip reloads triggered by our own writes.
+func (m *Manager) markSelfWrite() {
+	m.selfWriteAt.Store(time.Now().UnixMilli())
+}
+
+// WatchFile starts watching the config file for external changes and auto-reloads.
+// It watches the parent directory to handle editors that save via rename (e.g. vim).
+// Reloads triggered by the Manager's own write methods are suppressed.
+func (m *Manager) WatchFile() error {
+	w, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("creating file watcher: %w", err)
+	}
+
+	dir := filepath.Dir(m.path)
+	if err := w.Add(dir); err != nil {
+		w.Close()
+		return fmt.Errorf("watching directory %s: %w", dir, err)
+	}
+
+	m.watcher = w
+	m.done = make(chan struct{})
+
+	baseName := filepath.Base(m.path)
+
+	go func() {
+		const debounce = 500 * time.Millisecond
+		var timer *time.Timer
+
+		for {
+			select {
+			case <-m.done:
+				if timer != nil {
+					timer.Stop()
+				}
+				return
+			case event, ok := <-w.Events:
+				if !ok {
+					return
+				}
+				if filepath.Base(event.Name) != baseName {
+					continue
+				}
+				if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
+					continue
+				}
+				if timer != nil {
+					timer.Reset(debounce)
+				} else {
+					timer = time.AfterFunc(debounce, func() {
+						// Skip if we wrote the file ourselves recently.
+						if elapsed := time.Since(time.UnixMilli(m.selfWriteAt.Load())); elapsed < time.Second {
+							return
+						}
+						log.Printf("config file changed externally, reloading...")
+						if err := m.Reload(); err != nil {
+							log.Printf("config reload failed: %v", err)
+						} else {
+							log.Printf("config reloaded successfully")
+						}
+					})
+				}
+			case err, ok := <-w.Errors:
+				if !ok {
+					return
+				}
+				log.Printf("config file watcher error: %v", err)
+			}
+		}
+	}()
+
+	return nil
+}
+
+// Close stops the file watcher if running. Safe to call when not watching.
+func (m *Manager) Close() {
+	if m.done != nil {
+		close(m.done)
+	}
+	if m.watcher != nil {
+		m.watcher.Close()
+	}
+}
+
 // SaveRaw writes raw YAML bytes to the config file after validating them.
 func (m *Manager) SaveRaw(data []byte) error {
 	if _, err := Parse(data); err != nil {
 		return err
 	}
+	m.markSelfWrite()
 	if err := os.WriteFile(m.path, data, 0600); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
@@ -302,6 +396,7 @@ func (m *Manager) UpdateAPIKeys(keys []string) error {
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
+	m.markSelfWrite()
 	if err := os.WriteFile(m.path, data, 0600); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
@@ -330,6 +425,7 @@ func (m *Manager) ToggleBackend(name string, enabled bool) error {
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
+	m.markSelfWrite()
 	if err := os.WriteFile(m.path, data, 0600); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
@@ -346,6 +442,7 @@ func (m *Manager) UpdateClients(clients []ClientConfig) error {
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
+	m.markSelfWrite()
 	if err := os.WriteFile(m.path, data, 0600); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
@@ -362,6 +459,7 @@ func (m *Manager) SaveRouting(routing RoutingConfig) error {
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
+	m.markSelfWrite()
 	if err := os.WriteFile(m.path, data, 0600); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
