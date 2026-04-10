@@ -2,9 +2,9 @@
 
 > One API key. Every provider. Built-in dashboard.
 
-A lightweight proxy that unifies multiple LLM backends behind a single OpenAI-compatible endpoint. Route requests by model prefix, track usage across providers, and manage everything from a web UI.
+A lightweight proxy that unifies multiple LLM backends behind a single [OpenAI-compatible](https://platform.openai.com/docs/api-reference) endpoint. Route requests by model prefix, track usage across providers, and manage everything from a web UI.
 
-Supports any OpenAI-compatible API. Native backend types for Codex, GitHub Copilot, and Claude's API are planned.
+Supports any provider with an OpenAI-compatible API (OpenRouter, Anthropic via compatibility layers, Ollama, vLLM, etc.). Native backend types for Codex, GitHub Copilot, and Claude's native API are planned.
 
 ---
 
@@ -24,34 +24,14 @@ cd llmapiproxy
 go build -o llmapiproxy ./cmd/llmapiproxy
 ```
 
-### Configure
+### Configure & Run
 
 ```bash
 cp config.example.yaml config.yaml
-# Edit config.yaml with your provider API keys
-```
-
-Minimal example:
-
-```yaml
-server:
-  listen: ":8080"
-  api_keys: ["your-proxy-api-key"]
-
-backends:
-  - name: openrouter
-    type: openai # OpenAI-compatible API
-    base_url: https://openrouter.ai/api/v1
-    api_key: "sk-or-v1-..."
-```
-
-### Run
-
-```bash
 llmapiproxy -config config.yaml
 ```
 
-Open [http://localhost:8080/ui/](http://localhost:8080/ui/) for the dashboard.
+Then open [http://localhost:8080/ui/](http://localhost:8080/ui/) and configure your backends through the dashboard (recommended), or edit `config.yaml` directly. See [Configuration](docs/configuration.md) for all options.
 
 ---
 
