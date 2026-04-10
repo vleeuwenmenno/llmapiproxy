@@ -1,6 +1,6 @@
 # LLM API Proxy Feature Expansion Plan
 
-This document captures the next phase of work for llmapiproxy so it can be resumed on another machine without needing the conversation context.
+This is the handover document for the next phase of llmapiproxy. It is meant to stand on its own so the work can continue on another machine without needing the prior discussion.
 
 ## Project Goal
 
@@ -13,15 +13,53 @@ Extend the current OpenAI-compatible proxy and embedded UI with:
 5. On-demand quota and balance display for supported backends.
 6. UI polish additions such as Kilocode support and a better curl/HTTP icon.
 
-## Core Design Decisions
+## Handover Backstory
 
-- Clients are identified by the proxy API key they use, not by a custom request header.
-- Every proxy API key belongs to a named client.
-- Backend API key overrides are optional.
-- If a client does not define an override for a backend, the backend's default API key from the backend configuration is used.
-- Quota lookups are on-demand only and are triggered by user action in the UI.
-- Error response bodies should capture only the first 4 KB of upstream output.
-- SQLite remains the persistence layer for stats and new schema fields.
+The project did not arrive at this feature set in a straight line. It evolved through several stages:
+
+1. The first version of the project was a Go-based OpenAI-compatible proxy that could route requests to multiple backends, stream responses, and read YAML config.
+2. The codebase then went through a recovery phase after an earlier file corruption incident. Source files had been reversed and the repo had to be rebuilt cleanly.
+3. Once the proxy stabilized, the embedded UI was extended with dashboards, model listings, config editing, and quick-connect workflows.
+4. SQLite-backed stats were added so request history survived restarts and the dashboard could show meaningful operational data.
+5. Provider icons were then added to make the UI feel much closer to a usable product and less like a placeholder.
+6. A larger feature brainstorm followed, and the ideas were grouped into four workable sprints.
+7. The plan below reflects the decisions from that planning pass and is structured for handoff rather than improvisation.
+
+The key handoff point is that the next work is not just feature growth. It is a consolidation pass: make failures easier to inspect, make client identity explicit, make routing behavior deterministic, and surface quota data without background polling.
+
+## What Is Already In Place
+
+- OpenAI-compatible proxying for multiple backends.
+- Streaming and non-streaming chat completion support.
+- Auth middleware for proxy API keys.
+- YAML config loading, saving, and hot reload.
+- Embedded dashboard, settings, config, and models pages.
+- SQLite-backed stats persistence.
+- Provider icons and quick-connect modals for the models page.
+- Working route layout under `/v1` and `/ui`.
+
+## Key Decisions Already Made
+
+- Client identity comes from the proxy API key, not from custom headers.
+- Every proxy key belongs to a named client.
+- Backend key overrides are optional and only apply when a client explicitly sets them.
+- The default backend `api_key` still applies when no client override exists.
+- The settings page should evolve from a flat key list to a client management UI.
+- Quota fetches stay on-demand only.
+- Error bodies are captured only up to 4 KB so the UI is helpful without becoming noisy.
+- The routing work should be config-driven, not hardcoded in the handler.
+- The UI should remain embedded and single-binary friendly.
+
+## Decision Notes
+
+These are the main tradeoffs that were resolved while shaping the plan:
+
+- `X-Client-Name` was considered first, but it was discarded because the relevant clients do not consistently support arbitrary custom headers.
+- API keys were chosen instead because they are the one request-level value that all OpenAI-compatible clients already know how to send.
+- Client-scoped backend API keys were kept as overrides rather than defaults so the configuration remains simple for users who do not need them.
+- The plan keeps the existing backend `api_key` as the fallback path so current installations do not need to be reconfigured all at once.
+- Quota display was explicitly kept manual refresh only to avoid background polling and to keep the feature predictable.
+- The overlap routing work is intentionally separate from client identity work so the control-plane changes do not become tangled.
 
 ## Suggested Execution Order
 
@@ -30,7 +68,7 @@ Extend the current OpenAI-compatible proxy and embedded UI with:
 3. Sprint 3: overlap routing and fallback policy.
 4. Sprint 4: quota and balance display.
 
-Sprint 1 and Sprint 4 can be developed independently. Sprint 2 depends on the auth/config changes established in this plan. Sprint 3 depends on the routing and model metadata foundations already in the codebase.
+Sprint 1 and Sprint 4 can be developed independently. Sprint 2 depends on the auth and config changes established in this plan. Sprint 3 depends on the routing and model metadata foundations already in the codebase.
 
 ---
 
@@ -80,6 +118,16 @@ The current dashboard shows that an error happened, but not why. For OpenAI-comp
 7. Register the new route.
    - Add `/ui/stats/detail` under the UI route group.
 
+### Sprint 1 Checklist
+
+- [ ] Add `ResponseBody` to `stats.Record`.
+- [ ] Migrate SQLite to store `response_body`.
+- [ ] Capture upstream error payloads in the handler.
+- [ ] Add the request detail UI fragment.
+- [ ] Make failed rows clickable.
+- [ ] Wire the `/ui/stats/detail` route.
+- [ ] Verify a failed request can be inspected in the UI.
+
 ### Acceptance criteria
 
 - A failed upstream request creates a stats record containing a truncated response body.
@@ -92,6 +140,17 @@ The current dashboard shows that an error happened, but not why. For OpenAI-comp
 - Trigger a failure with an invalid or unavailable model.
 - Confirm the dashboard shows the failed request.
 - Open the row and confirm the modal shows the upstream payload.
+
+### Phase File List
+
+- `internal/stats/stats.go`
+- `internal/stats/store.go`
+- `internal/proxy/handler.go`
+- `internal/web/web.go`
+- `internal/web/templates/dashboard.html`
+- `internal/web/templates/stats_fragment.html`
+- `internal/web/templates/request_detail.html`
+- `cmd/llmapiproxy/main.go`
 
 ---
 
@@ -192,6 +251,21 @@ Behavior:
     - Use a more generic terminal-style icon instead of the current logo-based fallback.
     - Keep the button label and behavior unchanged.
 
+### Sprint 2 Checklist
+
+- [ ] Replace `server.api_keys` with named clients in config.
+- [ ] Add client lookup by proxy API key.
+- [ ] Store the resolved client in request context.
+- [ ] Persist client name in stats records.
+- [ ] Read client name in the handler and record it.
+- [ ] Add optional client backend key overrides.
+- [ ] Extend stats summaries by client.
+- [ ] Replace the flat API key settings UI with client management.
+- [ ] Wire updated middleware into startup.
+- [ ] Add Kilocode support to the models page.
+- [ ] Replace the curl icon with a terminal icon.
+- [ ] Verify per-client authentication and override behavior.
+
 ### Acceptance criteria
 
 - Requests authenticate by proxy API key.
@@ -205,6 +279,20 @@ Behavior:
 - Create two clients with different API keys.
 - Send requests with each key and confirm the dashboard shows distinct client stats.
 - Configure a backend override for one client and confirm the proxy forwards the override key.
+
+### Phase File List
+
+- `internal/config/config.go`
+- `internal/proxy/middleware.go`
+- `internal/proxy/handler.go`
+- `internal/stats/stats.go`
+- `internal/stats/store.go`
+- `internal/web/web.go`
+- `internal/web/templates/settings.html`
+- `internal/web/templates/stats_fragment.html`
+- `internal/web/templates/models.html`
+- `cmd/llmapiproxy/main.go`
+- `internal/web/static/icons/` for Kilocode assets
 
 ---
 
@@ -252,6 +340,17 @@ Right now, overlapping models are visible, but routing behavior is still mostly 
    - Validate the update before writing it back.
    - Reload configuration after save.
 
+### Sprint 3 Checklist
+
+- [ ] Add the `routing` config section.
+- [ ] Add overlap default strategy and per-model overrides.
+- [ ] Extend backend resolution for overlap routes.
+- [ ] Implement retry/fallback execution in the handler.
+- [ ] Redesign the overlap cards in the UI.
+- [ ] Add the overlap detail modal.
+- [ ] Add routing config save support.
+- [ ] Verify fallback behavior with a failing first backend.
+
 ### Acceptance criteria
 
 - Overlapping models can be assigned a priority order.
@@ -265,6 +364,15 @@ Right now, overlapping models are visible, but routing behavior is still mostly 
 - Force the first backend to fail.
 - Confirm the request falls back to the next backend.
 - Change the order in the UI and confirm the new order is honored.
+
+### Phase File List
+
+- `internal/config/config.go`
+- `internal/backend/registry.go`
+- `internal/proxy/handler.go`
+- `internal/web/web.go`
+- `internal/web/templates/models.html`
+- `cmd/llmapiproxy/main.go`
 
 ---
 
@@ -310,6 +418,16 @@ Users need a quick way to understand remaining quota and reset timing without op
    - Add a refresh button that fetches on demand.
    - Use color and text to make healthy, warning, and critical states obvious.
 
+### Sprint 4 Checklist
+
+- [ ] Define the quota provider abstraction.
+- [ ] Implement OpenRouter quota fetching.
+- [ ] Implement Z.ai quota fetching.
+- [ ] Add backend quota URL support or auto-detection.
+- [ ] Add a quota fragment endpoint.
+- [ ] Add the quota section to the dashboard.
+- [ ] Verify on-demand refresh works without polling.
+
 ### Acceptance criteria
 
 - Clicking refresh fetches quota information on demand.
@@ -323,27 +441,63 @@ Users need a quick way to understand remaining quota and reset timing without op
 - Open the dashboard and refresh the quota section.
 - Confirm the remaining balance and reset timing display correctly.
 
+### Phase File List
+
+- `internal/quota/` new package
+- `internal/config/config.go`
+- `internal/web/web.go`
+- `internal/web/templates/dashboard.html`
+- `internal/web/templates/quota_fragment.html`
+- `cmd/llmapiproxy/main.go`
+
 ---
 
 ## File Impact Summary
 
-Likely files touched by these sprints:
+Likely files touched by these sprints, grouped by phase:
+
+### Sprint 1
 
 - `internal/stats/stats.go`
 - `internal/stats/store.go`
 - `internal/proxy/handler.go`
-- `internal/proxy/middleware.go`
-- `internal/config/config.go`
-- `internal/backend/backend.go`
-- `internal/backend/openai.go`
-- `internal/backend/registry.go`
 - `internal/web/web.go`
 - `internal/web/templates/dashboard.html`
-- `internal/web/templates/models.html`
+- `internal/web/templates/stats_fragment.html`
+- `internal/web/templates/request_detail.html`
+- `cmd/llmapiproxy/main.go`
+
+### Sprint 2
+
+- `internal/config/config.go`
+- `internal/proxy/middleware.go`
+- `internal/proxy/handler.go`
+- `internal/stats/stats.go`
+- `internal/stats/store.go`
+- `internal/web/web.go`
 - `internal/web/templates/settings.html`
 - `internal/web/templates/stats_fragment.html`
+- `internal/web/templates/models.html`
 - `cmd/llmapiproxy/main.go`
+- `internal/web/static/icons/` for Kilocode assets
+
+### Sprint 3
+
+- `internal/config/config.go`
+- `internal/backend/registry.go`
+- `internal/proxy/handler.go`
+- `internal/web/web.go`
+- `internal/web/templates/models.html`
+- `cmd/llmapiproxy/main.go`
+
+### Sprint 4
+
 - `internal/quota/` new package
+- `internal/config/config.go`
+- `internal/web/web.go`
+- `internal/web/templates/dashboard.html`
+- `internal/web/templates/quota_fragment.html`
+- `cmd/llmapiproxy/main.go`
 
 ## Known Risks
 
@@ -352,6 +506,21 @@ Likely files touched by these sprints:
 - The quota APIs may vary or change, especially the Z.ai endpoint.
 - Overlap fallback logic needs clear timeout and retry boundaries to avoid hanging requests.
 - The settings UI will become more complex once clients replace the flat key list, so edits should be kept incremental.
+
+## Full Checklist At A Glance
+
+This is the condensed execution checklist for the whole roadmap:
+
+- [ ] Sprint 1: capture error details and expose request drill-down.
+- [ ] Sprint 2: move to named clients, stats by client, and optional backend overrides.
+- [ ] Sprint 2: update settings UI for client management and add Kilocode support.
+- [ ] Sprint 3: add overlap routing defaults and fallback behavior.
+- [ ] Sprint 3: add routing edit UI and save support.
+- [ ] Sprint 4: add on-demand quota refresh and dashboard cards.
+- [ ] Validate migrations on existing SQLite databases.
+- [ ] Verify client auth and override logic with at least two named clients.
+- [ ] Verify fallback routing with at least one overlapping model.
+- [ ] Verify quota refresh only happens when the user clicks refresh.
 
 ## Recommended Milestones
 
