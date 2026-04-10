@@ -13,13 +13,13 @@ Supports any OpenAI-compatible API. Native backend types for Codex, GitHub Copil
 ### Install
 
 ```bash
-go install github.com/menno/llmapiproxy/cmd/llmapiproxy@latest
+go install github.com/vleeuwenmenno/llmapiproxy/cmd/llmapiproxy@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/menno/llmapiproxy
+git clone https://github.com/vleeuwenmenno/llmapiproxy
 cd llmapiproxy
 go build -o llmapiproxy ./cmd/llmapiproxy
 ```
