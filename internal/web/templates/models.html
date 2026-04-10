@@ -508,6 +508,41 @@
         .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
         body { transition: background 0.2s, color 0.2s; }
 
+        /* ── Backend enable/disable toggle ──────────────────── */
+        .backend-toggle {
+            position: relative;
+            width: 36px;
+            height: 20px;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        .backend-toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+        .backend-toggle .tog-slider {
+            position: absolute;
+            inset: 0;
+            background: rgba(248,113,113,0.15);
+            border: 1px solid rgba(248,113,113,0.35);
+            border-radius: 20px;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .backend-toggle .tog-slider::before {
+            content: '';
+            position: absolute;
+            width: 14px; height: 14px;
+            left: 2px; top: 2px;
+            background: var(--red);
+            border-radius: 50%;
+            transition: transform 0.2s, background 0.2s;
+        }
+        .backend-toggle input:checked + .tog-slider {
+            background: rgba(52,211,153,0.15);
+            border-color: rgba(52,211,153,0.4);
+        }
+        .backend-toggle input:checked + .tog-slider::before {
+            transform: translateX(16px);
+            background: var(--green);
+        }
+
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(8px); }
             to   { opacity: 1; transform: translateY(0); }
@@ -524,7 +559,6 @@
         <div class="links">
             <a href="/ui/">Dashboard</a>
             <a href="/ui/models" class="active">Models</a>
-            <a href="/ui/config">Config</a>
             <a href="/ui/settings">Settings</a>
             <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">&#9728;</button>
         </div>
@@ -533,6 +567,10 @@
     <main>
         <h1>Available Models</h1>
         <p class="subtitle">All models accessible through this proxy. Use the prefixed ID (e.g. <code style="font-family:var(--mono);font-size:0.85em;background:var(--surface-2);padding:0.1rem 0.4rem;border-radius:3px">backend/model-id</code>) when calling the API.</p>
+
+        {{if .Message}}
+        <div style="padding:0.65rem 1rem;border-radius:6px;margin-bottom:1.5rem;font-size:0.875rem;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:var(--green)">{{.Message}}</div>
+        {{end}}
 
         <div class="section-title">Backends</div>
         <div class="backend-grid">
@@ -544,10 +582,18 @@
                         {{.Name}}
                     </div>
                     <div style="display:flex;align-items:center;gap:0.5rem">
-                    {{if not .Enabled}}<span class="disabled-badge">Disabled</span>{{end}}
                     {{if not .IsDynamic}}
                     <span class="model-count">{{len .Models}} models</span>
                     {{end}}
+                    <form method="POST" action="/ui/settings/backends/toggle" style="display:contents">
+                        <input type="hidden" name="name" value="{{.Name}}">
+                        <input type="hidden" name="enabled" value="{{if .Enabled}}false{{else}}true{{end}}">
+                        <input type="hidden" name="redirect" value="/ui/models">
+                        <label class="backend-toggle" title="{{if .Enabled}}Disable{{else}}Enable{{end}} {{.Name}}" onclick="event.preventDefault(); this.closest('form').submit()">
+                            <input type="checkbox" {{if .Enabled}}checked{{end}} style="pointer-events:none">
+                            <span class="tog-slider"></span>
+                        </label>
+                    </form>
                     </div>
                 </div>
                 <div class="model-list">

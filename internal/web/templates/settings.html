@@ -358,7 +358,230 @@
             border: 1px solid rgba(248, 113, 113, 0.3);
             color: var(--red);
         }
+
+        /* ── Raw Config Button ─────────────────────────────── */
+        .btn-secondary {
+            background: var(--surface-2);
+            color: var(--text-dim);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover {
+            color: var(--text);
+            border-color: var(--text-dim);
+        }
+
+        /* ── Toggle Switch ─────────────────────────────────── */
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .toggle-row:last-of-type { border-bottom: none; }
+
+        .toggle-label {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+        .toggle-label .title {
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        .toggle-label .desc {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-switch .slider {
+            position: absolute;
+            inset: 0;
+            background: var(--border);
+            border-radius: 24px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .toggle-switch .slider::before {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            left: 3px;
+            top: 3px;
+            background: var(--text-dim);
+            border-radius: 50%;
+            transition: transform 0.2s, background 0.2s;
+        }
+        .toggle-switch input:checked + .slider {
+            background: var(--accent-dim);
+            border: 1px solid rgba(34, 211, 238, 0.4);
+        }
+        .toggle-switch input:checked + .slider::before {
+            transform: translateX(20px);
+            background: var(--accent);
+        }
+
+        .restart-hint {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.6rem 0.85rem;
+            background: rgba(251, 191, 36, 0.08);
+            border: 1px solid rgba(251, 191, 36, 0.2);
+            border-radius: 6px;
+            margin-top: 0.75rem;
+            font-size: 0.8rem;
+            color: var(--amber);
+        }
+
+        /* ── Config Modal ──────────────────────────────────── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 200;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 4vh 1rem;
+            backdrop-filter: blur(4px);
+        }
+        .modal-overlay.open { display: flex; }
+
+        .modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            width: 100%;
+            max-width: 800px;
+            max-height: 88vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .modal-header h2 {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            font-size: 1.25rem;
+            cursor: pointer;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            transition: color 0.15s;
+        }
+        .modal-close:hover { color: var(--text); }
+
+        #configForm {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            overflow: hidden;
+            min-height: 0;
+        }
+
+        .modal-body {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .editor-container {
+            position: relative;
+            height: 52vh;
+            min-height: 280px;
+            overflow: hidden;
+        }
+
+        .editor-container textarea {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            color: transparent;
+            caret-color: var(--accent);
+            resize: none;
+            border: none;
+            outline: none;
+            padding: 1rem;
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            line-height: 1.6;
+            tab-size: 4;
+            z-index: 2;
+            white-space: pre;
+            overflow: auto;
+        }
+
+        .editor-container pre {
+            position: absolute;
+            inset: 0;
+            margin: 0;
+            padding: 1rem;
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            line-height: 1.6;
+            tab-size: 4;
+            overflow: auto;
+            z-index: 1;
+            pointer-events: none;
+            white-space: pre;
+            color: var(--text);
+        }
+
+        .modal-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1.25rem;
+            border-top: 1px solid var(--border);
+            gap: 0.5rem;
+        }
+        .modal-footer .hint {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            flex: 1;
+        }
+
+        /* ── YAML Syntax Highlighting ──────────────────────── */
+        .hl-key { color: #22d3ee; }
+        .hl-string { color: #34d399; }
+        .hl-number { color: #fbbf24; }
+        .hl-bool { color: #f87171; }
+        .hl-comment { color: #64748b; font-style: italic; }
+        .hl-null { color: #f87171; }
+        .hl-colon { color: var(--text-dim); }
+
+        body.light .hl-key { color: #0891b2; }
+        body.light .hl-string { color: #059669; }
+        body.light .hl-number { color: #d97706; }
+        body.light .hl-bool { color: #dc2626; }
+        body.light .hl-comment { color: #94a3b8; }
+        body.light .hl-null { color: #dc2626; }
     </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-theme">
 </head>
 <body>
     <div class="noise"></div>
@@ -390,14 +613,31 @@
                 <span class="stat-label">Records in memory</span>
                 <span class="stat-value">{{.StatsCount}}</span>
             </div>
-            <div class="stat-row">
-                <span class="stat-label">Storage</span>
-                <span class="stat-value">SQLite (persistent)</span>
+            {{if .DisableStats}}
+            <div class="restart-hint">
+                &#9888;&#65039; Stats logging is disabled. No data is being recorded or persisted.
             </div>
-            <form method="POST" action="/ui/settings/clear-stats" style="margin-top:1rem;"
+            {{end}}
+            <form method="POST" action="/ui/settings/toggle-stats" style="margin-top:0.5rem;" id="toggleStatsForm">
+                <div class="toggle-row">
+                    <div class="toggle-label">
+                        <span class="title">Persistent storage</span>
+                        <span class="desc">Save request statistics to SQLite. Disable for full privacy — no data is written to disk.</span>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="statsToggle" {{if not .DisableStats}}checked{{end}}
+                               onchange="document.getElementById('statsEnabledInput').value = this.checked ? 'true' : 'false'; this.form.submit()">
+                        <span class="slider"></span>
+                    </label>
+                    <input type="hidden" name="enabled" id="statsEnabledInput" value="{{if not .DisableStats}}true{{else}}false{{end}}">
+                </div>
+            </form>
+            {{if not .DisableStats}}
+            <form method="POST" action="/ui/settings/clear-stats" style="margin-top:0.75rem;"
                   onsubmit="return confirm('Clear all stats? This cannot be undone.')">
                 <button type="submit" class="btn btn-danger">&#128465; Clear All Stats</button>
             </form>
+            {{end}}
         </div>
 
         <!-- API Keys Section -->
@@ -447,9 +687,46 @@
                 </div>
             </div>
         </div>
+
+        <!-- Advanced Section -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">Advanced</div>
+            </div>
+            <p class="section-desc">Edit the raw YAML configuration directly.</p>
+            <button type="button" class="btn btn-secondary" onclick="openConfigModal()">
+                &#128221; Edit Raw Config
+            </button>
+        </div>
     </main>
 
+    <!-- Config Modal -->
+    <div class="modal-overlay" id="configModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>&#128221; config.yaml</h2>
+                <button class="modal-close" onclick="closeConfigModal()">&times;</button>
+            </div>
+            <form method="POST" action="/ui/config/save" id="configForm">
+                <div class="modal-body">
+                    <div class="editor-container" id="editorContainer">
+                        <pre id="editorHighlight" aria-hidden="true"></pre>
+                        <textarea name="config" id="editorTextarea" spellcheck="false"
+                                  oninput="updateHighlight()" onscroll="syncScroll()"
+                                  placeholder="# YAML configuration...">{{.ConfigText}}</textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <span class="hint">Ctrl+S to save &amp; reload. Changes are validated before applying.</span>
+                    <button type="button" class="btn btn-secondary" onclick="resetConfig()">Reset</button>
+                    <button type="submit" class="btn btn-primary">Save &amp; Reload</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
+    // ── Theme ────────────────────────────────────────────
     (function() {
         const saved = localStorage.getItem('theme') || 'dark';
         applyTheme(saved);
@@ -467,6 +744,14 @@
         } else {
             document.body.classList.toggle('light', theme === 'light');
         }
+        // Update highlight.js theme
+        var link = document.getElementById('hljs-theme');
+        if (link) {
+            var isLight = document.body.classList.contains('light');
+            link.href = isLight
+                ? 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css'
+                : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css';
+        }
     }
 
     function setTheme(theme) {
@@ -481,6 +766,143 @@
     function toggleTheme() {
         var current = localStorage.getItem('theme') || 'dark';
         setTheme(current === 'light' ? 'dark' : 'light');
+    }
+
+    // ── Config Modal ─────────────────────────────────────
+    var originalConfig = '';
+
+    function openConfigModal() {
+        var modal = document.getElementById('configModal');
+        modal.classList.add('open');
+        document.body.style.overflow = 'hidden';
+        // Initialize editor
+        var ta = document.getElementById('editorTextarea');
+        originalConfig = ta.value;
+        updateHighlight();
+        // Size the container
+        resizeEditor();
+        ta.focus();
+    }
+
+    function closeConfigModal() {
+        var modal = document.getElementById('configModal');
+        modal.classList.remove('open');
+        document.body.style.overflow = '';
+    }
+
+    function resetConfig() {
+        var ta = document.getElementById('editorTextarea');
+        ta.value = originalConfig;
+        updateHighlight();
+    }
+
+    function resizeEditor() {
+        // Height is fixed via CSS; just sync scroll
+        syncScroll();
+    }
+
+    // Close modal on overlay click
+    document.getElementById('configModal').addEventListener('click', function(e) {
+        if (e.target === this) closeConfigModal();
+    });
+
+    // Close modal on Escape
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeConfigModal();
+        // Ctrl+S to save inside modal
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            var modal = document.getElementById('configModal');
+            if (modal.classList.contains('open')) {
+                e.preventDefault();
+                document.getElementById('configForm').submit();
+            }
+        }
+    });
+
+    // ── YAML Syntax Highlighting ─────────────────────────
+    function highlightYAML(text) {
+        var html = '';
+        var lines = text.split('\n');
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            // Comment
+            var commentIdx = -1;
+            var inStr = false;
+            for (var c = 0; c < line.length; c++) {
+                if (line[c] === "'" || line[c] === '"') inStr = !inStr;
+                if (line[c] === '#' && !inStr) { commentIdx = c; break; }
+            }
+            var main = commentIdx >= 0 ? line.substring(0, commentIdx) : line;
+            var comment = commentIdx >= 0 ? line.substring(commentIdx) : '';
+
+            // Check if it's a key: value line
+            var match = main.match(/^(\s*)([\w._-]+)(:)(.*)$/);
+            if (match) {
+                var indent = match[1];
+                var key = match[2];
+                var colon = match[3];
+                var value = match[4];
+                html += escapeHtml(indent)
+                    + '<span class="hl-key">' + escapeHtml(key) + '</span>'
+                    + '<span class="hl-colon">' + escapeHtml(colon) + '</span>'
+                    + highlightValue(value);
+            } else {
+                // List item or other
+                var listMatch = main.match(/^(\s*-\s*)(.*)$/);
+                if (listMatch) {
+                    html += escapeHtml(listMatch[1]) + highlightValue(' ' + listMatch[2]);
+                } else {
+                    html += highlightValue(main);
+                }
+            }
+            if (comment) {
+                html += '<span class="hl-comment">' + escapeHtml(comment) + '</span>';
+            }
+            if (i < lines.length - 1) html += '\n';
+        }
+        return html;
+    }
+
+    function highlightValue(v) {
+        v = v.trimStart();
+        var leading = v.length > 0 ? v.match(/^(\s*)/)[0] : '';
+        v = v.substring(leading.length);
+
+        // Quoted string
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+            return escapeHtml(leading) + '<span class="hl-string">' + escapeHtml(v) + '</span>';
+        }
+        // Boolean
+        if (v === 'true' || v === 'false') {
+            return escapeHtml(leading) + '<span class="hl-bool">' + escapeHtml(v) + '</span>';
+        }
+        // Null
+        if (v === 'null' || v === '~') {
+            return escapeHtml(leading) + '<span class="hl-null">' + escapeHtml(v) + '</span>';
+        }
+        // Number
+        if (v && /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(v)) {
+            return escapeHtml(leading) + '<span class="hl-number">' + escapeHtml(v) + '</span>';
+        }
+        // Unquoted string (may contain interpolated values)
+        return escapeHtml(leading + v);
+    }
+
+    function escapeHtml(s) {
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function updateHighlight() {
+        var ta = document.getElementById('editorTextarea');
+        var pre = document.getElementById('editorHighlight');
+        pre.innerHTML = highlightYAML(ta.value) + '\n';
+    }
+
+    function syncScroll() {
+        var ta = document.getElementById('editorTextarea');
+        var pre = document.getElementById('editorHighlight');
+        pre.scrollTop = ta.scrollTop;
+        pre.scrollLeft = ta.scrollLeft;
     }
     </script>
 </body>

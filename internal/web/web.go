@@ -15,6 +15,7 @@ import (
 	"github.com/menno/llmapiproxy/internal/backend"
 	"github.com/menno/llmapiproxy/internal/config"
 	"github.com/menno/llmapiproxy/internal/stats"
+	"gopkg.in/yaml.v3"
 )
 
 //go:embed templates/*.html
@@ -292,6 +293,7 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		"Overlaps":    overlaps,
 		"DisplayAddr": displayAddr,
 		"SampleModel": sampleModel,
+		"Message":     r.URL.Query().Get("msg"),
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -368,6 +370,38 @@ func (u *UI) ClearStats(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/ui/settings?msg=Stats+cleared+successfully.", http.StatusSeeOther)
 }
 
+func (u *UI) ToggleStats(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/ui/settings?msg=Failed+to+parse+form.", http.StatusSeeOther)
+		return
+	}
+	enabled := r.FormValue("enabled") == "true"
+
+	cfg := u.cfgMgr.Get()
+	cfg.Server.DisableStats = !enabled
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		http.Redirect(w, r, "/ui/settings?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		return
+	}
+	if err := u.cfgMgr.SaveRaw(data); err != nil {
+		http.Redirect(w, r, "/ui/settings?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		return
+	}
+
+	if !enabled {
+		// Clear in-memory stats when disabling
+		u.collector.Clear()
+	}
+
+	status := "enabled"
+	if !enabled {
+		status = "disabled"
+	}
+	http.Redirect(w, r, "/ui/settings?msg=Stats+logging+"+status+".+Restart+the+proxy+for+changes+to+take+full+effect.", http.StatusSeeOther)
+}
+
 func (u *UI) AddAPIKey(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Redirect(w, r, "/ui/settings?msg=Failed+to+parse+form.", http.StatusSeeOther)
@@ -437,13 +471,18 @@ func (u *UI) ToggleBackend(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	redirectTo := r.FormValue("redirect")
+	if redirectTo == "" {
+		redirectTo = "/ui/settings"
+	}
+
 	if err := u.cfgMgr.ToggleBackend(name, enabled); err != nil {
-		http.Redirect(w, r, "/ui/settings?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		http.Redirect(w, r, redirectTo+"?msg=Error:"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
 		return
 	}
 	status := "disabled"
 	if enabled {
 		status = "enabled"
 	}
-	http.Redirect(w, r, "/ui/settings?msg=Backend+"+name+"+"+status+".", http.StatusSeeOther)
+	http.Redirect(w, r, redirectTo+"?msg=Backend+"+name+"+"+status+".", http.StatusSeeOther)
 }

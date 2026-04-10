@@ -78,6 +78,7 @@ func main() {
 		r.Post("/config/save", ui.SaveConfig)
 		r.Get("/settings", ui.SettingsPage)
 		r.Post("/settings/clear-stats", ui.ClearStats)
+		r.Post("/settings/toggle-stats", ui.ToggleStats)
 		r.Post("/settings/keys/add", ui.AddAPIKey)
 		r.Post("/settings/keys/delete", ui.DeleteAPIKey)
 		r.Post("/settings/backends/toggle", ui.ToggleBackend)
