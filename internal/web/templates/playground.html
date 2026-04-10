@@ -264,6 +264,7 @@
         }
         .msg.user .msg-body { background: var(--accent); color: #fff; border-color: transparent; border-radius: 10px 2px 10px 10px; }
         .msg.assistant .msg-body { white-space: pre-wrap; border-radius: 2px 10px 10px 10px; }
+        .inline-thinking { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--text-dim); font-size: 0.8rem; }
         .msg-body code { font-family: var(--mono); font-size: 0.85em; background: rgba(255,255,255,0.08); padding: 0.1em 0.35em; border-radius: 4px; }
         .msg.user .msg-body code { background: rgba(255,255,255,0.2); }
 
@@ -591,7 +592,6 @@ async function sendMessage() {
     userInput.value = '';
     userInput.style.height = 'auto';
 
-    var thinkingEl = appendThinking();
 
     try {
         var apiKey      = document.getElementById('api-key-select').value;
@@ -629,13 +629,12 @@ async function sendMessage() {
             throw new Error(resp.status + ' ' + resp.statusText + ': ' + errText.slice(0, 300));
         }
 
-        // Replace thinking indicator with a live message bubble
-        thinkingEl.remove();
-        thinkingEl = null;
+        // Create assistant bubble immediately with thinking dots
         var assistantText = '';
         var firstToken = false;
         var msgWrap = appendMessage('assistant', '', null);
         var msgBody = msgWrap.querySelector('.msg-body');
+        msgBody.innerHTML = '<span class="inline-thinking"><span class="dots"><span></span><span></span><span></span></span> Thinking…</span>';
         var metaEl  = document.createElement('div');
         metaEl.className = 'msg-meta';
         msgWrap.querySelector('div[style]').appendChild(metaEl);
@@ -670,7 +669,11 @@ async function sendMessage() {
 
                 var delta = evt.choices && evt.choices[0] && evt.choices[0].delta;
                 if (delta && delta.content) {
-                    if (!firstToken) { firstToken = true; setStatus('streaming', 'Streaming…'); }
+                    if (!firstToken) {
+                        firstToken = true;
+                        setStatus('streaming', 'Streaming…');
+                        msgBody.textContent = ''; // clear thinking dots
+                    }
                     assistantText += delta.content;
                     msgBody.textContent = assistantText;
                     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -696,7 +699,6 @@ async function sendMessage() {
         }
         setStatus('', 'Ready');
     } catch(e) {
-        if (thinkingEl) thinkingEl.remove();
         showError(e.message);
         setStatus('err', 'Error');
         chatHistory.pop();
@@ -739,15 +741,6 @@ function appendMessage(role, content, meta) {
     messagesEl.appendChild(wrap);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return wrap;
-}
-
-function appendThinking() {
-    var el = document.createElement('div');
-    el.className = 'thinking';
-    el.innerHTML = '<div class="dots"><span></span><span></span><span></span></div> Waiting for response…';
-    messagesEl.appendChild(el);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-    return el;
 }
 
 function showError(msg) {
