@@ -40,6 +40,17 @@ type ServerConfig struct {
 	DisableStats bool     `yaml:"disable_stats"`
 }
 
+// OAuthConfig holds OAuth-related configuration for backends that use
+// OAuth authentication (e.g., GitHub Copilot, OpenAI Codex) instead of
+// static API keys.
+type OAuthConfig struct {
+	ClientID  string   `yaml:"client_id,omitempty"`
+	Scopes    []string `yaml:"scopes,omitempty"`
+	TokenPath string   `yaml:"token_path,omitempty"`
+	AuthURL   string   `yaml:"auth_url,omitempty"`
+	TokenURL  string   `yaml:"token_url,omitempty"`
+}
+
 type BackendConfig struct {
 	Name         string            `yaml:"name"`
 	Type         string            `yaml:"type"`
@@ -48,11 +59,24 @@ type BackendConfig struct {
 	ExtraHeaders map[string]string `yaml:"extra_headers,omitempty"`
 	Models       []string          `yaml:"models,omitempty"`
 	Enabled      *bool             `yaml:"enabled,omitempty"`
+	OAuth        *OAuthConfig      `yaml:"oauth,omitempty"`
 }
 
 // IsEnabled returns true unless the backend is explicitly disabled.
 func (b *BackendConfig) IsEnabled() bool {
 	return b.Enabled == nil || *b.Enabled
+}
+
+// IsOAuthBackend returns true if the backend type uses OAuth authentication
+// rather than a static API key. OAuth backends discover tokens at runtime
+// and do not require an api_key in the configuration.
+func (b *BackendConfig) IsOAuthBackend() bool {
+	switch b.Type {
+	case "copilot", "codex":
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Config) Validate() error {
@@ -87,11 +111,14 @@ func (c *Config) Validate() error {
 		if _, err := url.Parse(b.BaseURL); err != nil {
 			return fmt.Errorf("backends[%d].base_url: invalid URL: %w", i, err)
 		}
-		if b.APIKey == "" {
-			return fmt.Errorf("backends[%d].api_key: must not be empty for enabled backend", i)
-		}
+		// Default type to "openai" if not specified.
 		if b.Type == "" {
 			c.Backends[i].Type = "openai"
+		}
+		// OAuth backends (copilot, codex) do not require an api_key.
+		// They authenticate via local token discovery or OAuth flows.
+		if !c.Backends[i].IsOAuthBackend() && b.APIKey == "" {
+			return fmt.Errorf("backends[%d].api_key: must not be empty for enabled backend", i)
 		}
 	}
 	return nil

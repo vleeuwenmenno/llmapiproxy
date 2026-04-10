@@ -95,3 +95,29 @@ backends:
       - mimo-v2-omni
       - minimax-m2.5
       - minimax-m2.7
+
+  # ── GitHub Copilot ────────────────────────────────────────
+  # Uses local GitHub authentication (env vars, gh CLI, token files)
+  # to exchange for Copilot API tokens. No api_key required.
+  # Models: copilot/gpt-4o, copilot/gpt-4.1, copilot/o3, etc.
+  # - name: copilot
+  #   type: copilot
+  #   base_url: https://api.githubcopilot.com
+  #   # api_key is NOT needed — authentication uses local GitHub tokens.
+
+  # ── OpenAI Codex ──────────────────────────────────────────
+  # Uses OAuth PKCE flow for authentication. No api_key required.
+  # Initiate auth via the web UI: http://localhost:8000/ui/settings
+  # Models: codex/o4-mini, codex/gpt-5.2-codex, etc.
+  # - name: codex
+  #   type: codex
+  #   base_url: https://chatgpt.com/backend-api/codex
+  #   oauth:
+  #     client_id: "your-codex-client-id"
+  #     scopes:
+  #       - "openid"
+  #       - "profile"
+  #       - "email"
+  #     auth_url: "https://auth.openai.com/authorize"
+  #     token_url: "https://auth.openai.com/oauth/token"
+  #   # api_key is NOT needed — authentication uses OAuth.

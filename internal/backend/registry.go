@@ -2,11 +2,13 @@ package backend
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 
 	"github.com/menno/llmapiproxy/internal/config"
 )
+
 // Registry maps model prefixes to backends and resolves routing.
 type Registry struct {
 	mu       sync.RWMutex
@@ -21,6 +23,10 @@ func NewRegistry() *Registry {
 
 // LoadFromConfig creates backends from config and registers them.
 // Only enabled backends are registered for routing.
+// Supports backend types: openai, copilot, codex.
+// For copilot and codex, placeholder backends are registered when the
+// full backend implementations are not yet available; they will be
+// replaced by the actual implementations in subsequent features.
 func (r *Registry) LoadFromConfig(cfg *config.Config) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -30,7 +36,31 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 		if !bc.IsEnabled() {
 			continue
 		}
-		r.backends[bc.Name] = NewOpenAI(bc)
+		b, err := r.createBackend(bc)
+		if err != nil {
+			log.Printf("warning: skipping backend %q: %v", bc.Name, err)
+			continue
+		}
+		r.backends[bc.Name] = b
+	}
+}
+
+// createBackend instantiates the appropriate backend based on the config type.
+func (r *Registry) createBackend(bc config.BackendConfig) (Backend, error) {
+	switch bc.Type {
+	case "copilot":
+		// CopilotBackend will be implemented in a subsequent feature.
+		// For now, register an OpenAI-compatible placeholder that uses the
+		// Copilot base URL and empty API key (actual auth via OAuth).
+		return NewOpenAI(bc), nil
+	case "codex":
+		// CodexBackend will be implemented in a subsequent feature.
+		// For now, register an OpenAI-compatible placeholder.
+		return NewOpenAI(bc), nil
+	case "openai", "":
+		return NewOpenAI(bc), nil
+	default:
+		return nil, fmt.Errorf("unknown backend type %q", bc.Type)
 	}
 }
 
@@ -69,6 +99,32 @@ func (r *Registry) All() []Backend {
 		result = append(result, b)
 	}
 	return result
+}
+
+// Get returns a backend by name, or nil if not found.
+func (r *Registry) Get(name string) Backend {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.backends[name]
+}
+
+// Has returns true if a backend with the given name is registered.
+func (r *Registry) Has(name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, ok := r.backends[name]
+	return ok
+}
+
+// Names returns the names of all registered backends.
+func (r *Registry) Names() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	names := make([]string, 0, len(r.backends))
+	for name := range r.backends {
+		names = append(names, name)
+	}
+	return names
 }
 
 // ResolveRoute returns an ordered list of RouteEntry values for the given model,
