@@ -23,10 +23,11 @@ If you have subscriptions at several LLM providers, you end up juggling:
 - **Unified OpenAI-compatible API** — `/v1/chat/completions` and `/v1/models` work exactly like OpenAI's API, so any OpenAI-compatible client works out of the box.
 - **Multi-backend routing** — route to different providers based on model name prefix (e.g. `zai/glm-5.1`, `openrouter/anthropic/claude-sonnet-4`).
 - **Streaming support** — SSE streaming is fully proxied to clients.
-- **Token & latency tracking** — every request is recorded with prompt tokens, completion tokens, latency, backend, and model.
-- **Web dashboard** — live stats, request history, per-backend token breakdown, and an in-browser config editor.
+- **Token & latency tracking** — every request is recorded with prompt tokens, completion tokens, latency, backend, and model. Stats persist to SQLite across restarts.
+- **Web dashboard** — live stats, request history, per-backend token breakdown, backend management, and an in-browser config editor.
 - **Hot reload** — edit and save your config from the UI; backends reload without restarting the server.
-- **Single binary** — no database, no external dependencies. Just a YAML config file.
+- **Single binary** — SQLite for persistent stats, no external dependencies. Just a YAML config file.
+- **Backend toggling** — enable or disable backends from the UI without deleting them from config.
 
 ---
 
@@ -48,7 +49,7 @@ Any OpenAI-compatible HTTP API works. The example config includes:
 
 ### Prerequisites
 
-- [Go 1.21+](https://go.dev/dl/)
+- [Go 1.22+](https://go.dev/dl/)
 
 ### 1. Clone & build
 
@@ -141,12 +142,13 @@ Set the API base URL to `http://localhost:8080/v1` and the API key to your proxy
 
 Navigate to [http://localhost:8080/ui/](http://localhost:8080/ui/) to access the dashboard.
 
-| Page          | Path         | Description                                                           |
-| ------------- | ------------ | --------------------------------------------------------------------- |
-| Dashboard     | `/ui/`       | Live request feed, token totals, per-backend breakdown, latency stats |
-| Config editor | `/ui/config` | Edit `config.yaml` in the browser and save with hot reload            |
+| Page          | Path              | Description                                                           |
+| ------------- | ----------------- | --------------------------------------------------------------------- |
+| Dashboard     | `/ui/`            | Live request feed, token totals, per-backend breakdown, latency stats |
+| Models        | `/ui/models`      | Browse models, enable/disable backends, quick-connect setup guides    |
+| Settings      | `/ui/settings`    | API key management, raw config editor, stats, appearance              |
 
-Stats auto-refresh every few seconds. Up to 10,000 recent requests are kept in memory.
+Stats persist to SQLite across server restarts. The dashboard auto-refreshes every 10 seconds.
 
 ---
 
@@ -164,11 +166,20 @@ server:
   # Optional: restrict the web UI config editor with a separate key
   # admin_key: "your-admin-key"
 
+  # Optional: path to SQLite database for persistent stats (default: stats.db)
+  # stats_path: "stats.db"
+
+  # Optional: disable stats tracking entirely
+  # disable_stats: false
+
 backends:
   - name: my-backend # used as the model prefix
     type: openai # only supported type currently
     base_url: https://... # provider API base URL
     api_key: "..." # your provider API key
+
+    # Optional: set to false to disable this backend without removing it from config
+    # enabled: true
 
     # Optional: restrict to specific models (if omitted, all models are accepted)
     models:
@@ -198,8 +209,8 @@ internal/
   backend/          — Backend interface, OpenAI HTTP client, registry & model routing
   config/           — YAML config loading, validation, hot-reload manager
   proxy/            — HTTP handler (chat completions, model listing), auth middleware
-  stats/            — In-memory request/token collector and aggregator
-  web/              — Dashboard UI, config editor (HTMX + Go templates)
+  stats/            — In-memory collector + SQLite persistent storage
+  web/              — Dashboard, Models, Settings UI (HTMX + Go templates)
 ```
 
 ---
