@@ -720,3 +720,444 @@ func TestCopilotProxy_StatsRecording_Streaming(t *testing.T) {
 		t.Errorf("client = %q, want %q", rec1.Client, "stream-client")
 	}
 }
+
+// --- VAL-CODEX-006 & VAL-CODEX-007: Native Responses API passthrough ---
+
+// mockResponsesBackend implements both Backend and ResponsesBackend for testing.
+type mockResponsesBackend struct {
+	mockBackend
+	responsesBody   []byte      // Raw response body for non-streaming
+	responsesErr    error
+	responsesStreamBody string  // Raw SSE stream body for streaming
+	responsesStreamErr  error
+	responsesRequestCount int
+	lastResponsesModel   string
+}
+
+func (m *mockResponsesBackend) Responses(_ context.Context, req *backend.ResponsesRequest) (*backend.ResponsesResponse, error) {
+	m.responsesRequestCount++
+	m.lastResponsesModel = req.Model
+	if m.responsesErr != nil {
+		return nil, m.responsesErr
+	}
+	return &backend.ResponsesResponse{Body: m.responsesBody}, nil
+}
+
+func (m *mockResponsesBackend) ResponsesStream(_ context.Context, req *backend.ResponsesRequest) (io.ReadCloser, error) {
+	m.responsesRequestCount++
+	m.lastResponsesModel = req.Model
+	if m.responsesStreamErr != nil {
+		return nil, m.responsesStreamErr
+	}
+	return io.NopCloser(strings.NewReader(m.responsesStreamBody)), nil
+}
+
+// makeResponsesRequest creates an HTTP request for POST /v1/responses.
+func makeResponsesRequest(t *testing.T, body map[string]any, apiKey string) *http.Request {
+	t.Helper()
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(bodyBytes)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	return req
+}
+
+// --- VAL-CODEX-006: Non-streaming responses API passthrough ---
+
+func TestResponses_NonStreamingPassthrough(t *testing.T) {
+	// Build a Codex Responses API response body.
+	codexResp := map[string]any{
+		"id":     "resp_abc123",
+		"object": "response",
+		"status": "completed",
+		"model":  "o4-mini",
+		"output": []map[string]any{
+			{
+				"type":   "message",
+				"id":     "msg_001",
+				"role":   "assistant",
+				"status": "completed",
+				"content": []map[string]any{
+					{"type": "output_text", "text": "Hello from Codex!"},
+				},
+			},
+		},
+		"usage": map[string]any{
+			"input_tokens":  10,
+			"output_tokens": 5,
+		},
+	}
+	respBody, _ := json.Marshal(codexResp)
+
+	codexBackend := &mockResponsesBackend{
+		mockBackend: mockBackend{
+			name:   "codex",
+			models: []string{"o4-mini", "gpt-5.2-codex"},
+		},
+		responsesBody: respBody,
+	}
+
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"codex": codexBackend,
+	}, config.RoutingConfig{})
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeResponsesRequest(t, map[string]any{
+		"model":  "codex/o4-mini",
+		"input":  "Say hello",
+		"stream": false,
+	}, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.Responses(rec, req)
+
+	resp := rec.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	// Verify the response body is the raw Codex response (no translation).
+	var respData map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if respData["object"] != "response" {
+		t.Errorf("response object = %v, want %q", respData["object"], "response")
+	}
+	if respData["id"] != "resp_abc123" {
+		t.Errorf("response id = %v, want %q", respData["id"], "resp_abc123")
+	}
+	if respData["status"] != "completed" {
+		t.Errorf("response status = %v, want %q", respData["status"], "completed")
+	}
+
+	// Verify the model was stripped of prefix.
+	if codexBackend.lastResponsesModel != "o4-mini" {
+		t.Errorf("model sent to backend = %q, want %q", codexBackend.lastResponsesModel, "o4-mini")
+	}
+
+	// Verify backend was called exactly once.
+	if codexBackend.responsesRequestCount != 1 {
+		t.Errorf("responses request count = %d, want 1", codexBackend.responsesRequestCount)
+	}
+}
+
+// --- VAL-CODEX-007: Streaming responses API passthrough ---
+
+func TestResponses_StreamingPassthrough(t *testing.T) {
+	// Build a Codex SSE stream with native Responses API event types.
+	codexStream := "" +
+		"data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_abc\",\"status\":\"in_progress\"}}\n\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello\"}\n\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\" from\"}\n\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\" Codex!\"}\n\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_abc\",\"status\":\"completed\"}}\n\n"
+
+	codexBackend := &mockResponsesBackend{
+		mockBackend: mockBackend{
+			name:   "codex",
+			models: []string{"o4-mini"},
+		},
+		responsesStreamBody: codexStream,
+	}
+
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"codex": codexBackend,
+	}, config.RoutingConfig{})
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeResponsesRequest(t, map[string]any{
+		"model":  "codex/o4-mini",
+		"input":  "Say hello",
+		"stream": true,
+	}, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.Responses(rec, req)
+
+	resp := rec.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	// Verify the response is SSE.
+	contentType := resp.Header.Get("Content-Type")
+	if contentType != "text/event-stream" {
+		t.Errorf("content-type = %q, want %q", contentType, "text/event-stream")
+	}
+
+	// Read the full response body.
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read response body: %v", err)
+	}
+	body := string(bodyBytes)
+
+	// Verify Codex-specific event types are present (NOT chat completion format).
+	if !strings.Contains(body, "response.created") {
+		t.Error("expected 'response.created' event type in SSE stream")
+	}
+	if !strings.Contains(body, "response.output_text.delta") {
+		t.Error("expected 'response.output_text.delta' event type in SSE stream")
+	}
+	if !strings.Contains(body, "response.completed") {
+		t.Error("expected 'response.completed' event type in SSE stream")
+	}
+
+	// Verify NO chat completion format events are present.
+	if strings.Contains(body, "chat.completion.chunk") {
+		t.Error("should NOT contain 'chat.completion.chunk' — raw Codex events should be forwarded as-is")
+	}
+
+	// Verify the model was stripped of prefix.
+	if codexBackend.lastResponsesModel != "o4-mini" {
+		t.Errorf("model sent to backend = %q, want %q", codexBackend.lastResponsesModel, "o4-mini")
+	}
+
+	// Verify backend was called exactly once.
+	if codexBackend.responsesRequestCount != 1 {
+		t.Errorf("responses request count = %d, want 1", codexBackend.responsesRequestCount)
+	}
+}
+
+// --- Error for backends that don't support ResponsesBackend ---
+
+func TestResponses_UnsupportedBackend(t *testing.T) {
+	// A regular mockBackend does NOT implement ResponsesBackend.
+	regularBackend := &mockBackend{
+		name:   "openrouter",
+		models: []string{"gpt-4o"},
+	}
+
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"openrouter": regularBackend,
+	}, config.RoutingConfig{})
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeResponsesRequest(t, map[string]any{
+		"model": "openrouter/gpt-4o",
+		"input": "test",
+	}, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.Responses(rec, req)
+
+	resp := rec.Result()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+
+	// Verify the error message mentions the backend doesn't support Responses API.
+	var errResp map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+		t.Fatalf("failed to decode error response: %v", err)
+	}
+	errMsg := ""
+	if e, ok := errResp["error"].(map[string]any); ok {
+		errMsg, _ = e["message"].(string)
+	}
+	if !strings.Contains(errMsg, "does not support the Responses API") {
+		t.Errorf("error message = %q, want it to mention Responses API not supported", errMsg)
+	}
+}
+
+// --- Responses API with missing model field ---
+
+func TestResponses_MissingModel(t *testing.T) {
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{}, config.RoutingConfig{})
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeResponsesRequest(t, map[string]any{
+		"input": "test",
+	}, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.Responses(rec, req)
+
+	resp := rec.Result()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
+// --- Responses API with unknown model ---
+
+func TestResponses_UnknownModel(t *testing.T) {
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{}, config.RoutingConfig{})
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeResponsesRequest(t, map[string]any{
+		"model": "nonexistent/model",
+		"input": "test",
+	}, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.Responses(rec, req)
+
+	resp := rec.Result()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
+// --- Responses API backend error forwarding ---
+
+func TestResponses_BackendError(t *testing.T) {
+	codexBackend := &mockResponsesBackend{
+		mockBackend: mockBackend{
+			name:   "codex",
+			models: []string{"o4-mini"},
+		},
+		responsesErr: &backend.BackendError{
+			StatusCode: 500,
+			Body:       `{"error":{"message":"internal server error"}}`,
+			Err:        fmt.Errorf("codex backend returned status 500"),
+		},
+	}
+
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"codex": codexBackend,
+	}, config.RoutingConfig{})
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeResponsesRequest(t, map[string]any{
+		"model": "codex/o4-mini",
+		"input": "test",
+	}, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.Responses(rec, req)
+
+	resp := rec.Result()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+}
+
+// --- Responses API streaming error forwarding ---
+
+func TestResponses_StreamingBackendError(t *testing.T) {
+	codexBackend := &mockResponsesBackend{
+		mockBackend: mockBackend{
+			name:   "codex",
+			models: []string{"o4-mini"},
+		},
+		responsesStreamErr: &backend.BackendError{
+			StatusCode: 429,
+			Body:       `{"error":{"message":"rate limit exceeded"}}`,
+			Err:        fmt.Errorf("codex backend returned status 429"),
+		},
+	}
+
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"codex": codexBackend,
+	}, config.RoutingConfig{})
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeResponsesRequest(t, map[string]any{
+		"model":  "codex/o4-mini",
+		"input":  "test",
+		"stream": true,
+	}, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.Responses(rec, req)
+
+	resp := rec.Result()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+}
+
+// --- Method not allowed for GET on /v1/responses ---
+
+func TestResponses_MethodNotAllowed(t *testing.T) {
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{}, config.RoutingConfig{})
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	req.Header.Set("Authorization", "Bearer test-api-key")
+
+	rec := httptest.NewRecorder()
+	handler.Responses(rec, req)
+
+	resp := rec.Result()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusMethodNotAllowed)
+	}
+}
+
+// --- Responses API with routing config ---
+
+func TestResponses_WithRoutingConfig(t *testing.T) {
+	codexResp := map[string]any{
+		"id":     "resp_routed",
+		"object": "response",
+		"status": "completed",
+		"model":  "o4-mini",
+	}
+	respBody, _ := json.Marshal(codexResp)
+
+	codexBackend := &mockResponsesBackend{
+		mockBackend: mockBackend{
+			name:   "codex",
+			models: []string{"o4-mini"},
+		},
+		responsesBody: respBody,
+	}
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{
+				Model:    "codex/o4-mini",
+				Backends: []string{"codex"},
+			},
+		},
+	}
+
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"codex": codexBackend,
+	}, routing)
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeResponsesRequest(t, map[string]any{
+		"model": "codex/o4-mini",
+		"input": "test",
+	}, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.Responses(rec, req)
+
+	resp := rec.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var respData map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if respData["id"] != "resp_routed" {
+		t.Errorf("response id = %v, want %q", respData["id"], "resp_routed")
+	}
+}

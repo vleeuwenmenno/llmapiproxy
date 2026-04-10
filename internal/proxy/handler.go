@@ -324,3 +324,116 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	})
 }
 
+
+// Responses handles POST /v1/responses — native Responses API passthrough.
+// It resolves the backend from the model field, type-asserts the backend
+// implements ResponsesBackend, and forwards the request natively (no translation).
+// Backends that do not support the Responses API receive an appropriate error.
+func (h *Handler) Responses(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+	defer r.Body.Close()
+
+	var req backend.ResponsesRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	req.RawBody = body
+
+	if req.Model == "" {
+		writeError(w, http.StatusBadRequest, "model field is required")
+		return
+	}
+
+	// Resolve the backend for the given model.
+	entries, err := h.registry.ResolveRoute(req.Model, h.cfgMgr.Get().Routing)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Try each backend in the routing chain.
+	for _, entry := range entries {
+		// Type-assert to ResponsesBackend.
+		rb, ok := entry.Backend.(backend.ResponsesBackend)
+		if !ok {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("backend %q does not support the Responses API", entry.Backend.Name()))
+			return
+		}
+
+		reqCopy := req
+		reqCopy.Model = entry.ModelID
+
+		if req.Stream {
+			h.handleResponsesStream(r.Context(), w, rb, &reqCopy, entry.Backend.Name())
+		} else {
+			h.handleResponsesNonStream(r.Context(), w, rb, &reqCopy, entry.Backend.Name())
+		}
+		return
+	}
+
+	writeError(w, http.StatusBadRequest, "no backend found for model "+req.Model)
+}
+
+// handleResponsesNonStream forwards a non-streaming Responses API request natively.
+func (h *Handler) handleResponsesNonStream(ctx context.Context, w http.ResponseWriter, rb backend.ResponsesBackend, req *backend.ResponsesRequest, backendName string) {
+	resp, err := rb.Responses(ctx, req)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "backend error: "+err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(resp.Body)
+}
+
+// handleResponsesStream forwards a streaming Responses API request natively.
+// The raw SSE stream from the upstream is piped directly to the client.
+func (h *Handler) handleResponsesStream(ctx context.Context, w http.ResponseWriter, rb backend.ResponsesBackend, req *backend.ResponsesRequest, backendName string) {
+	stream, err := rb.ResponsesStream(ctx, req)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "backend error: "+err.Error())
+		return
+	}
+	defer stream.Close()
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	scanner := bufio.NewScanner(stream)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if ctx.Err() != nil {
+			break
+		}
+
+		fmt.Fprintf(w, "%s\n", line)
+		if line == "" {
+			// Blank line signals end of SSE event — flush.
+			flusher.Flush()
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("responses stream scan error: %v", err)
+	}
+}

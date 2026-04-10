@@ -727,3 +727,108 @@ type ChunkChoice struct {
 	Delta        *Message `json:"delta,omitempty"`
 	FinishReason *string  `json:"finish_reason,omitempty"`
 }
+
+// --- ResponsesBackend interface implementation (native passthrough) ---
+
+// Responses sends a non-streaming Responses API request natively (no translation).
+func (b *CodexBackend) Responses(ctx context.Context, req *ResponsesRequest) (*ResponsesResponse, error) {
+	return b.doResponses(ctx, req, 0)
+}
+
+func (b *CodexBackend) doResponses(ctx context.Context, req *ResponsesRequest, retryCount int) (*ResponsesResponse, error) {
+	token, err := b.getAccessToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("codex backend %s: %w", b.name, err)
+	}
+
+	// Use the raw body directly — no format translation.
+	body := req.RawBody
+
+	endpoint := b.baseURL + codexResponsesPath
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("codex backend %s: creating request: %w", b.name, err)
+	}
+	b.setHeaders(httpReq, token)
+
+	resp, err := b.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("codex backend %s: sending request: %w", b.name, err)
+	}
+	defer resp.Body.Close()
+
+	// Handle 401 with re-auth retry.
+	if resp.StatusCode == http.StatusUnauthorized && retryCount < codexMaxAuthRetries {
+		if _, refreshErr := b.oauthHandler.RefreshToken(ctx); refreshErr != nil {
+			return nil, fmt.Errorf("codex backend %s: token refresh failed on 401: %w", b.name, refreshErr)
+		}
+		return b.doResponses(ctx, req, retryCount+1)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(resp.Body)
+		return nil, &BackendError{
+			StatusCode: resp.StatusCode,
+			Body:       string(errBody),
+			Err:        fmt.Errorf("codex backend %s returned status %d: %s", b.name, resp.StatusCode, string(errBody)),
+		}
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("codex backend %s: reading response: %w", b.name, err)
+	}
+
+	return &ResponsesResponse{Body: respBody}, nil
+}
+
+// ResponsesStream sends a streaming Responses API request natively (no translation).
+// Returns the raw SSE stream from the upstream — no format translation.
+func (b *CodexBackend) ResponsesStream(ctx context.Context, req *ResponsesRequest) (io.ReadCloser, error) {
+	return b.doResponsesStream(ctx, req, 0)
+}
+
+func (b *CodexBackend) doResponsesStream(ctx context.Context, req *ResponsesRequest, retryCount int) (io.ReadCloser, error) {
+	token, err := b.getAccessToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("codex backend %s: %w", b.name, err)
+	}
+
+	// Use the raw body directly — no format translation.
+	body := req.RawBody
+
+	endpoint := b.baseURL + codexResponsesPath
+	client := &http.Client{} // No timeout for streaming.
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("codex backend %s: creating request: %w", b.name, err)
+	}
+	b.setHeaders(httpReq, token)
+
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("codex backend %s: sending request: %w", b.name, err)
+	}
+
+	// Handle 401 with re-auth retry.
+	if resp.StatusCode == http.StatusUnauthorized && retryCount < codexMaxAuthRetries {
+		resp.Body.Close()
+		if _, refreshErr := b.oauthHandler.RefreshToken(ctx); refreshErr != nil {
+			return nil, fmt.Errorf("codex backend %s: token refresh failed on 401: %w", b.name, refreshErr)
+		}
+		return b.doResponsesStream(ctx, req, retryCount+1)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, &BackendError{
+			StatusCode: resp.StatusCode,
+			Body:       string(errBody),
+			Err:        fmt.Errorf("codex backend %s returned status %d: %s", b.name, resp.StatusCode, string(errBody)),
+		}
+	}
+
+	// Return the raw stream — no translation to chat completion format.
+	return resp.Body, nil
+}

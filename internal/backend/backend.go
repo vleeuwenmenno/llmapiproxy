@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 )
 
@@ -95,4 +96,38 @@ type Backend interface {
 	// SupportsModel returns true if this backend can handle the given model ID
 	// (without the backend prefix).
 	SupportsModel(modelID string) bool
+}
+
+// ResponsesRequest represents a request to the native Responses API.
+// The request body is forwarded as-is (no format translation).
+// Only backends implementing ResponsesBackend support this.
+type ResponsesRequest struct {
+	Model  string          `json:"model"`
+	Input  json.RawMessage `json:"input,omitempty"`
+	Stream bool            `json:"stream,omitempty"`
+	// RawBody preserves the original request body for native passthrough.
+	RawBody        []byte `json:"-"`
+	APIKeyOverride string `json:"-"`
+}
+
+// ResponsesResponse represents a response from the native Responses API.
+// The response body is forwarded as-is (no format translation).
+type ResponsesResponse struct {
+	// Body is the raw JSON response body.
+	Body []byte
+}
+
+// ResponsesBackend is an optional interface that backends can implement
+// to support native Responses API passthrough (no format translation).
+// CodexBackend implements this; other backends do not.
+type ResponsesBackend interface {
+	Backend
+
+	// Responses sends a non-streaming Responses API request natively.
+	// The request body is forwarded as-is to the upstream API.
+	Responses(ctx context.Context, req *ResponsesRequest) (*ResponsesResponse, error)
+
+	// ResponsesStream sends a streaming Responses API request natively.
+	// Returns a reader of raw SSE data from the upstream (no translation).
+	ResponsesStream(ctx context.Context, req *ResponsesRequest) (io.ReadCloser, error)
 }
