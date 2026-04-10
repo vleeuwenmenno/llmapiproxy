@@ -292,7 +292,6 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		"Overlaps":    overlaps,
 		"DisplayAddr": displayAddr,
 		"SampleModel": sampleModel,
-		"Message":     r.URL.Query().Get("msg"),
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -417,7 +416,7 @@ func (u *UI) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 
 func (u *UI) ToggleBackend(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/ui/models?msg=Failed+to+parse+form.", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/settings?msg=Failed+to+parse+form.", http.StatusSeeOther)
 		return
 	}
 	name := r.FormValue("name")
@@ -433,18 +432,18 @@ func (u *UI) ToggleBackend(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if enabledCount <= 1 {
-			http.Redirect(w, r, "/ui/models?msg=Error:+cannot+disable+the+last+enabled+backend.", http.StatusSeeOther)
+			http.Redirect(w, r, "/ui/settings?msg=Error:+cannot+disable+the+last+enabled+backend.", http.StatusSeeOther)
 			return
 		}
 	}
 
 	if err := u.cfgMgr.ToggleBackend(name, enabled); err != nil {
-		http.Redirect(w, r, "/ui/models?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/settings?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
 		return
 	}
 	status := "disabled"
 	if enabled {
 		status = "enabled"
 	}
-	http.Redirect(w, r, "/ui/models?msg=Backend+"+name+"+"+status+".", http.StatusSeeOther)
+	http.Redirect(w, r, "/ui/settings?msg=Backend+"+name+"+"+status+".", http.StatusSeeOther)
 }

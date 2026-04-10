@@ -80,7 +80,7 @@ func main() {
 		r.Post("/settings/clear-stats", ui.ClearStats)
 		r.Post("/settings/keys/add", ui.AddAPIKey)
 		r.Post("/settings/keys/delete", ui.DeleteAPIKey)
-		r.Post("/models/backends/toggle", ui.ToggleBackend)
+		r.Post("/settings/backends/toggle", ui.ToggleBackend)
 
 		staticSub, err := fs.Sub(web.StaticFS(), "static")
 		if err != nil {
