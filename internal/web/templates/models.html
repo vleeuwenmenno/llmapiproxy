@@ -771,13 +771,9 @@
                 <img class="connect-icon" src="/ui/static/icons/zed-logo-white.svg" alt="Zed">
                 Zed Editor
             </button>
-            <button class="connect-btn" onclick="openModal('modal-continue')">
-                <img class="connect-icon" src="/ui/static/icons/vscode.svg" alt="VS Code">
-                VS Code Continue
-            </button>
             <button class="connect-btn" onclick="openModal('modal-copilot-ext')">
-                <img class="connect-icon" src="/ui/static/icons/vscode-alt.svg" alt="VS Code">
-                VS Code Copilot
+                <img class="connect-icon" src="/ui/static/icons/vscode.svg" alt="VS Code">
+                VS Code
             </button>
             <button class="connect-btn" onclick="openModal('modal-curl')">
                 <img class="connect-icon" src="/ui/static/icons/terminal.svg" alt="API">
@@ -864,36 +860,6 @@
         </div>
     </div>
 
-    <!-- ── Continue Modal ────────────────────────────────────────── -->
-    <div class="modal-overlay" id="modal-continue" onclick="closeOnBackdrop(event, 'modal-continue')">
-        <div class="modal">
-            <div class="modal-header">
-                <h2><img src="/ui/static/icons/vscode.svg" style="width:18px;height:18px;vertical-align:middle;margin-right:0.4rem">Connect VS Code Continue</h2>
-                <button class="modal-close" onclick="closeModal('modal-continue')">&#x2715;</button>
-            </div>
-            <div class="modal-body">
-                <p>Open the Continue extension settings (<strong>Ctrl+Shift+P → Continue: Open config</strong>) and add the following models to your <strong>~/.continue/config.yaml</strong>:</p>
-
-                <div class="code-block">
-                    <div class="code-block-header">
-                        <span>~/.continue/config.yaml</span>
-                        <button class="copy-block-btn" onclick="copyBlock(this, 'continue-config')">copy</button>
-                    </div>
-                    <pre id="continue-config">models:
-{{- range $i, $b := .Backends}}{{if $b.Enabled}}{{range $b.Models}}
-  - name: "{{.FullID}} (proxy)"
-    provider: openai
-    model: "{{.FullID}}"
-    apiBase: "http://{{$.DisplayAddr}}/v1"
-    apiKey: "your-proxy-api-key"
-{{end}}{{end}}{{end}}</pre>
-                </div>
-
-                <p>Replace <strong>your-proxy-api-key</strong> with one of the keys from your proxy <code style="font-family:var(--mono);font-size:0.85em;background:var(--bg);padding:0.1rem 0.4rem;border-radius:3px">config.yaml</code>. Save the file — Continue reloads automatically.</p>
-            </div>
-        </div>
-    </div>
-
     <!-- ── curl Modal ────────────────────────────────────────────── -->
     <div class="modal-overlay" id="modal-curl" onclick="closeOnBackdrop(event, 'modal-curl')">
         <div class="modal">
@@ -968,34 +934,38 @@
                     A companion VS Code extension that discovers models from this proxy dynamically and surfaces them
                     directly in the <strong>GitHub Copilot Chat</strong> model picker — no hardcoding required.
                 </p>
-                <div style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);border-radius:8px;padding:0.65rem 1rem;margin:0.75rem 0 1.25rem;font-size:0.82rem;color:var(--amber)">
-                    🛒 <strong>Marketplace release coming soon.</strong> Install from source for now.
-                </div>
 
-                <div class="step">Step 1 — Build &amp; install from source</div>
+                <div class="step">Step 1 — Install the extension</div>
+                <p>
+                    Install <strong>LLM API Proxy — Copilot Chat</strong> from the VS Code Marketplace:
+                </p>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>bash</span>
                         <button class="copy-block-btn" onclick="copyBlock(this, 'ext-install')">copy</button>
                     </div>
-                    <pre id="ext-install">git clone https://github.com/vleeuwenmenno/llmapiproxy-vscode-extension
-cd llmapiproxy-vscode-extension
-npm install
-npm run package          # produces llmapiproxy-vscode-chat-*.vsix
-code --install-extension llmapiproxy-vscode-chat-*.vsix</pre>
+                    <pre id="ext-install">code --install-extension vleeuwenmenno.llmapiproxy-vscode-chat</pre>
                 </div>
+                <p style="font-size:0.85rem;color:var(--text)">
+                    Or search for <em>"LLM API Proxy"</em> in the Extensions view (<kbd>Ctrl+Shift+X</kbd>).
+                </p>
 
                 <div class="step">Step 2 — Connect to this proxy</div>
                 <p>Open the Command Palette (<kbd>Ctrl+Shift+P</kbd>) and run <strong>LLM API Proxy: Manage Connection</strong>, then:</p>
                 <ul style="font-size:0.85rem;color:var(--text);margin:0.5rem 0 1rem 1.25rem;line-height:1.9">
                     <li>Choose <strong>Set / Update API Key</strong> and enter your proxy API key</li>
-                    <li>Choose <strong>Change Proxy URL</strong> and set it to <code style="font-family:var(--mono);font-size:0.85em;background:var(--bg);padding:0.1rem 0.4rem;border-radius:3px">http://{{.DisplayAddr}}</code></li>
+                    <li>Optionally choose <strong>Change Proxy URL</strong> if your proxy is not at <code style="font-family:var(--mono);font-size:0.85em;background:var(--bg);padding:0.1rem 0.4rem;border-radius:3px">http://localhost:8000</code></li>
                 </ul>
 
                 <div class="step">Step 3 — Use it</div>
                 <p>Open Copilot Chat (<kbd>Ctrl+Alt+I</kbd>), click the model selector, and pick any model prefixed with a backend name. Run <strong>LLM API Proxy: Refresh Available Models</strong> any time to re-sync.</p>
 
                 <p style="margin-top:1rem">
+                    <a href="https://marketplace.visualstudio.com/items?itemName=vleeuwenmenno.llmapiproxy-vscode-chat" target="_blank"
+                       style="color:var(--accent);text-decoration:none;font-size:0.85rem">
+                        ↗ View on Marketplace
+                    </a>
+                    &nbsp;&nbsp;·&nbsp;&nbsp;
                     <a href="https://github.com/vleeuwenmenno/llmapiproxy-vscode-extension" target="_blank"
                        style="color:var(--accent);text-decoration:none;font-size:0.85rem">
                         ↗ View on GitHub
