@@ -3,13 +3,14 @@ package backend
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/url"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/menno/llmapiproxy/internal/config"
 	"github.com/menno/llmapiproxy/internal/oauth"
@@ -53,6 +54,7 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 
 	for _, bc := range cfg.Backends {
 		if !bc.IsEnabled() {
+			log.Debug().Str("backend", bc.Name).Msg("skipping disabled backend")
 			continue
 		}
 
@@ -64,13 +66,14 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 
 		b, ts, err := r.createBackend(bc, existingTS, cacheTTL)
 		if err != nil {
-			log.Printf("warning: skipping backend %q: %v", bc.Name, err)
+			log.Warn().Str("backend", bc.Name).Err(err).Msg("skipping backend")
 			continue
 		}
 		newBackends[bc.Name] = b
 		if ts != nil {
 			newTokenStores[bc.Name] = ts
 		}
+		log.Info().Str("backend", bc.Name).Msg("registered backend")
 	}
 
 	r.backends = newBackends
@@ -223,7 +226,7 @@ func normalizeCodexClientID(clientID string) string {
 
 	switch strings.ToLower(clientID) {
 	case "your-codex-client-id", "your-client-id", "<your-codex-client-id>", "replace-me":
-		log.Printf("warning: ignoring placeholder codex oauth client_id %q; using built-in client id", clientID)
+		log.Warn().Str("client_id", clientID).Msg("ignoring placeholder codex oauth client_id; using built-in client id")
 		return ""
 	default:
 		return clientID
@@ -243,7 +246,7 @@ func normalizeCodexAuthURL(raw string) string {
 
 	if strings.EqualFold(u.Host, "auth.openai.com") && u.Path == "/authorize" {
 		u.Path = "/oauth/authorize"
-		log.Printf("warning: normalizing legacy Codex auth_url %q to %q", raw, u.String())
+		log.Warn().Str("from", raw).Str("to", u.String()).Msg("normalizing legacy Codex auth_url")
 		return u.String()
 	}
 
@@ -423,4 +426,16 @@ func (r *Registry) RegisterBackend(name string, b Backend) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.backends[name] = b
+}
+
+// ClearAllModelCaches clears the model cache for all registered backends.
+func (r *Registry) ClearAllModelCaches() {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, b := range r.backends {
+		if ob, ok := b.(*OpenAIBackend); ok {
+			ob.ClearModelCache()
+		}
+	}
+	log.Info().Msg("cleared model caches for all backends")
 }

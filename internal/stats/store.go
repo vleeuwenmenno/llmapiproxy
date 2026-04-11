@@ -3,9 +3,10 @@ package stats
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	_ "modernc.org/sqlite"
 )
@@ -83,14 +84,14 @@ func (s *Store) Save(r Record) {
 		boolToInt(r.Fallback),
 	)
 	if err != nil {
-		log.Printf("stats: failed to save record: %v", err)
+		log.Error().Err(err).Msg("stats: failed to save record")
 	}
 }
 
 // DeleteAll removes every record from the database.
 func (s *Store) DeleteAll() {
 	if _, err := s.db.Exec(`DELETE FROM requests`); err != nil {
-		log.Printf("stats: failed to clear records: %v", err)
+		log.Error().Err(err).Msg("stats: failed to clear records")
 	}
 }
 

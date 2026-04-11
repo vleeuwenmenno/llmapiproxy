@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/menno/llmapiproxy/internal/config"
 )
 
@@ -86,8 +88,10 @@ func (b *OpenAIBackend) getCachedOrFetchModels() []Model {
 	b.cacheMu.RUnlock()
 
 	// Cache miss — fetch from upstream.
+	log.Debug().Str("backend", b.name).Msg("model cache miss, fetching from upstream")
 	models, err := b.buildModelList(context.Background())
 	if err != nil {
+		log.Error().Err(err).Str("backend", b.name).Msg("failed to fetch upstream models")
 		return nil
 	}
 
@@ -118,6 +122,7 @@ func (b *OpenAIBackend) ChatCompletion(ctx context.Context, req *ChatCompletionR
 
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
+		log.Error().Str("backend", b.name).Int("status", resp.StatusCode).Str("body", string(errBody)).Msg("chat completion request failed")
 		return nil, &BackendError{StatusCode: resp.StatusCode, Body: string(errBody), Err: fmt.Errorf("backend %s returned status %d: %s", b.name, resp.StatusCode, string(errBody))}
 	}
 
@@ -152,6 +157,7 @@ func (b *OpenAIBackend) ChatCompletionStream(ctx context.Context, req *ChatCompl
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		log.Error().Str("backend", b.name).Int("status", resp.StatusCode).Str("body", string(errBody)).Msg("stream request failed")
 		return nil, &BackendError{StatusCode: resp.StatusCode, Body: string(errBody), Err: fmt.Errorf("backend %s returned status %d: %s", b.name, resp.StatusCode, string(errBody))}
 	}
 
@@ -225,12 +231,14 @@ func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
 		if !b.cacheExpiry.IsZero() && time.Now().Before(b.cacheExpiry) {
 			cached := b.cachedModels
 			b.cacheMu.RUnlock()
+			log.Debug().Str("backend", b.name).Int("models", len(cached)).Msg("model cache hit")
 			return cached, nil
 		}
 		b.cacheMu.RUnlock()
 	}
 
 	// Slow path: fetch from upstream and build model list.
+	log.Debug().Str("backend", b.name).Msg("fetching models from upstream")
 	models, err := b.buildModelList(ctx)
 	if err != nil {
 		// Stale-while-error: return stale cache if available.
@@ -239,10 +247,12 @@ func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
 			if b.cachedModels != nil {
 				cached := b.cachedModels
 				b.cacheMu.RUnlock()
+				log.Warn().Err(err).Str("backend", b.name).Int("models", len(cached)).Msg("upstream fetch failed, returning stale cache")
 				return cached, nil
 			}
 			b.cacheMu.RUnlock()
 		}
+		log.Error().Err(err).Str("backend", b.name).Msg("failed to fetch models")
 		return nil, err
 	}
 
@@ -297,8 +307,10 @@ func (b *OpenAIBackend) buildModelList(ctx context.Context) ([]Model, error) {
 	// Dynamic: fetch full model list from upstream.
 	upstreamModels, err := b.fetchUpstreamModels(ctx)
 	if err != nil {
+		log.Error().Err(err).Str("backend", b.name).Msg("failed to fetch upstream models")
 		return nil, err
 	}
+	log.Info().Str("backend", b.name).Int("count", len(upstreamModels)).Msg("fetched upstream models")
 	models := make([]Model, 0, len(upstreamModels))
 	for _, u := range upstreamModels {
 		m := u.toModel(b.name)

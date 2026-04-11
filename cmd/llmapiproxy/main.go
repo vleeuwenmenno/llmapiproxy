@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,10 +14,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/rs/zerolog/log"
 
 	"github.com/menno/llmapiproxy/internal/backend"
 	"github.com/menno/llmapiproxy/internal/chat"
 	"github.com/menno/llmapiproxy/internal/config"
+	"github.com/menno/llmapiproxy/internal/logger"
 	"github.com/menno/llmapiproxy/internal/oauth"
 	"github.com/menno/llmapiproxy/internal/proxy"
 	"github.com/menno/llmapiproxy/internal/stats"
@@ -27,20 +28,24 @@ import (
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to configuration file")
+	logLevel := flag.String("log-level", "info", "Log level: debug, info, warn, error")
+	logJSON := flag.Bool("log-json", false, "Output structured JSON logs")
 	flag.Parse()
+
+	logger.Init(*logLevel, *logJSON)
 
 	cfgMgr, err := config.NewManager(*configPath)
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		log.Fatal().Err(err).Msg("failed to load config")
 	}
 	defer cfgMgr.Close()
 	cfg := cfgMgr.Get()
-	log.Printf("loaded config from %s with %d backends", *configPath, len(cfg.Backends))
+	log.Info().Str("path", *configPath).Int("backends", len(cfg.Backends)).Msg("loaded config")
 
 	if err := cfgMgr.WatchFile(); err != nil {
-		log.Printf("warning: config file watching disabled: %v", err)
+		log.Warn().Err(err).Msg("config file watching disabled")
 	} else {
-		log.Printf("watching config file %s for changes", *configPath)
+		log.Info().Str("path", *configPath).Msg("watching config file for changes")
 	}
 
 	registry := backend.NewRegistry()
@@ -48,7 +53,7 @@ func main() {
 
 	cfgMgr.OnChange(func(newCfg *config.Config) {
 		registry.LoadFromConfig(newCfg)
-		log.Printf("backends reloaded: %d backends", len(newCfg.Backends))
+		log.Info().Int("backends", len(newCfg.Backends)).Msg("backends reloaded")
 	})
 
 	collector := stats.NewCollector(10000)
@@ -58,21 +63,21 @@ func main() {
 		var err error
 		store, err = stats.OpenStore(cfg.Server.StatsPath, collector)
 		if err != nil {
-			log.Fatalf("failed to open stats database: %v", err)
+			log.Fatal().Err(err).Str("path", cfg.Server.StatsPath).Msg("failed to open stats database")
 		}
 		collector.SetStore(store)
-		log.Printf("stats database: %s", cfg.Server.StatsPath)
+		log.Info().Str("path", cfg.Server.StatsPath).Msg("stats database opened")
 	} else {
-		log.Printf("stats logging disabled (disable_stats: true)")
+		log.Info().Msg("stats logging disabled (disable_stats: true)")
 	}
 
 	proxyHandler := proxy.NewHandler(registry, collector, cfgMgr)
 
 	chatStore, err := chat.OpenChatStore(cfg.Server.ChatDBPath)
 	if err != nil {
-		log.Fatalf("failed to open chat database: %v", err)
+		log.Fatal().Err(err).Str("path", cfg.Server.ChatDBPath).Msg("failed to open chat database")
 	}
-	log.Printf("chat database: %s", cfg.Server.ChatDBPath)
+	log.Info().Str("path", cfg.Server.ChatDBPath).Msg("chat database opened")
 
 	appBaseURL := oauth.DeriveLocalServerBaseURL(cfg.Server.Listen)
 
@@ -146,7 +151,7 @@ func main() {
 
 		staticSub, err := fs.Sub(web.StaticFS(), "static")
 		if err != nil {
-			log.Fatalf("failed to create static sub-filesystem: %v", err)
+			log.Fatal().Err(err).Msg("failed to create static sub-filesystem")
 		}
 		r.Handle("/static/*", http.StripPrefix("/ui/static/", http.FileServer(http.FS(staticSub))))
 	})
@@ -197,22 +202,22 @@ func main() {
 	signal.Notify(sighup, syscall.SIGHUP)
 	go func() {
 		for range sighup {
-			log.Println("received SIGHUP, reloading config...")
+			log.Info().Msg("received SIGHUP, reloading config")
 			if err := cfgMgr.Reload(); err != nil {
-				log.Printf("config reload failed: %v", err)
+				log.Error().Err(err).Msg("config reload failed")
 			} else {
-				log.Println("config reloaded successfully")
+				log.Info().Msg("config reloaded successfully")
 			}
 		}
 	}()
 
 	go func() {
 		displayURL := fmt.Sprintf("http://localhost:%d", cfg.Server.Port)
-		log.Printf("starting server on %s", cfg.Server.Listen)
-		log.Printf("  API:       %s/v1/chat/completions", displayURL)
-		log.Printf("  Dashboard: %s/ui/", displayURL)
+		log.Info().Str("addr", cfg.Server.Listen).Msg("starting server")
+		log.Info().Str("url", displayURL).Msg("  API:       /v1/chat/completions")
+		log.Info().Str("url", displayURL).Msg("  Dashboard: /ui/")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			log.Fatal().Err(err).Msg("server error")
 		}
 	}()
 	go func() {
@@ -223,13 +228,13 @@ func main() {
 	}()
 
 	<-ctx.Done()
-	log.Println("shutting down...")
+	log.Info().Msg("shutting down")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("shutdown error: %v", err)
+		log.Fatal().Err(err).Msg("shutdown error")
 	}
 	if err := codexLoopbackSrv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("codex loopback shutdown error: %v", err)
@@ -238,5 +243,5 @@ func main() {
 		store.Close()
 	}
 	chatStore.Close()
-	log.Println("server stopped")
+	log.Info().Msg("server stopped")
 }

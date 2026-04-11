@@ -8,11 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/menno/llmapiproxy/internal/backend"
 	"github.com/menno/llmapiproxy/internal/config"
@@ -72,6 +73,8 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	originalModel := req.Model
 	start := time.Now()
+
+	log.Info().Str("model", originalModel).Str("strategy", strategy).Str("client", clientName).Bool("stream", req.Stream).Msg("completion request")
 
 	switch strategy {
 	case config.StrategyRace:
@@ -189,6 +192,7 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 			resp.Model = originalModel
 			json.NewEncoder(w).Encode(resp)
 		}
+		log.Info().Str("model", originalModel).Str("backend", entry.Backend.Name()).Int64("latency_ms", latency).Bool("fallback", i > 0).Str("client", clientName).Msg("completion complete")
 		return
 	}
 
@@ -209,6 +213,7 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 		rec.ResponseBody = lastBE.Body
 	}
 	h.collector.Record(rec)
+	log.Error().Str("model", originalModel).Str("backend", lastBackend).Int64("latency_ms", latency).Bool("stream", false).Str("client", clientName).Msg("completion failed: all backends error")
 	writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())
 }
 
@@ -272,6 +277,7 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 		}
 		h.collector.Record(rec)
 		writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())
+		log.Error().Str("model", originalModel).Str("backend", lastBackend).Int64("latency_ms", rec.LatencyMs).Bool("stream", true).Str("client", clientName).Msg("completion failed: all backends error")
 		return
 	}
 	defer stream.Close()
@@ -324,14 +330,15 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 		flusher.Flush()
 	}
 
-	if err := scanner.Err(); err != nil {
-		log.Printf("stream scan error: %v", err)
+	if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
+		log.Error().Err(err).Msg("stream scan error")
 		rec.Error = err.Error()
 	}
 
 	rec.LatencyMs = time.Since(start).Milliseconds()
 	rec.StatusCode = http.StatusOK
 	h.collector.Record(rec)
+	log.Info().Str("model", originalModel).Str("backend", lastBackend).Int64("latency_ms", rec.LatencyMs).Bool("fallback", winnerIdx > 0).Bool("stream", true).Str("client", clientName).Msg("completion complete")
 }
 
 // raceResult holds the outcome of a single backend attempt in race mode.
@@ -594,8 +601,8 @@ func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, e
 		flusher.Flush()
 	}
 
-	if err := scanner.Err(); err != nil {
-		log.Printf("race stream scan error: %v", err)
+	if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
+		log.Error().Err(err).Msg("race stream scan error")
 		rec.Error = err.Error()
 	}
 
@@ -867,8 +874,8 @@ func (h *Handler) handleStaggeredRaceStream(ctx context.Context, w http.Response
 		flusher.Flush()
 	}
 
-	if err := scanner.Err(); err != nil {
-		log.Printf("staggered-race stream scan error: %v", err)
+	if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
+		log.Error().Err(err).Msg("staggered-race stream scan error")
 		rec.Error = err.Error()
 	}
 
@@ -891,7 +898,7 @@ func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 	for _, b := range h.registry.All() {
 		models, err := b.ListModels(r.Context())
 		if err != nil {
-			log.Printf("error listing models from %s: %v", b.Name(), err)
+			log.Warn().Err(err).Str("backend", b.Name()).Msg("error listing models")
 			continue
 		}
 		for _, m := range models {

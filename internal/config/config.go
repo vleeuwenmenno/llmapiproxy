@@ -3,7 +3,6 @@ package config
 import (
 	"crypto/subtle"
 	"fmt"
-	"log"
 	"net"
 	"net/url"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/fsnotify/fsnotify"
 	"gopkg.in/yaml.v3"
@@ -557,11 +558,11 @@ func (m *Manager) WatchFile() error {
 						if elapsed := time.Since(time.UnixMilli(m.selfWriteAt.Load())); elapsed < time.Second {
 							return
 						}
-						log.Printf("config file changed externally, reloading...")
+						log.Info().Msg("config file changed externally, reloading...")
 						if err := m.Reload(); err != nil {
-							log.Printf("config reload failed: %v", err)
+							log.Error().Err(err).Msg("config reload failed")
 						} else {
-							log.Printf("config reloaded successfully")
+							log.Info().Msg("config reloaded successfully")
 						}
 					})
 				}
@@ -569,7 +570,7 @@ func (m *Manager) WatchFile() error {
 				if !ok {
 					return
 				}
-				log.Printf("config file watcher error: %v", err)
+				log.Error().Err(err).Msg("config file watcher error")
 			}
 		}
 	}()

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"sort"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
 
 	"github.com/menno/llmapiproxy/internal/backend"
 	"github.com/menno/llmapiproxy/internal/chat"
@@ -149,7 +149,7 @@ func parseWindowParam(s string) (time.Duration, string) {
 func (u *UI) Dashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "dashboard.html", nil); err != nil {
-		log.Printf("template error: %v", err)
+		log.Error().Err(err).Msg("template error")
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
 }
@@ -245,7 +245,7 @@ func (u *UI) DashboardData(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		log.Printf("dashboard data encode error: %v", err)
+		log.Error().Err(err).Msg("dashboard data encode error")
 	}
 }
 
@@ -264,7 +264,7 @@ func (u *UI) StatsCards(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "stats_cards_fragment.html", data); err != nil {
-		log.Printf("template error: %v", err)
+		log.Error().Err(err).Msg("template error")
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
 }
@@ -297,7 +297,7 @@ func (u *UI) StatsFragment(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "stats_fragment.html", data); err != nil {
-		log.Printf("template error: %v", err)
+		log.Error().Err(err).Msg("template error")
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
 }
@@ -316,7 +316,7 @@ func (u *UI) ConfigPage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "config.html", data); err != nil {
-		log.Printf("template error: %v", err)
+		log.Error().Err(err).Msg("template error")
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
 }
@@ -555,7 +555,7 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "models.html", data); err != nil {
-		log.Printf("template error: %v", err)
+		log.Error().Err(err).Msg("template error")
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
 }
@@ -655,7 +655,7 @@ func (u *UI) BackendModels(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(entries); err != nil {
-		log.Printf("BackendModels: encode error: %v", err)
+		log.Error().Err(err).Msg("BackendModels encode error")
 	}
 }
 
@@ -725,7 +725,7 @@ func (u *UI) PlaygroundModels(w http.ResponseWriter, r *http.Request) {
 	for _, b := range u.registry.All() {
 		list, err := b.ListModels(r.Context())
 		if err != nil {
-			log.Printf("playground: error listing models from %s: %v", b.Name(), err)
+			log.Warn().Err(err).Str("backend", b.Name()).Msg("playground: error listing models")
 			continue
 		}
 		for _, m := range list {
@@ -776,7 +776,7 @@ func (u *UI) PlaygroundPage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "playground.html", data); err != nil {
-		log.Printf("template error: %v", err)
+		log.Error().Err(err).Msg("template error")
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
 }
@@ -821,7 +821,7 @@ func (u *UI) ChatPage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "chat.html", data); err != nil {
-		log.Printf("template error: %v", err)
+		log.Error().Err(err).Msg("template error")
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
 }
@@ -832,7 +832,7 @@ func (u *UI) ChatModels(w http.ResponseWriter, r *http.Request) {
 	for _, b := range u.registry.All() {
 		list, err := b.ListModels(r.Context())
 		if err != nil {
-			log.Printf("chat: error listing models from %s: %v", b.Name(), err)
+			log.Warn().Err(err).Str("backend", b.Name()).Msg("chat: error listing models")
 			continue
 		}
 		for _, m := range list {
@@ -1063,15 +1063,15 @@ func (u *UI) ChatGenerateTitle(w http.ResponseWriter, r *http.Request) {
 
 	// Determine which model to use for title generation.
 	titleModel := cfg.Server.TitleModel
-	log.Printf("ChatGenerateTitle: session=%s config_title_model=%q session_model=%q", id, titleModel, session.Model)
+	log.Debug().Str("session", id).Str("config_title_model", titleModel).Str("session_model", session.Model).Msg("ChatGenerateTitle: resolving model")
 	if titleModel == "" {
 		// Fallback: use the session's model, or just truncate.
 		titleModel = session.Model
-		log.Printf("ChatGenerateTitle: config title_model empty, using session model=%q", titleModel)
+		log.Debug().Str("model", titleModel).Msg("ChatGenerateTitle: using session model (config title_model empty)")
 	}
 	if titleModel == "" {
 		// Last resort: just use truncated first user message.
-		log.Printf("ChatGenerateTitle: no model available, using fallback title")
+		log.Warn().Msg("ChatGenerateTitle: no model available, using fallback title")
 		title := generateFallbackTitle(messages)
 		if title == "" {
 			title = "New Chat"
@@ -1089,7 +1089,7 @@ func (u *UI) ChatGenerateTitle(w http.ResponseWriter, r *http.Request) {
 	} else {
 		modelID = titleModel
 	}
-	log.Printf("ChatGenerateTitle: resolved backend=%q model=%q", backendName, modelID)
+	log.Debug().Str("backend", backendName).Str("model", modelID).Msg("ChatGenerateTitle: resolved backend")
 
 	var targetBackendCfg *config.BackendConfig
 	for i := range cfg.Backends {
@@ -1125,7 +1125,7 @@ func (u *UI) ChatGenerateTitle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if targetBackendCfg == nil {
-		log.Printf("ChatGenerateTitle: backend/model not found, using fallback title")
+		log.Warn().Msg("ChatGenerateTitle: backend/model not found, using fallback title")
 		title := generateFallbackTitle(messages)
 		if title == "" {
 			title = "New Chat"
@@ -1146,7 +1146,7 @@ func (u *UI) ChatGenerateTitle(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	log.Printf("ChatGenerateTitle: calling LLM at %s with model=%s", targetBackendCfg.BaseURL, modelID)
+	log.Debug().Str("url", targetBackendCfg.BaseURL).Str("model", modelID).Msg("ChatGenerateTitle: calling LLM")
 
 	// Call the LLM to generate a title.
 	titleReq := map[string]any{
@@ -1176,7 +1176,7 @@ func (u *UI) ChatGenerateTitle(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Printf("ChatGenerateTitle: LLM call failed: %v", err)
+		log.Error().Err(err).Msg("ChatGenerateTitle: LLM call failed")
 		title := generateFallbackTitle(messages)
 		_ = u.chatStore.UpdateSessionTitle(id, title)
 		w.Header().Set("Content-Type", "application/json")
@@ -1187,7 +1187,7 @@ func (u *UI) ChatGenerateTitle(w http.ResponseWriter, r *http.Request) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		log.Printf("ChatGenerateTitle: LLM returned status %d: %s", resp.StatusCode, string(body))
+		log.Error().Int("status", resp.StatusCode).Str("body", string(body)).Msg("ChatGenerateTitle: LLM returned error status")
 		title := generateFallbackTitle(messages)
 		_ = u.chatStore.UpdateSessionTitle(id, title)
 		w.Header().Set("Content-Type", "application/json")
@@ -1203,7 +1203,7 @@ func (u *UI) ChatGenerateTitle(w http.ResponseWriter, r *http.Request) {
 		} `json:"choices"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&titleResp); err != nil || len(titleResp.Choices) == 0 {
-		log.Printf("ChatGenerateTitle: failed to decode LLM response: %v, choices=%d", err, len(titleResp.Choices))
+		log.Error().Err(err).Int("choices", len(titleResp.Choices)).Msg("ChatGenerateTitle: failed to decode LLM response")
 		title := generateFallbackTitle(messages)
 		_ = u.chatStore.UpdateSessionTitle(id, title)
 		w.Header().Set("Content-Type", "application/json")
@@ -1219,7 +1219,7 @@ func (u *UI) ChatGenerateTitle(w http.ResponseWriter, r *http.Request) {
 	if title == "" {
 		title = "New Chat"
 	}
-	log.Printf("ChatGenerateTitle: generated title=%q", title)
+	log.Debug().Str("title", title).Msg("ChatGenerateTitle: generated title")
 
 	_ = u.chatStore.UpdateSessionTitle(id, title)
 	w.Header().Set("Content-Type", "application/json")
@@ -1348,7 +1348,7 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "settings.html", data); err != nil {
-		log.Printf("template error: %v", err)
+		log.Error().Err(err).Msg("template error")
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
 }
@@ -1454,7 +1454,7 @@ func (u *UI) RequestDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "request_detail.html", rec); err != nil {
-		log.Printf("template error: %v", err)
+		log.Error().Err(err).Msg("template error")
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
 }
@@ -1687,7 +1687,7 @@ func (u *UI) AnalyticsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "analytics.html", data); err != nil {
-		log.Printf("analytics template error: %v", err)
+		log.Error().Err(err).Msg("analytics template error")
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
 }
@@ -1720,31 +1720,31 @@ func (u *UI) AnalyticsData(w http.ResponseWriter, r *http.Request) {
 
 	summary, err := u.store.FilteredSummary(f)
 	if err != nil {
-		log.Printf("analytics: summary error: %v", err)
+		log.Error().Err(err).Msg("analytics: summary error")
 	}
 	pcts, err := u.store.FilteredPercentiles(f)
 	if err != nil {
-		log.Printf("analytics: percentiles error: %v", err)
+		log.Error().Err(err).Msg("analytics: percentiles error")
 	}
 	ts, err := u.store.TimeSeries(f, bucketSecsForFilter(f))
 	if err != nil {
-		log.Printf("analytics: timeseries error: %v", err)
+		log.Error().Err(err).Msg("analytics: timeseries error")
 	}
 	topModels, err := u.store.RankBy(f, "model", 20)
 	if err != nil {
-		log.Printf("analytics: rank models error: %v", err)
+		log.Error().Err(err).Msg("analytics: rank models error")
 	}
 	topBackends, err := u.store.RankBy(f, "backend", 20)
 	if err != nil {
-		log.Printf("analytics: rank backends error: %v", err)
+		log.Error().Err(err).Msg("analytics: rank backends error")
 	}
 	topClients, err := u.store.RankBy(f, "client", 20)
 	if err != nil {
-		log.Printf("analytics: rank clients error: %v", err)
+		log.Error().Err(err).Msg("analytics: rank clients error")
 	}
 	records, total, err := u.store.FilteredRecords(f, page, pageSize)
 	if err != nil {
-		log.Printf("analytics: records error: %v", err)
+		log.Error().Err(err).Msg("analytics: records error")
 	}
 	totalPages := (total + pageSize - 1) / pageSize
 
@@ -1764,7 +1764,7 @@ func (u *UI) AnalyticsData(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		log.Printf("analytics: json encode error: %v", err)
+		log.Error().Err(err).Msg("analytics: json encode error")
 	}
 }
 
@@ -1785,7 +1785,7 @@ func (u *UI) RoutingPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "routing.html", data); err != nil {
-		log.Printf("template error: %v", err)
+		log.Error().Err(err).Msg("template error")
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
 }
@@ -2050,7 +2050,7 @@ func (u *UI) RoutingData(w http.ResponseWriter, r *http.Request) {
 
 	models, err := u.store.RoutingStats(f)
 	if err != nil {
-		log.Printf("routing: stats query error: %v", err)
+		log.Error().Err(err).Msg("routing: stats query error")
 		http.Error(w, "query error", http.StatusInternalServerError)
 		return
 	}
@@ -2064,7 +2064,7 @@ func (u *UI) RoutingData(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		log.Printf("routing: json encode error: %v", err)
+		log.Error().Err(err).Msg("routing: json encode error")
 	}
 }
 
@@ -2094,7 +2094,7 @@ func (u *UI) RoutingBackendFallbacks(w http.ResponseWriter, r *http.Request) {
 
 	records, err := u.store.FallbacksForBackend(name, f, 200)
 	if err != nil {
-		log.Printf("routing: fallbacks query error: %v", err)
+		log.Error().Err(err).Msg("routing: fallbacks query error")
 		http.Error(w, "query error", http.StatusInternalServerError)
 		return
 	}
@@ -2104,6 +2104,6 @@ func (u *UI) RoutingBackendFallbacks(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]any{"items": records}); err != nil {
-		log.Printf("routing: fallbacks encode error: %v", err)
+		log.Error().Err(err).Msg("routing: fallbacks encode error")
 	}
 }
