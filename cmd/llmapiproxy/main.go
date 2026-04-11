@@ -125,6 +125,7 @@ func main() {
 		r.Get("/routing", ui.RoutingPage)
 		r.Get("/routing/data", ui.RoutingData)
 		r.Get("/routing/config", ui.RoutingConfigJSON)
+		r.Get("/routing/backend-fallbacks", ui.RoutingBackendFallbacks)
 		r.Post("/settings/clients/add", ui.AddClient)
 		r.Post("/settings/clients/delete", ui.DeleteClient)
 		r.Post("/settings/server", ui.UpdateServerAddr)

@@ -32,10 +32,10 @@ type ClientConfig struct {
 
 // Valid routing strategy values.
 const (
-	StrategyPriority       = "priority"
-	StrategyRoundRobin     = "round-robin"
-	StrategyRace           = "race"
-	StrategyStaggeredRace  = "staggered-race"
+	StrategyPriority      = "priority"
+	StrategyRoundRobin    = "round-robin"
+	StrategyRace          = "race"
+	StrategyStaggeredRace = "staggered-race"
 )
 
 type ModelRoutingConfig struct {

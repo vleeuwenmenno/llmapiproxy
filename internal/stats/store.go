@@ -602,3 +602,57 @@ func (s *Store) RoutingStats(f StatsFilter) ([]ModelRoutingStats, error) {
 	}
 	return out, nil
 }
+
+// FallbacksForBackend returns recent requests where the given backend was attempted but
+// did NOT win (i.e. it appears in attempted_backends but is not the final backend).
+// limit caps the number of rows returned.
+func (s *Store) FallbacksForBackend(name string, f StatsFilter, limit int) ([]Record, error) {
+	if s == nil {
+		return nil, nil
+	}
+	where, args := buildWhere(f)
+	// We want rows where name appeared in attempted_backends but backend (winner) != name.
+	// SQLite's instr can detect substring, but we need exact word match for comma-delimited list.
+	extraCond := "instr(',' || attempted_backends || ',', ',' || ? || ',') > 0 AND backend != ?"
+	if where == "" {
+		where = "WHERE " + extraCond
+	} else {
+		where += " AND " + extraCond
+	}
+	args = append(args, name, name)
+
+	rows, err := s.db.Query(
+		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
+		        latency_ms,status_code,error,stream,response_body,client,
+		        strategy,attempted_backends,fallback,cached_tokens,reasoning_tokens
+		 FROM requests `+where+`
+		 ORDER BY timestamp DESC
+		 LIMIT ?`,
+		append(args, limit)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []Record
+	for rows.Next() {
+		var r Record
+		var tsMs int64
+		var stream, fallback int
+		if err := rows.Scan(
+			&r.ID, &tsMs, &r.Backend, &r.Model,
+			&r.PromptTokens, &r.CompletionTokens, &r.TotalTokens,
+			&r.LatencyMs, &r.StatusCode, &r.Error, &stream,
+			&r.ResponseBody, &r.Client,
+			&r.Strategy, &r.AttemptedBackends, &fallback,
+			&r.CachedTokens, &r.ReasoningTokens,
+		); err != nil {
+			return nil, err
+		}
+		r.Timestamp = time.UnixMilli(tsMs)
+		r.Stream = stream != 0
+		r.Fallback = fallback != 0
+		records = append(records, r)
+	}
+	return records, rows.Err()
+}

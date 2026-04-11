@@ -521,28 +521,28 @@
     </div>
     <div class="rank-container">
         <div id="tab-models"><table class="rank-table" id="table-models"><thead><tr>
-            <th onclick="sortRank('models','name')">Name</th>
-            <th onclick="sortRank('models','req')">Requests</th>
-            <th onclick="sortRank('models','tok')">Tokens</th>
-            <th onclick="sortRank('models','err')">Errors</th>
-            <th onclick="sortRank('models','lat')">Avg Latency</th>
-            <th onclick="sortRank('models','err_pct')">Error %</th>
+            <th onclick="sortRank('models','name')" title="The model name requested by the client">Name</th>
+            <th onclick="sortRank('models','req')" title="Total number of requests for this model">Requests</th>
+            <th onclick="sortRank('models','tok')" title="Total tokens consumed (prompt + completion)">Tokens</th>
+            <th onclick="sortRank('models','err')" title="Number of requests that returned an error">Errors</th>
+            <th onclick="sortRank('models','lat')" title="Average time from request start to first byte">Avg Latency</th>
+            <th onclick="sortRank('models','err_pct')" title="Percentage of requests that resulted in an error">Error %</th>
         </tr></thead><tbody id="tbody-models"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody></table></div>
         <div id="tab-backends" style="display:none"><table class="rank-table" id="table-backends"><thead><tr>
-            <th onclick="sortRank('backends','name')">Name</th>
-            <th onclick="sortRank('backends','req')">Requests</th>
-            <th onclick="sortRank('backends','tok')">Tokens</th>
-            <th onclick="sortRank('backends','err')">Errors</th>
-            <th onclick="sortRank('backends','lat')">Avg Latency</th>
-            <th onclick="sortRank('backends','err_pct')">Error %</th>
+            <th onclick="sortRank('backends','name')" title="Backend provider name">Name</th>
+            <th onclick="sortRank('backends','req')" title="Total requests handled by this backend">Requests</th>
+            <th onclick="sortRank('backends','tok')" title="Total tokens consumed via this backend">Tokens</th>
+            <th onclick="sortRank('backends','err')" title="Number of failed requests returned by this backend">Errors</th>
+            <th onclick="sortRank('backends','lat')" title="Average response time for this backend">Avg Latency</th>
+            <th onclick="sortRank('backends','err_pct')" title="Percentage of requests that failed on this backend">Error %</th>
         </tr></thead><tbody id="tbody-backends"></tbody></table></div>
         <div id="tab-clients" style="display:none"><table class="rank-table" id="table-clients"><thead><tr>
-            <th onclick="sortRank('clients','name')">Name</th>
-            <th onclick="sortRank('clients','req')">Requests</th>
-            <th onclick="sortRank('clients','tok')">Tokens</th>
-            <th onclick="sortRank('clients','err')">Errors</th>
-            <th onclick="sortRank('clients','lat')">Avg Latency</th>
-            <th onclick="sortRank('clients','err_pct')">Error %</th>
+            <th onclick="sortRank('clients','name')" title="Client API key name">Name</th>
+            <th onclick="sortRank('clients','req')" title="Total requests made by this client">Requests</th>
+            <th onclick="sortRank('clients','tok')" title="Total tokens consumed by this client">Tokens</th>
+            <th onclick="sortRank('clients','err')" title="Number of failed requests from this client">Errors</th>
+            <th onclick="sortRank('clients','lat')" title="Average response latency for this client">Avg Latency</th>
+            <th onclick="sortRank('clients','err_pct')" title="Percentage of this client's requests that resulted in an error">Error %</th>
         </tr></thead><tbody id="tbody-clients"></tbody></table></div>
     </div>
 
@@ -550,11 +550,19 @@
     <div class="section-title">Request Log</div>
     <table class="log-table">
         <thead><tr>
-            <th></th><th>Time</th><th>Backend</th><th>Model</th>
-            <th>Prompt</th><th>Completion</th><th>Total</th>
-            <th>Latency</th><th>Stream</th><th>Client</th>
+            <th title="Request status: green dot = success, red dot = error"></th>
+            <th title="When the request was received">Time</th>
+            <th title="Backend that served the request">Backend</th>
+            <th title="Model name as requested by client">Model</th>
+            <th title="Tokens in the prompt / system message">Prompt</th>
+            <th title="Tokens generated in the response">Completion</th>
+            <th title="Total tokens used (prompt + completion). ⚡ = cached tokens, 🧠 = reasoning tokens">Total</th>
+            <th title="Time from request start to complete response">Latency</th>
+            <th title="SSE = server-sent events streaming, — = buffered">Stream</th>
+            <th title="Routing strategy used and fallback indicator (↩ = primary backend failed, request fell back to another)">Route</th>
+            <th title="Client key that made the request (anonymous if none)">Client</th>
         </tr></thead>
-        <tbody id="log-tbody"><tr><td colspan="10" class="empty">Loading…</td></tr></tbody>
+        <tbody id="log-tbody"><tr><td colspan="11" class="empty">Loading…</td></tr></tbody>
     </table>
     <div class="pagination" id="log-pagination"></div>
 </main>
@@ -953,7 +961,7 @@ function renderRank(tab) {
 function renderLog(rec) {
     var tbody = document.getElementById('log-tbody');
     if (!rec || !rec.items || rec.items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" class="empty">No requests match the current filters.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="empty">No requests match the current filters.</td></tr>';
         document.getElementById('log-pagination').innerHTML = '';
         return;
     }
@@ -961,6 +969,14 @@ function renderLog(rec) {
         var tokExtra = '';
         if (r.cached_tokens > 0) tokExtra += ' <span title="Cached" style="color:var(--amber);font-size:0.7rem">⚡' + fmtNum(r.cached_tokens) + '</span>';
         if (r.reasoning_tokens > 0) tokExtra += ' <span title="Reasoning" style="color:#a78bfa;font-size:0.7rem">🧠' + fmtNum(r.reasoning_tokens) + '</span>';
+        // Route cell: strategy badge + fallback indicator
+        var routeCell = '—';
+        if (r.strategy) {
+            var stratAbbr = {priority:'P','round-robin':'RR',race:'R','staggered-race':'SR'}[r.strategy] || r.strategy;
+            var titleText = r.attempted_backends || r.backend;
+            routeCell = '<span title="' + esc(titleText) + '" style="font-family:monospace;font-size:0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:3px;padding:0.1rem 0.3rem">' + stratAbbr + '</span>';
+            if (r.fallback) routeCell += ' <span title="Fell back from primary backend" style="color:var(--amber);font-size:0.75rem">↩</span>';
+        }
         return '<tr onclick="showDetail(' + r.id + ')" style="cursor:pointer">' +
             '<td>' + (r.error ? '<span class="status-err" title="'+esc(r.error)+'"></span>' : '<span class="status-ok"></span>') + '</td>' +
             '<td>' + fmtTime(r.timestamp) + '</td>' +
@@ -971,6 +987,7 @@ function renderLog(rec) {
             '<td>' + fmtNum(r.total_tokens) + tokExtra + '</td>' +
             '<td>' + fmtDur(r.latency_ms) + '</td>' +
             '<td>' + (r.stream ? 'SSE' : '—') + '</td>' +
+            '<td>' + routeCell + '</td>' +
             '<td>' + esc(r.client) + '</td>' +
             '</tr>';
     }).join('');

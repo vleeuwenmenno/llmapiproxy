@@ -81,6 +81,27 @@ func init() {
 			}
 			return b
 		},
+		// routeChain renders an HTML snippet showing the attempted backend chain.
+		// attempted is a comma-separated list; winner is the backend that succeeded.
+		// If winner is empty (all failed), the last entry in attempted is shown as failed.
+		"routeChain": func(attempted, winner string) template.HTML {
+			if attempted == "" {
+				return ""
+			}
+			parts := strings.Split(attempted, ",")
+			var sb strings.Builder
+			for i, name := range parts {
+				if i > 0 {
+					sb.WriteString(`<span style="color:var(--text-dim,#64748b);margin:0 0.3rem">→</span>`)
+				}
+				if name == winner && winner != "" {
+					sb.WriteString(`<span style="color:var(--green,#34d399);font-family:monospace">✓ ` + name + `</span>`)
+				} else {
+					sb.WriteString(`<span style="color:var(--red,#f87171);font-family:monospace">✗ ` + name + `</span>`)
+				}
+			}
+			return template.HTML(sb.String())
+		},
 	}).ParseFS(templateFS, "templates/*.html"))
 }
 
@@ -1302,17 +1323,17 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
-		"LegacyKeys":   keys, // server.api_keys entries (unnamed, for migration notice only)
-		"Backends":     backends,
-		"StatsCount":   u.collector.TotalCount(),
-		"Message":      msg,
-		"IsError":      strings.HasPrefix(msg, "Error"),
-		"DisableStats": cfg.Server.DisableStats,
-		"ConfigText":   configText,
-		"Clients":      visibleClients,
-		"ClientsJSON":  template.JS(func() []byte { b, _ := json.Marshal(visibleClients); return b }()),
-		"ServerHost":   cfg.Server.Host,
-		"ServerPort":   cfg.Server.Port,
+		"LegacyKeys":    keys, // server.api_keys entries (unnamed, for migration notice only)
+		"Backends":      backends,
+		"StatsCount":    u.collector.TotalCount(),
+		"Message":       msg,
+		"IsError":       strings.HasPrefix(msg, "Error"),
+		"DisableStats":  cfg.Server.DisableStats,
+		"ConfigText":    configText,
+		"Clients":       visibleClients,
+		"ClientsJSON":   template.JS(func() []byte { b, _ := json.Marshal(visibleClients); return b }()),
+		"ServerHost":    cfg.Server.Host,
+		"ServerPort":    cfg.Server.Port,
 		"ModelCacheTTL": cfg.Server.ModelCacheTTL.String(),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -1797,5 +1818,45 @@ func (u *UI) RoutingData(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		log.Printf("routing: json encode error: %v", err)
+	}
+}
+
+// RoutingBackendFallbacks returns recent requests where the named backend was attempted
+// but failed (fell through to another backend). Used to power the routing drilldown modal.
+// Query: ?name=<backend>&window=<1h|6h|24h|7d|30d>
+func (u *UI) RoutingBackendFallbacks(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "name parameter required", http.StatusBadRequest)
+		return
+	}
+	windowParam := r.URL.Query().Get("window")
+	windowLabels := map[string]time.Duration{
+		"1h":  time.Hour,
+		"6h":  6 * time.Hour,
+		"24h": 24 * time.Hour,
+		"7d":  7 * 24 * time.Hour,
+		"30d": 30 * 24 * time.Hour,
+	}
+	windowDur := windowLabels[windowParam]
+
+	f := stats.StatsFilter{}
+	if windowDur > 0 {
+		f.From = time.Now().Add(-windowDur)
+	}
+
+	records, err := u.store.FallbacksForBackend(name, f, 200)
+	if err != nil {
+		log.Printf("routing: fallbacks query error: %v", err)
+		http.Error(w, "query error", http.StatusInternalServerError)
+		return
+	}
+	if records == nil {
+		records = []stats.Record{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]any{"items": records}); err != nil {
+		log.Printf("routing: fallbacks encode error: %v", err)
 	}
 }

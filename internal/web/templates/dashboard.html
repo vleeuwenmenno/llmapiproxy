@@ -710,14 +710,14 @@
         <table>
             <thead>
                 <tr>
-                    <th></th>
-                    <th>Time</th>
-                    <th>Backend</th>
-                    <th>Model</th>
-                    <th>Tokens</th>
-                    <th>Latency</th>
-                    <th>Stream</th>
-                    <th>Client</th>
+                    <th title="Status: green dot = success, red dot = error"></th>
+                    <th title="Time the request was received">Time</th>
+                    <th title="Backend that served the request; ↩ means another backend was tried first (fallback)">Backend</th>
+                    <th title="Model identifier used for this request">Model</th>
+                    <th title="Total tokens used (prompt + completion); ⚡ cached, 🧠 reasoning">Tokens</th>
+                    <th title="End-to-end response latency">Latency</th>
+                    <th title="SSE = server-sent events streaming; — = standard response">Stream</th>
+                    <th title="Named client / API key that sent the request">Client</th>
                 </tr>
             </thead>
             <tbody id="d-recent-tbody">
@@ -914,7 +914,7 @@ function renderDash(d) {
             return '<tr style="cursor:pointer" onclick="showDetail(' + r.id + ')">'
                 + '<td>' + (r.error ? '<span class="status-err" title="' + esc(r.error) + '"></span>' : '<span class="status-ok"></span>') + '</td>'
                 + '<td>' + fmtTime(r.timestamp) + '</td>'
-                + '<td>' + esc(r.backend) + '</td>'
+                + '<td>' + esc(r.backend) + (r.fallback ? ' <span title="Fallback: tried ' + esc(r.attempted_backends) + '" style="color:var(--amber);font-size:0.75rem">↩</span>' : '') + '</td>'
                 + '<td>' + esc(r.model) + '</td>'
                 + '<td>' + tokDetail + '</td>'
                 + '<td>' + fmtDur(r.latency_ms) + '</td>'

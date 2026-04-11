@@ -312,6 +312,11 @@
     <div id="modelList"></div>
 </main>
 
+<!-- Backend drilldown modal -->
+<div id="drilldown-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:200;overflow-y:auto" onclick="if(event.target===this)this.style.display='none'">
+  <div id="drilldown-content" style="max-width:800px;margin:4rem auto;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem"></div>
+</div>
+
 <script>
     let currentWindow = '24h';
 
@@ -457,6 +462,9 @@
         if (n === 0) return '0%';
         return n.toFixed(1) + '%';
     }
+    function fmtTime(iso) {
+        return new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    }
     function fmtNum(n) {
         if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
         if (n >= 1000) return (n/1000).toFixed(1) + 'K';
@@ -500,7 +508,7 @@
                 const errPct = b.requests > 0 ? (b.errors / b.requests * 100) : 0;
                 const fallPct = b.requests > 0 ? (b.fallbacks / b.requests * 100) : 0;
                 return `<tr>
-                    <td><span class="backend-name">${esc(b.name)}</span></td>
+                    <td><span class="backend-name" style="cursor:pointer;text-decoration:underline dotted" title="Click to view fallback log for ${esc(b.name)}" onclick="showBackendDrilldown('${esc(b.name)}')">${esc(b.name)}</span></td>
                     <td><span class="lat-cell ${latClass(b.avg_lat_ms)}">${fmtLat(b.avg_lat_ms)}</span></td>
                     <td><div class="bar-wrap"><div class="bar-track"><div class="bar-fill ${barColor(bi)}" style="width:${b.win_pct.toFixed(1)}%"></div></div><span class="bar-pct">${fmtPct(b.win_pct)}</span></div></td>
                     <td><span class="err-pct ${errClass(errPct)}">${errPct === 0 ? '0%' : errPct.toFixed(1) + '%'}</span></td>
@@ -519,7 +527,7 @@
                     </div>
                 </div>
                 <table class="backend-table">
-                    <thead><tr><th>Backend</th><th>Avg Latency</th><th>Share</th><th>Error Rate</th><th>Fallbacks</th><th>Requests</th></tr></thead>
+                    <thead><tr><th title="Backend provider name — click to see fallback log">Backend</th><th title="Average end-to-end response latency for successful requests">Avg Latency</th><th title="Percentage of requests won by this backend (win rate)">Share</th><th title="Percentage of this backend's requests that returned errors">Error Rate</th><th title="Number of times this backend failed and triggered fallback to another backend">Fallbacks</th><th title="Total requests routed through this backend">Requests</th></tr></thead>
                     <tbody>${rows}</tbody>
                 </table>
             </div>`;
@@ -541,6 +549,57 @@
         } finally {
             document.getElementById('loadingIndicator').style.display = 'none';
         }
+    }
+
+    // ── Backend drilldown ──────────────────────────────────────────
+    async function showBackendDrilldown(name) {
+        const modal = document.getElementById('drilldown-modal');
+        const content = document.getElementById('drilldown-content');
+        content.innerHTML = '<p style="color:var(--text-dim)">Loading…</p>';
+        modal.style.display = '';
+        try {
+            const res = await fetch('/ui/routing/backend-fallbacks?name=' + encodeURIComponent(name) + '&window=' + currentWindow);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            renderDrilldown(data.items || [], name);
+        } catch (e) {
+            content.innerHTML = `<p style="color:var(--red)">Failed to load: ${esc(e.message)}</p>`;
+        }
+    }
+
+    function renderDrilldown(items, name) {
+        const content = document.getElementById('drilldown-content');
+        const rows = items.map(r => {
+            const wonBy = r.backend === name ? '<span style="color:var(--text-dim)">self</span>' : '<span style="color:var(--green)">' + esc(r.backend) + '</span>';
+            return `<tr>
+                <td style="color:var(--text-dim);font-size:0.8rem">${fmtTime(r.timestamp)}</td>
+                <td style="font-family:var(--mono);font-size:0.8rem">${esc(r.model)}</td>
+                <td style="color:var(--red);font-size:0.8rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.error)}">${esc(r.error) || '—'}</td>
+                <td style="font-family:var(--mono);font-size:0.8rem">${fmtLat(r.latency_ms)}</td>
+                <td style="font-size:0.8rem">${wonBy}</td>
+            </tr>`;
+        }).join('');
+        content.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+                <div>
+                    <h2 style="font-size:1.1rem;font-weight:600;margin-bottom:0.25rem">↩ Fallback log: <span style="font-family:var(--mono);color:var(--accent)">${esc(name)}</span></h2>
+                    <p style="font-size:0.8rem;color:var(--text-dim)">Requests where this backend was tried but failed, showing which backend eventually succeeded.</p>
+                </div>
+                <button onclick="document.getElementById('drilldown-modal').style.display='none'" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;padding:0.4rem 0.75rem;border-radius:6px;font-size:0.85rem">&times; Close</button>
+            </div>
+            ${items.length === 0
+                ? '<p style="color:var(--text-dim);text-align:center;padding:2rem 0">No fallback events for this backend in the selected window.</p>'
+                : `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
+                    <thead><tr style="border-bottom:1px solid var(--border)">
+                        <th style="text-align:left;padding:0.5rem 0.75rem;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim)" title="When the request was made">Time</th>
+                        <th style="text-align:left;padding:0.5rem 0.75rem;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim)" title="Model requested">Model</th>
+                        <th style="text-align:left;padding:0.5rem 0.75rem;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim)" title="Error returned by this backend">Error</th>
+                        <th style="text-align:left;padding:0.5rem 0.75rem;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim)" title="Total request latency">Latency</th>
+                        <th style="text-align:left;padding:0.5rem 0.75rem;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim)" title="Backend that ultimately served the request">Won By</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table></div>`
+            }`;
     }
 
     // ── Init ──────────────────────────────────────────────────────

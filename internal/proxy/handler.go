@@ -108,11 +108,23 @@ func attemptedBackends(entries []backend.RouteEntry) string {
 	return strings.Join(names, ",")
 }
 
+// triedBackends returns a comma-separated list of the first n backend names — i.e. those actually attempted.
+func triedBackends(entries []backend.RouteEntry, n int) string {
+	if n > len(entries) {
+		n = len(entries)
+	}
+	names := make([]string, n)
+	for i := 0; i < n; i++ {
+		names[i] = entries[i].Backend.Name()
+	}
+	return strings.Join(names, ",")
+}
+
 func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, entries []backend.RouteEntry, strategy string, req *backend.ChatCompletionRequest, originalModel string, start time.Time, clientName string, cl *config.ClientConfig) {
 	var lastErr error
 	var lastBE *backend.BackendError
 	var lastBackend string
-	attempted := attemptedBackends(entries)
+	triedCount := 0
 
 	for i, entry := range entries {
 		reqCopy := *req
@@ -125,12 +137,14 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 
 		resp, err := entry.Backend.ChatCompletion(ctx, &reqCopy)
 		if err != nil {
+			triedCount++
 			lastErr = err
 			lastBackend = entry.Backend.Name()
 			var be *backend.BackendError
 			if errors.As(err, &be) {
 				lastBE = be
-				if be.StatusCode >= 400 && be.StatusCode < 500 {
+				// 4xx errors (except 429 rate-limit) are client errors — don't retry.
+				if be.StatusCode >= 400 && be.StatusCode < 500 && be.StatusCode != http.StatusTooManyRequests {
 					break
 				}
 			}
@@ -141,6 +155,7 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 		}
 
 		latency := time.Since(start).Milliseconds()
+		triedCount++
 		rec := stats.Record{
 			Timestamp:         start,
 			Backend:           entry.Backend.Name(),
@@ -149,7 +164,7 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 			Stream:            false,
 			Client:            clientName,
 			Strategy:          strategy,
-			AttemptedBackends: attempted,
+			AttemptedBackends: triedBackends(entries, triedCount),
 			Fallback:          i > 0,
 		}
 		if resp.Usage != nil {
@@ -188,7 +203,7 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 		Stream:            false,
 		Client:            clientName,
 		Strategy:          strategy,
-		AttemptedBackends: attempted,
+		AttemptedBackends: triedBackends(entries, triedCount),
 	}
 	if lastBE != nil {
 		rec.ResponseBody = lastBE.Body
@@ -202,7 +217,7 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 	var lastErr error
 	var lastBE *backend.BackendError
 	var lastBackend string
-	attempted := attemptedBackends(entries)
+	triedCount := 0
 	winnerIdx := 0
 
 	for i, entry := range entries {
@@ -217,12 +232,14 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 		var err error
 		stream, err = entry.Backend.ChatCompletionStream(ctx, &reqCopy)
 		if err != nil {
+			triedCount++
 			lastErr = err
 			lastBackend = entry.Backend.Name()
 			var be *backend.BackendError
 			if errors.As(err, &be) {
 				lastBE = be
-				if be.StatusCode >= 400 && be.StatusCode < 500 {
+				// 4xx errors (except 429 rate-limit) are client errors — don't retry.
+				if be.StatusCode >= 400 && be.StatusCode < 500 && be.StatusCode != http.StatusTooManyRequests {
 					break
 				}
 			}
@@ -232,6 +249,7 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 			break
 		}
 		lastBackend = entry.Backend.Name()
+		triedCount++
 		winnerIdx = i
 		break
 	}
@@ -247,7 +265,7 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 			Stream:            true,
 			Client:            clientName,
 			Strategy:          strategy,
-			AttemptedBackends: attempted,
+			AttemptedBackends: triedBackends(entries, triedCount),
 		}
 		if lastBE != nil {
 			rec.ResponseBody = lastBE.Body
@@ -275,7 +293,7 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 		Stream:            true,
 		Client:            clientName,
 		Strategy:          strategy,
-		AttemptedBackends: attempted,
+		AttemptedBackends: triedBackends(entries, triedCount),
 		Fallback:          winnerIdx > 0,
 	}
 
