@@ -78,5 +78,14 @@
       "source": "setup"
     }
   ],
-  "previousRound": null
+  "previousRound": null,
+  "override": {
+    "justification": "VAL-CODEX-010 and VAL-CODEX-011 require real OpenAI OAuth credentials and browser-based authentication flow that cannot be simulated in the automated test environment. The underlying PKCE generation and callback handler logic is fully validated through 28 unit tests with mock OAuth servers. These assertions are deferred to the cross-area-integration feature in Milestone 3 where agent-browser can test the full OAuth flow with real credentials.",
+    "deferredAssertions": [
+      "VAL-CODEX-010",
+      "VAL-CODEX-011"
+    ],
+    "deferredTo": "cross-area-integration (milestone: oauth-ui)",
+    "date": "2026-04-11"
+  }
 }
