@@ -25,6 +25,13 @@ LLM API Proxy is a Go reverse proxy that unifies multiple LLM provider APIs behi
 - `ResolveRoute(model, routing)` returns ordered `[]RouteEntry` for failover
 - Currently only `OpenAIBackend` — being extended with `CopilotBackend` and `CodexBackend`
 
+### Backend Interfaces
+The registry supports several optional interfaces that backends may implement:
+- `OAuthStatusProvider` — Returns current OAuth token status for dashboard display
+- `OAuthLoginHandler` — Initiates OAuth login flow (browser redirect)
+- `OAuthDeviceCodeLoginHandler` — Initiates device code login flow (headless)
+- `OAuthStatusRefresher` — Proactively refreshes OAuth token status; used by the "Check Status" button in the web UI to trigger fresh token exchange/validation before returning status
+
 ### Proxy Handler (`internal/proxy/`)
 - Chi router with auth middleware on `/v1/*` routes
 - Auth: Bearer token → `LookupClient()` → `*ClientConfig` in context

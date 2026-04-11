@@ -1,0 +1,34 @@
+{
+  "featureId": "fix-codex-oauth-redirect",
+  "reviewedAt": "2026-04-11T17:50:00Z",
+  "commitId": "39fa50f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation correctly replaces the hardcoded defaultCodexRedirectURI with dynamic derivation based on the server's actual listen address and the backend's configured name. The DeriveRedirectURI() function handles all relevant listen address formats (:port, 0.0.0.0:port, localhost:port, host:port, IPv6 [::1]:port, empty). The registry integration correctly stores the listen address from config and passes it when creating Codex backends. The full OAuth callback flow test validates end-to-end behavior with a mock token server. All 16 new tests pass, plus all existing tests continue to pass.",
+    "issues": [
+      {
+        "file": "internal/oauth/codex_oauth.go",
+        "line": 532,
+        "severity": "non_blocking",
+        "description": "SetRedirectURI() writes to h.config.RedirectURI without holding h.mu, while AuthorizeURL() reads h.config.RedirectURI (lines 166, 179). This is safe in practice because SetRedirectURI is only called during backend creation in LoadFromConfig (which holds r.mu), before any OAuth flow starts. However, the method is exported and could theoretically be called concurrently. Consider either documenting this constraint or adding synchronization."
+      },
+      {
+        "file": "internal/oauth/codex_oauth.go",
+        "line": 507,
+        "severity": "non_blocking",
+        "description": "DeriveRedirectURI does not URL-encode the backendName parameter. If a backend name contained special characters (spaces, slashes, etc.), it would produce an invalid URL. This is mitigated by the fact that backend names in config are simple identifiers (e.g., 'codex', 'my-codex'), but using url.PathEscape would be more defensive."
+      },
+      {
+        "file": "internal/oauth/codex_oauth.go",
+        "line": 27,
+        "severity": "suggestion",
+        "description": "The defaultCodexRedirectURI constant is still used as the default in DefaultCodexOAuthConfig(). This is fine as a fallback, but could be misleading since it's now overridden in normal flows. A comment clarifying this would be helpful."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The implementation correctly addresses the hardcoded redirect URI issue by introducing DeriveRedirectURI() that dynamically constructs the OAuth callback URL from the server's listen address and the backend name. The registry integration is clean — it stores the listen address from config and passes it during backend creation. The callback flow investigation confirmed the original issue was entirely the hardcoded redirect URI; the callback handler itself works correctly. Test coverage is thorough with 16 new tests covering edge cases (empty, port-only, wildcard, IPv6, custom host, custom backend name) plus a full end-to-end OAuth flow integration test with a mock token server. Minor non-blocking observations: SetRedirectURI() lacks synchronization documentation, and backendName is not URL-encoded in DeriveRedirectURI()."
+}
