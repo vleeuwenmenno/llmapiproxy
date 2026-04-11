@@ -1,53 +1,15 @@
-# GitHub Token Discovery
+# GitHub Token Discovery (DEPRECATED)
 
-## Package: `internal/oauth/`
+> **DEPRECATED**: This module is no longer used by CopilotBackend as of the oauth-refactor milestone.
+> CopilotBackend now uses the GitHub Device Code Flow (`internal/oauth/device_code.go`).
+>
+> The files `internal/oauth/token_discovery.go` and `token_discovery_test.go` still exist
+> but are dead code. They may be removed in a future cleanup feature.
+>
+> See `copilot-backend.md` for the current Copilot authentication approach.
 
-### Types
+## Original Purpose
 
-- **`Discoverer`** — Discovers GitHub tokens from a priority chain of sources
-- **`DiscovererOption`** — Functional options for configuring Discoverer
+The `Discoverer` type in `internal/oauth/token_discovery.go` discovered GitHub tokens from a priority chain of sources: `COPILOT_GITHUB_TOKEN` → `GH_TOKEN` → `GITHUB_TOKEN` → `gh auth token` CLI → `~/.config/gh/hosts.yml` → persisted token file.
 
-### Configuration Options
-
-- `WithTokenStore(ts *TokenStore)` — Provide a TokenStore for persisted token fallback
-- `WithGhCliPath(path string)` — Override path to `gh` CLI binary (default: `"gh"`)
-- `WithHostsYmlPath(path string)` — Override path to hosts.yml (default: `~/.config/gh/hosts.yml`)
-
-### Key Methods
-
-- `NewDiscoverer(opts ...DiscovererOption) *Discoverer` — Creates a new Discoverer
-- `DiscoverGitHubToken() (token string, source string, err error)` — Runs discovery chain
-
-### Priority Chain
-
-1. `COPILOT_GITHUB_TOKEN` env var → source: `"env:COPILOT_GITHUB_TOKEN"`
-2. `GH_TOKEN` env var → source: `"env:GH_TOKEN"`
-3. `GITHUB_TOKEN` env var → source: `"env:GITHUB_TOKEN"`
-4. `gh auth token` CLI (5s timeout) → source: `"gh_cli"`
-5. `~/.config/gh/hosts.yml` github.com entry → source: `"hosts.yml"`
-6. Persisted token file (via TokenStore) → source: `"persisted"`
-
-### Behavior
-
-- Empty/whitespace-only values from any source are treated as missing (skipped)
-- Returns `("", "", nil)` when no token is found (not an error)
-- `gh auth token` runs in a separate process group with a 5-second timeout; on timeout, the entire process group is killed via SIGKILL
-- Malformed `hosts.yml` files are silently skipped
-- Missing `hosts.yml` files are silently skipped
-- No TokenStore configured means persisted fallback is skipped
-
-### Usage
-
-```go
-d := NewDiscoverer(WithTokenStore(ts))
-token, source, err := d.DiscoverGitHubToken()
-if err != nil { ... }
-if token == "" { /* no token found */ }
-fmt.Printf("found token from %s\n", source)
-```
-
-### Design Decisions
-
-- **Process group kill**: `checkGhCli` starts `gh` in a new process group (`Setpgid: true`) and kills the entire group on timeout, preventing orphaned child processes
-- **Stale persisted tokens**: Discovery returns even expired persisted tokens; the caller decides whether to use them or trigger a fresh exchange
-- **Graceful degradation**: Every source failure is silently handled; discovery never errors, only returns empty
+This was replaced by the Device Code Flow in commit `800db77` (feature `copilot-device-code-flow`).

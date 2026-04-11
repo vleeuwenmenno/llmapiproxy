@@ -103,3 +103,45 @@ The Codex OAuth redirect URI is now derived dynamically from the server's listen
 - It's used both in the authorize URL and the token exchange (they must match)
 - The pending state stores a copy of the redirect URI at the time of `AuthorizeURL()`, so config changes during a flow don't break it
 - Hot-reload correctly updates the redirect URI if the listen address changes
+
+## Force-Streaming for Prompt Caching
+
+`doChatCompletion` (non-streaming ChatCompletion) now forces `stream=true` internally when sending to the Codex Responses API, matching the CLIProxyAPIPlus pattern. This ensures consistent prompt caching behavior on Codex servers.
+
+### How it works
+1. `doChatCompletion` sets `stream=true` in the Codex request body
+2. The SSE response is read via `readCodexSSEToCompletion` which collects `response.output_text.delta` events and extracts the `response.completed` event
+3. The `response.completed` event contains the full output and usage stats
+4. A fallback synthesizes the response from collected text deltas if no `response.completed` event is received
+5. The client receives a normal non-streaming `ChatCompletionResponse`
+
+### Impact
+- `codexHTTPTimeout` constant (5 minutes) is now only used by `doResponses` (native Responses API passthrough), NOT by `doChatCompletion` which creates an ad-hoc `http.Client{}` without timeout (matching the streaming pattern)
+- Streaming requests (`doChatCompletionStream`) are completely unchanged
+
+## Device Code Flow (Alternative Login)
+
+Codex supports both PKCE browser login and Device Code Flow for headless/SSH environments.
+
+### Constants
+- Device code endpoint: `POST auth.openai.com/oauth/device/code`
+- Polling endpoint: `POST auth.openai.com/oauth/token` with `grant_type=urn:ietf:params:oauth:grant-type:device_code`
+- Client ID: `app_EMoamEEZ73f0CkXaXp7hrann`
+- Default poll interval: 5 seconds
+- Default expiry: 900 seconds (15 minutes)
+
+### Implementation
+- `internal/oauth/codex_device_code.go` — `InitiateDeviceCodeLogin`, `pollForToken`
+- Reuses `DeviceCodeError` type from `device_code.go`
+- Tokens from device code flow have the same lifecycle as PKCE tokens (stored in TokenStore, refreshable)
+- Web UI offers both "Connect (Browser)" and "Connect (Device Code)" buttons for Codex backends
+
+### Authorize URL Parameters
+The PKCE authorize URL includes: `codex_cli_simplified_flow=true`, `id_token_add_organizations=true`, `originator=codex_cli_rs`
+
+### Device Code Login Flow
+1. POST to device code endpoint → receives `device_code`, `user_code`, `verification_uri`, `expires_in`, `interval`
+2. Display `user_code` and `verification_uri` to user
+3. Poll token endpoint with `device_code` grant type
+4. Handle errors: `authorization_pending`, `slow_down`, `expired_token`, `access_denied`
+5. On success, store tokens via TokenStore

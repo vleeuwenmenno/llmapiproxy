@@ -1,0 +1,42 @@
+{
+  "featureId": "codex-force-streaming",
+  "milestone": "oauth-refactor",
+  "reviewedAt": "2026-04-11T14:00:00Z",
+  "commitId": "a4b9900",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation forces all Codex ChatCompletion (non-streaming) requests to use stream=true internally for prompt caching consistency, matching the CLIProxyAPIPlus pattern. A new readCodexSSEToCompletion helper reads the full SSE stream, collects text delta events, and extracts the response.completed event to build a codexResponse that is then translated back to the non-streaming ChatCompletion format the client expects. Streaming requests (ChatCompletionStream) are completely unchanged. Four new tests verify the force-streaming behavior, and existing test helpers were updated to auto-detect stream=true and respond accordingly. The implementation is clean, well-commented, and correctly handles the SSE → non-streaming translation.",
+    "issues": [
+      {
+        "file": "internal/backend/codex.go",
+        "line": 31,
+        "severity": "non_blocking",
+        "description": "The codexHTTPTimeout constant (5 minutes) and the b.client field (configured with that timeout) are now unused by doChatCompletion since it creates its own ad-hoc client without timeout. They are still used by doResponses (the native Responses API passthrough). This is not a bug but the comment 'timeout for non-streaming Codex requests' is now misleading since doChatCompletion no longer uses b.client. Consider updating the comment to clarify it applies to the Responses API endpoint only."
+      },
+      {
+        "file": "internal/backend/codex.go",
+        "line": 349,
+        "severity": "suggestion",
+        "description": "readCodexSSEToCompletion only handles 'response.output_text.delta' and 'response.completed' event types. Other SSE event types (e.g., 'response.output_item.added', 'response.content_part.added', 'response.output_text.done') are silently skipped. This is fine for now since the response.completed event contains the full output, but if Codex ever returns content only via other event types without a completed event, the fallback synthesis would only have text deltas. Low risk given that response.completed is expected to always be present."
+      },
+      {
+        "file": "internal/backend/codex.go",
+        "line": 489,
+        "severity": "non_blocking",
+        "description": "doChatCompletion now creates an ad-hoc &http.Client{} without any timeout for the streaming response. This matches the pattern used in doChatCompletionStream and doResponsesStream, which also use timeout-less clients. However, this means a non-streaming ChatCompletion request could hang indefinitely if the upstream never closes the connection. The context (ctx) provides cancellation, so this is mitigated, but it's worth noting that the behavior changed from a 5-minute timeout to no timeout. This is consistent with how streaming is handled elsewhere."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The library/codex-backend.md does not document the force-streaming behavior. It should be updated to note that doChatCompletion forces stream=true internally for prompt caching consistency and reads the SSE stream via readCodexSSEToCompletion. The comment in AGENTS.md already mentions 'All Codex requests are forced to stream mode internally (for prompt caching consistency)' but the library file is more detailed for implementers.",
+      "evidence": ".factory/library/codex-backend.md has no mention of force-streaming or readCodexSSEToCompletion. AGENTS.md 'Codex Auth Approach' section already mentions it.",
+      "target": "library"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The codex-force-streaming feature is well-implemented. The core change is clean: doChatCompletion sets stream=true, reads the full SSE response via readCodexSSEToCompletion, and returns a normal non-streaming ChatCompletionResponse to the client. The SSE parser correctly handles the response.completed event with a fallback to synthesizing from text deltas. Four new tests provide good coverage of the force-streaming behavior, including verifying stream=true is sent, response.completed is parsed correctly, streaming requests are unaffected, and incomplete status maps to finish_reason 'length'. The only minor concerns are: (1) the codexHTTPTimeout comment is now slightly misleading since doChatCompletion no longer uses b.client, and (2) the transition from a 5-minute HTTP timeout to no timeout is consistent with streaming patterns but worth noting. Overall, the implementation is solid and the feature passes review."
+}
