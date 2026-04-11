@@ -895,7 +895,8 @@ func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		for _, m := range models {
-			if existing, ok := seen[m.ID]; ok {
+			publicID := b.Name() + "/" + strings.TrimPrefix(m.ID, b.Name()+"/")
+			if existing, ok := seen[publicID]; ok {
 				// Merge: keep largest context_length and max_output_tokens.
 				if m.ContextLength != nil && (existing.ContextLength == nil || *m.ContextLength > *existing.ContextLength) {
 					existing.ContextLength = m.ContextLength
@@ -915,9 +916,12 @@ func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 				}
 			} else {
 				mCopy := m
-				mCopy.OwnedBy = "llmapiproxy"
-				seen[m.ID] = &mCopy
-				order = append(order, m.ID)
+				mCopy.ID = publicID
+				if mCopy.OwnedBy == "" {
+					mCopy.OwnedBy = b.Name()
+				}
+				seen[publicID] = &mCopy
+				order = append(order, publicID)
 			}
 		}
 	}
