@@ -74,6 +74,8 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	originalModel := req.Model
 	start := time.Now()
 
+	log.Info().Str("model", originalModel).Str("strategy", strategy).Str("client", clientName).Bool("stream", req.Stream).Msg("completion request")
+
 	switch strategy {
 	case config.StrategyRace:
 		if req.Stream {
@@ -190,6 +192,7 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 			resp.Model = originalModel
 			json.NewEncoder(w).Encode(resp)
 		}
+		log.Info().Str("model", originalModel).Str("backend", entry.Backend.Name()).Int64("latency_ms", latency).Bool("fallback", i > 0).Str("client", clientName).Msg("completion complete")
 		return
 	}
 
@@ -210,6 +213,7 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 		rec.ResponseBody = lastBE.Body
 	}
 	h.collector.Record(rec)
+	log.Error().Str("model", originalModel).Str("backend", lastBackend).Int64("latency_ms", latency).Bool("stream", false).Str("client", clientName).Msg("completion failed: all backends error")
 	writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())
 }
 
@@ -273,9 +277,8 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 		}
 		h.collector.Record(rec)
 		writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())
+		log.Error().Str("model", originalModel).Str("backend", lastBackend).Int64("latency_ms", rec.LatencyMs).Bool("stream", true).Str("client", clientName).Msg("completion failed: all backends error")
 		return
-	}
-	defer stream.Close()
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -333,9 +336,8 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 	rec.LatencyMs = time.Since(start).Milliseconds()
 	rec.StatusCode = http.StatusOK
 	h.collector.Record(rec)
+	log.Info().Str("model", originalModel).Str("backend", lastBackend).Int64("latency_ms", rec.LatencyMs).Bool("fallback", winnerIdx > 0).Bool("stream", true).Str("client", clientName).Msg("completion complete")
 }
-
-// raceResult holds the outcome of a single backend attempt in race mode.
 type raceResult struct {
 	resp  *backend.ChatCompletionResponse
 	be    backend.Backend

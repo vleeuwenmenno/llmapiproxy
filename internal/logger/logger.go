@@ -2,33 +2,33 @@
 package logger
 
 import (
-	"io"
 	"os"
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
-// L is the global logger instance. It is initialized to a sensible default
-// (console writer on stderr, InfoLevel) and should be configured once in main
-// via Init.
-var L = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).With().Timestamp().Logger()
+func init() {
+	// Set a reasonable default before Init() is called.
+	log.Logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).With().Timestamp().Logger()
+	zerolog.TimeFieldFormat = time.RFC3339
+}
 
 // Init configures the global logger.  level may be one of "debug", "info",
 // "warn", "error", "fatal", "panic" (case-insensitive).  An empty string
 // defaults to "info".  If json is true the output is structured JSON instead
 // of the human-friendly console format.
 func Init(level string, json bool) {
-	var output io.Writer = os.Stderr
+	var output zerolog.ConsoleWriter = zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}
 
 	if json {
-		output = os.Stderr
+		log.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
 	} else {
-		output = zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}
+		log.Logger = zerolog.New(output).With().Timestamp().Logger()
 	}
 
-	lvl := parseLevel(level)
-	L = zerolog.New(output).Level(lvl).With().Timestamp().Logger()
+	zerolog.SetGlobalLevel(parseLevel(level))
 }
 
 func parseLevel(s string) zerolog.Level {

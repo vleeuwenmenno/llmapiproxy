@@ -37,7 +37,6 @@ func AuthMiddleware(cfgMgr *config.Manager) func(http.Handler) http.Handler {
 				return
 			}
 
-			log.Debug().Str("client", cl.Name).Str("path", r.URL.Path).Msg("auth succeeded")
 
 			ctx := context.WithValue(r.Context(), clientContextKey{}, cl)
 			next.ServeHTTP(w, r.WithContext(ctx))
