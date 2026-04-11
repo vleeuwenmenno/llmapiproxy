@@ -150,3 +150,67 @@ Testing surface, tools, and resource classification for validation.
 - No real OpenAI credentials — browser-based OAuth assertions (VAL-CODEX-010, VAL-CODEX-011) are BLOCKED
 - Go tests with mock OAuth servers can validate the PKCE logic, token exchange, state validation, etc.
 - VAL-CODEX-010 and VAL-CODEX-011 require agent-browser to initiate and complete a real OAuth flow — cannot be tested without real OpenAI credentials
+
+---
+
+## Flow Validator Guidance: OAuth Web UI Surface (agent-browser)
+
+### Isolation Rules
+- All validators share the same proxy instance on port 8000
+- Browser tests interact with the same /ui/settings page
+- Assertions that mutate global state (disconnect, toggle backends) must be serialized with other browser validators
+- Do not run disconnect/toggle tests simultaneously with status-display tests
+- Each browser session should use a unique session ID to avoid conflicts
+
+### Boundaries
+- Do NOT click Disconnect on backends that other validators need to remain connected
+- Do NOT modify the proxy config file directly — use the proxy's web UI for changes
+- Screenshots should be saved to the evidence directory
+- After testing, leave the proxy in the same state (reconnect any disconnected backends)
+
+### Assertions Covered
+- VAL-UI-001 through VAL-UI-017: OAuth Web UI assertions
+- VAL-TOKEN-032: Dashboard reflects token status
+- VAL-CROSS-002, VAL-CROSS-007, VAL-CROSS-009 through VAL-CROSS-015: Cross-area browser tests
+- VAL-CROSS-020: OAuth disconnect and re-auth
+- VAL-CODEX-010, VAL-CODEX-011: Codex OAuth browser flow
+
+### Tool Setup
+- Proxy URL: http://localhost:8000
+- Settings page: http://localhost:8000/ui/settings
+- OAuth status: http://localhost:8000/ui/oauth/status
+- Health: http://localhost:8000/health
+- API auth: Bearer test-proxy-key-12345
+- Start proxy: `go run ./cmd/llmapiproxy -config config-test-oauth-ui.yaml`
+- Browser session prefix: eacf7bf789f7
+
+### Important Notes
+- The copilot backend will show "Not connected" or "Connected" depending on whether gh auth token is available and Copilot token exchange works
+- The codex backend will show "Not connected" since no real OpenAI credentials are configured
+- HTMX auto-refresh is set to 30 seconds — wait at least 30 seconds to observe status updates
+- CSS classes use CSS variables: --green (#34d399), --amber (#fbbf24), --red (#f87171) for token states
+
+---
+
+## Flow Validator Guidance: Cross-Area API Surface (curl)
+
+### Isolation Rules
+- Curl tests share the same proxy instance on port 8000
+- Tests that modify config (SIGHUP, config hot-reload) should be run carefully
+- Config hot-reload tests should not run simultaneously with browser tests
+
+### Boundaries
+- Do NOT send requests to external APIs with real credentials — test routing and error handling only
+- Config hot-reload tests modify config-test-oauth-ui.yaml — clean up after testing
+- Do NOT stop the proxy from within a validator
+
+### Assertions Covered
+- VAL-CROSS-001, VAL-CROSS-003 through VAL-CROSS-006, VAL-CROSS-008: Core API cross-area tests
+- VAL-CROSS-016, VAL-CROSS-017, VAL-CROSS-018, VAL-CROSS-019: Advanced API cross-area tests
+
+### Tool Setup
+- Proxy URL: http://localhost:8000
+- API endpoint: http://localhost:8000/v1/chat/completions
+- Auth header: Authorization: Bearer test-proxy-key-12345
+- Health: http://localhost:8000/health
+- Models: http://localhost:8000/v1/models
