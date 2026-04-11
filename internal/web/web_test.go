@@ -1,6 +1,9 @@
 package web
 
 import (
+	"encoding/json"
+	"io"
+	"net/url"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -779,5 +782,163 @@ func TestSettingsPage_OAuthCSSDarkLightMode(t *testing.T) {
 	// Light mode overrides should exist
 	if !strings.Contains(body, "body.light") {
 		t.Error("expected body.light CSS rules for light mode token colors")
+	}
+}
+
+// createTestUIWithTokenURL creates a test UI with a codex backend that uses
+// the given tokenURL for the OAuth token exchange endpoint.
+func createTestUIWithTokenURL(t *testing.T, tokenURL string) (*UI, func()) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	tokenDir := filepath.Join(tmpDir, "tokens")
+	os.MkdirAll(tokenDir, 0700)
+
+	configContent := `
+server:
+  listen: ":0"
+  api_keys:
+    - test-key
+backends:
+  - name: copilot
+    type: copilot
+    base_url: https://api.githubcopilot.com
+  - name: codex
+    type: codex
+    base_url: https://chatgpt.com/backend-api/codex
+    oauth:
+      token_url: "` + tokenURL + `"
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+
+	cfgMgr, err := config.NewManager(configPath)
+	if err != nil {
+		t.Fatalf("creating config manager: %v", err)
+	}
+
+	registry := backend.NewRegistry()
+	registry.LoadFromConfig(cfgMgr.Get())
+
+	collector := stats.NewCollector(1000)
+
+	ui := NewUI(cfgMgr, collector, registry, nil)
+
+	cleanup := func() {
+		os.RemoveAll(tmpDir)
+	}
+
+	return ui, cleanup
+}
+
+func TestOAuthCallback_FullFlow(t *testing.T) {
+	// Set up a mock token server that exchanges the code.
+	var receivedCode string
+	var receivedRedirectURI string
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		values, _ := url.ParseQuery(string(body))
+		receivedCode = values.Get("code")
+		receivedRedirectURI = values.Get("redirect_uri")
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token":  "test-access-token",
+			"refresh_token": "test-refresh-token",
+			"token_type":    "Bearer",
+			"expires_in":    3600,
+			"scope":         "openid profile email",
+		})
+	}))
+	defer tokenServer.Close()
+
+	ui, cleanup := createTestUIWithTokenURL(t, tokenServer.URL)
+	defer cleanup()
+
+	// Set up routes.
+	r := chi.NewRouter()
+	r.Get("/ui/oauth/login/{backend}", ui.OAuthLogin)
+	r.Get("/ui/oauth/callback/{backend}", ui.OAuthCallback)
+
+	loginServer := httptest.NewServer(r)
+	defer loginServer.Close()
+
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	// Step 1: Initiate login to get the authorize URL and state.
+	resp, err := client.Get(loginServer.URL + "/ui/oauth/login/codex")
+	if err != nil {
+		t.Fatalf("login request error: %v", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("expected 302, got %d", resp.StatusCode)
+	}
+
+	location := resp.Header.Get("Location")
+	locURL, err := url.Parse(location)
+	if err != nil {
+		t.Fatalf("parsing location: %v", err)
+	}
+
+	state := locURL.Query().Get("state")
+	if state == "" {
+		t.Fatal("state parameter missing from authorize URL")
+	}
+
+	redirectURI := locURL.Query().Get("redirect_uri")
+	// Verify the redirect URI uses the backend name and correct path.
+	if !strings.Contains(redirectURI, "/ui/oauth/callback/codex") {
+		t.Errorf("redirect_uri = %q, should contain /ui/oauth/callback/codex", redirectURI)
+	}
+
+	// Step 2: Simulate the callback (as if the OAuth provider redirected back).
+	callbackURL := loginServer.URL + "/ui/oauth/callback/codex?code=test-auth-code&state=" + state
+	resp, err = client.Get(callbackURL)
+	if err != nil {
+		t.Fatalf("callback request error: %v", err)
+	}
+	resp.Body.Close()
+
+	// Should redirect to settings on success.
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Errorf("expected 303 redirect to settings, got %d", resp.StatusCode)
+	}
+
+	finalLocation := resp.Header.Get("Location")
+	if !strings.Contains(finalLocation, "/ui/settings") {
+		t.Errorf("expected redirect to /ui/settings, got %s", finalLocation)
+	}
+	if !strings.Contains(finalLocation, "authentication+successful") {
+		t.Errorf("expected success message in redirect, got %s", finalLocation)
+	}
+
+	// Verify the token was stored.
+	b := ui.registry.Get("codex")
+	if b == nil {
+		t.Fatal("codex backend not found")
+	}
+	codexBackend := b.(*backend.CodexBackend)
+	store := codexBackend.GetTokenStore()
+	token := store.Get()
+	if token == nil {
+		t.Fatal("token was not stored after callback")
+	}
+	if token.AccessToken != "test-access-token" {
+		t.Errorf("access token = %q, want %q", token.AccessToken, "test-access-token")
+	}
+
+	// Verify the code exchange was called with the correct code and redirect URI.
+	if receivedCode != "test-auth-code" {
+		t.Errorf("code exchange received code %q, want %q", receivedCode, "test-auth-code")
+	}
+	if !strings.Contains(receivedRedirectURI, "/ui/oauth/callback/codex") {
+		t.Errorf("code exchange redirect_uri = %q, should contain /ui/oauth/callback/codex", receivedRedirectURI)
 	}
 }

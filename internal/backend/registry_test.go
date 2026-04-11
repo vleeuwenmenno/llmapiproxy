@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"net/url"
 	"testing"
 	"time"
 
@@ -815,5 +816,188 @@ func TestRegistry_HotReload_RemovesCodexAtRuntime(t *testing.T) {
 	_, _, err := r.Resolve("codex/o4-mini")
 	if err == nil {
 		t.Error("expected error resolving codex/o4-mini after removal")
+	}
+}
+
+
+// --- Redirect URI derivation tests ---
+
+func TestRegistry_CodexBackend_DerivedRedirectURI(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Listen: ":9000",
+		},
+		Backends: []config.BackendConfig{
+			{
+				Name:    "codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+			},
+		},
+	}
+
+	r := NewRegistry()
+	r.LoadFromConfig(cfg)
+
+	b := r.Get("codex")
+	if b == nil {
+		t.Fatal("codex backend is nil")
+	}
+
+	codexBackend, ok := b.(*CodexBackend)
+	if !ok {
+		t.Fatal("backend is not a *CodexBackend")
+	}
+
+	handler := codexBackend.GetOAuthHandler()
+	authURL, _, err := handler.AuthorizeURL()
+	if err != nil {
+		t.Fatalf("AuthorizeURL() error: %v", err)
+	}
+
+	u, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parsing auth URL: %v", err)
+	}
+
+	redirectURI := u.Query().Get("redirect_uri")
+	expected := "http://localhost:9000/ui/oauth/callback/codex"
+	if redirectURI != expected {
+		t.Errorf("redirect_uri = %q, want %q", redirectURI, expected)
+	}
+}
+
+func TestRegistry_CodexBackend_DefaultListenAddr(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Listen: "",
+		},
+		Backends: []config.BackendConfig{
+			{
+				Name:    "codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+			},
+		},
+	}
+
+	r := NewRegistry()
+	r.LoadFromConfig(cfg)
+
+	b := r.Get("codex")
+	if b == nil {
+		t.Fatal("codex backend is nil")
+	}
+
+	codexBackend, ok := b.(*CodexBackend)
+	if !ok {
+		t.Fatal("backend is not a *CodexBackend")
+	}
+
+	handler := codexBackend.GetOAuthHandler()
+	authURL, _, err := handler.AuthorizeURL()
+	if err != nil {
+		t.Fatalf("AuthorizeURL() error: %v", err)
+	}
+
+	u, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parsing auth URL: %v", err)
+	}
+
+	redirectURI := u.Query().Get("redirect_uri")
+	expected := "http://localhost:8000/ui/oauth/callback/codex"
+	if redirectURI != expected {
+		t.Errorf("redirect_uri = %q, want %q", redirectURI, expected)
+	}
+}
+
+func TestRegistry_CodexBackend_CustomBackendName(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Listen: ":8000",
+		},
+		Backends: []config.BackendConfig{
+			{
+				Name:    "my-codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+			},
+		},
+	}
+
+	r := NewRegistry()
+	r.LoadFromConfig(cfg)
+
+	b := r.Get("my-codex")
+	if b == nil {
+		t.Fatal("my-codex backend is nil")
+	}
+
+	codexBackend, ok := b.(*CodexBackend)
+	if !ok {
+		t.Fatal("backend is not a *CodexBackend")
+	}
+
+	handler := codexBackend.GetOAuthHandler()
+	authURL, _, err := handler.AuthorizeURL()
+	if err != nil {
+		t.Fatalf("AuthorizeURL() error: %v", err)
+	}
+
+	u, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parsing auth URL: %v", err)
+	}
+
+	redirectURI := u.Query().Get("redirect_uri")
+	expected := "http://localhost:8000/ui/oauth/callback/my-codex"
+	if redirectURI != expected {
+		t.Errorf("redirect_uri = %q, want %q", redirectURI, expected)
+	}
+}
+
+func TestRegistry_CodexBackend_WildcardListenAddr(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Listen: "0.0.0.0:8080",
+		},
+		Backends: []config.BackendConfig{
+			{
+				Name:    "codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+			},
+		},
+	}
+
+	r := NewRegistry()
+	r.LoadFromConfig(cfg)
+
+	b := r.Get("codex")
+	if b == nil {
+		t.Fatal("codex backend is nil")
+	}
+
+	codexBackend, ok := b.(*CodexBackend)
+	if !ok {
+		t.Fatal("backend is not a *CodexBackend")
+	}
+
+	handler := codexBackend.GetOAuthHandler()
+	authURL, _, err := handler.AuthorizeURL()
+	if err != nil {
+		t.Fatalf("AuthorizeURL() error: %v", err)
+	}
+
+	u, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parsing auth URL: %v", err)
+	}
+
+	redirectURI := u.Query().Get("redirect_uri")
+	expected := "http://localhost:8080/ui/oauth/callback/codex"
+	if redirectURI != expected {
+		t.Errorf("redirect_uri = %q, want %q", redirectURI, expected)
 	}
 }

@@ -1023,3 +1023,177 @@ func newTestTokenStore(t *testing.T) *TokenStore {
 	}
 	return ts
 }
+
+// ============================================================================
+// DeriveRedirectURI Tests
+// ============================================================================
+
+func TestDeriveRedirectURI_PortOnly(t *testing.T) {
+	got := DeriveRedirectURI(":8000", "codex")
+	want := "http://localhost:8000/ui/oauth/callback/codex"
+	if got != want {
+		t.Errorf("DeriveRedirectURI(\":8000\", \"codex\") = %q, want %q", got, want)
+	}
+}
+
+func TestDeriveRedirectURI_PortOnlyDifferentPort(t *testing.T) {
+	got := DeriveRedirectURI(":3000", "mybackend")
+	want := "http://localhost:3000/ui/oauth/callback/mybackend"
+	if got != want {
+		t.Errorf("DeriveRedirectURI(\":3000\", \"mybackend\") = %q, want %q", got, want)
+	}
+}
+
+func TestDeriveRedirectURI_WildcardAddress(t *testing.T) {
+	got := DeriveRedirectURI("0.0.0.0:8000", "codex")
+	want := "http://localhost:8000/ui/oauth/callback/codex"
+	if got != want {
+		t.Errorf("DeriveRedirectURI(\"0.0.0.0:8000\", \"codex\") = %q, want %q", got, want)
+	}
+}
+
+func TestDeriveRedirectURI_LocalhostExplicit(t *testing.T) {
+	got := DeriveRedirectURI("localhost:9000", "codex")
+	want := "http://localhost:9000/ui/oauth/callback/codex"
+	if got != want {
+		t.Errorf("DeriveRedirectURI(\"localhost:9000\", \"codex\") = %q, want %q", got, want)
+	}
+}
+
+func TestDeriveRedirectURI_CustomHost(t *testing.T) {
+	got := DeriveRedirectURI("192.168.1.100:8080", "codex")
+	want := "http://192.168.1.100:8080/ui/oauth/callback/codex"
+	if got != want {
+		t.Errorf("DeriveRedirectURI(\"192.168.1.100:8080\", \"codex\") = %q, want %q", got, want)
+	}
+}
+
+func TestDeriveRedirectURI_EmptyListenAddr(t *testing.T) {
+	got := DeriveRedirectURI("", "codex")
+	want := "http://localhost:8000/ui/oauth/callback/codex"
+	if got != want {
+		t.Errorf("DeriveRedirectURI(\"\", \"codex\") = %q, want %q", got, want)
+	}
+}
+
+func TestDeriveRedirectURI_DifferentBackendName(t *testing.T) {
+	got := DeriveRedirectURI(":8000", "my-codex-backend")
+	want := "http://localhost:8000/ui/oauth/callback/my-codex-backend"
+	if got != want {
+		t.Errorf("DeriveRedirectURI(\":8000\", \"my-codex-backend\") = %q, want %q", got, want)
+	}
+}
+
+func TestDeriveRedirectURI_IPv6Localhost(t *testing.T) {
+	// IPv6 addresses use brackets in host:port form.
+	got := DeriveRedirectURI("[::1]:8000", "codex")
+	want := "http://[::1]:8000/ui/oauth/callback/codex"
+	if got != want {
+		t.Errorf("DeriveRedirectURI(\"[::1]:8000\", \"codex\") = %q, want %q", got, want)
+	}
+}
+
+// ============================================================================
+// SetRedirectURI Tests
+// ============================================================================
+
+func TestSetRedirectURI(t *testing.T) {
+	store := newTestTokenStore(t)
+	defer os.Remove(store.filePath)
+
+	handler := NewCodexOAuthHandler(store, nil)
+
+	// Verify the initial redirect URI.
+	if handler.config.RedirectURI != defaultCodexRedirectURI {
+		t.Errorf("initial RedirectURI = %q, want %q", handler.config.RedirectURI, defaultCodexRedirectURI)
+	}
+
+	// Update the redirect URI.
+	newURI := "http://myhost:9999/ui/oauth/callback/codex"
+	handler.SetRedirectURI(newURI)
+
+	if handler.config.RedirectURI != newURI {
+		t.Errorf("after SetRedirectURI, RedirectURI = %q, want %q", handler.config.RedirectURI, newURI)
+	}
+}
+
+func TestSetRedirectURI_UsedInAuthorizeURL(t *testing.T) {
+	store := newTestTokenStore(t)
+	defer os.Remove(store.filePath)
+
+	handler := NewCodexOAuthHandler(store, &CodexOAuthConfig{
+		ClientID:    "test-client-id",
+		AuthURL:     "https://auth.example.com/authorize",
+		TokenURL:    "https://auth.example.com/token",
+		RedirectURI: "http://initial:8000/callback",
+		Scope:       "openid",
+	})
+
+	// Set a new redirect URI.
+	handler.SetRedirectURI("http://myhost:9999/ui/oauth/callback/codex")
+
+	// Generate an authorize URL and verify it uses the new redirect URI.
+	authURL, _, err := handler.AuthorizeURL()
+	if err != nil {
+		t.Fatalf("AuthorizeURL() error: %v", err)
+	}
+
+	u, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parsing auth URL: %v", err)
+	}
+
+	gotRedirect := u.Query().Get("redirect_uri")
+	if gotRedirect != "http://myhost:9999/ui/oauth/callback/codex" {
+		t.Errorf("authorize URL redirect_uri = %q, want updated URI", gotRedirect)
+	}
+}
+
+func TestSetRedirectURI_UsedInCallbackExchange(t *testing.T) {
+	var receivedRedirectURI string
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		values, _ := url.ParseQuery(string(body))
+		receivedRedirectURI = values.Get("redirect_uri")
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(tokenResponse{
+			AccessToken:  "test-access-token",
+			RefreshToken: "test-refresh-token",
+			TokenType:    "Bearer",
+			ExpiresIn:    3600,
+		})
+	}))
+	defer tokenServer.Close()
+
+	store := newTestTokenStore(t)
+	defer os.Remove(store.filePath)
+
+	handler := NewCodexOAuthHandler(store, &CodexOAuthConfig{
+		ClientID:    "test-client-id",
+		AuthURL:     "https://auth.example.com/authorize",
+		TokenURL:    tokenServer.URL,
+		RedirectURI: "http://initial:8000/callback",
+		Scope:       "openid",
+	})
+
+	// Update the redirect URI BEFORE initiating the flow.
+	handler.SetRedirectURI("http://myhost:9999/ui/oauth/callback/codex")
+
+	// Initiate the flow (stores the new redirect URI in pending state).
+	_, state, err := handler.AuthorizeURL()
+	if err != nil {
+		t.Fatalf("AuthorizeURL() error: %v", err)
+	}
+
+	// Handle the callback.
+	_, err = handler.HandleCallback(context.Background(), "test-auth-code", state)
+	if err != nil {
+		t.Fatalf("HandleCallback() error: %v", err)
+	}
+
+	// Verify the token exchange used the updated redirect URI.
+	if receivedRedirectURI != "http://myhost:9999/ui/oauth/callback/codex" {
+		t.Errorf("token exchange redirect_uri = %q, want updated URI", receivedRedirectURI)
+	}
+}

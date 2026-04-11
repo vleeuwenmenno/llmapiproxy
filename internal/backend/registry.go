@@ -15,9 +15,10 @@ import (
 // It preserves token stores across config hot-reloads so that in-memory
 // tokens are not lost when backends are re-created.
 type Registry struct {
-	mu         sync.RWMutex
-	backends   map[string]Backend
+	mu          sync.RWMutex
+	backends    map[string]Backend
 	tokenStores map[string]*oauth.TokenStore // preserved across reloads
+	listenAddr  string                       // server listen address for deriving OAuth redirect URIs
 }
 
 func NewRegistry() *Registry {
@@ -35,6 +36,9 @@ func NewRegistry() *Registry {
 func (r *Registry) LoadFromConfig(cfg *config.Config) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	// Store the listen address for deriving OAuth redirect URIs.
+	r.listenAddr = cfg.Server.Listen
 
 	newBackends := make(map[string]Backend, len(cfg.Backends))
 	newTokenStores := make(map[string]*oauth.TokenStore)
@@ -122,7 +126,8 @@ func (r *Registry) createCopilotBackend(bc config.BackendConfig, existingTS *oau
 }
 
 // createCodexBackend creates a CodexBackend, reusing the existing token store
-// if provided.
+// if provided. The OAuth redirect URI is derived from the server's listen
+// address and the backend name.
 func (r *Registry) createCodexBackend(bc config.BackendConfig, existingTS *oauth.TokenStore) (*CodexBackend, *oauth.TokenStore, error) {
 	tokenPath := tokenStorePath(bc)
 
@@ -151,6 +156,11 @@ func (r *Registry) createCodexBackend(bc config.BackendConfig, existingTS *oauth
 			oauthCfg.Scope = strings.Join(bc.OAuth.Scopes, " ")
 		}
 	}
+
+	// Derive the redirect URI from the server's actual listen address and
+	// the backend name, instead of using the hardcoded default.
+	redirectURI := oauth.DeriveRedirectURI(r.listenAddr, bc.Name)
+	oauthCfg.RedirectURI = redirectURI
 
 	oauthHandler := oauth.NewCodexOAuthHandler(ts, oauthCfg)
 

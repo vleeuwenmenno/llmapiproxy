@@ -483,3 +483,52 @@ func maskTokenBody(body []byte) string {
 	}
 	return s
 }
+
+// DeriveRedirectURI constructs the OAuth redirect URI from the server's listen
+// address and the backend name. The listen address may be in the form
+// ":8000", "0.0.0.0:8000", "localhost:8000", or any host:port combination.
+// The resulting redirect URI has the form:
+//
+//	http://<host>:<port>/ui/oauth/callback/<backendName>
+//
+// For ":port" or "0.0.0.0:port" forms, "localhost" is used as the host since
+// the redirect must point back to the local machine for the OAuth callback to
+// reach the proxy server.
+func DeriveRedirectURI(listenAddr, backendName string) string {
+	host := "localhost"
+	port := "8000"
+
+	if listenAddr == "" {
+		listenAddr = ":8000"
+	}
+
+	// Split host:port.
+	if strings.HasPrefix(listenAddr, ":") {
+		// ":8000" form — just a port.
+		port = listenAddr[1:]
+	} else {
+		// "host:port" form.
+		lastColon := strings.LastIndex(listenAddr, ":")
+		if lastColon > 0 {
+			host = listenAddr[:lastColon]
+			port = listenAddr[lastColon+1:]
+		} else {
+			// No colon — treat as just a host (unlikely but defensive).
+			host = listenAddr
+		}
+	}
+
+	// Normalize wildcard addresses to localhost.
+	if host == "0.0.0.0" || host == "" {
+		host = "localhost"
+	}
+
+	return fmt.Sprintf("http://%s:%s/ui/oauth/callback/%s", host, port, backendName)
+}
+
+// SetRedirectURI updates the redirect URI used in the OAuth flow.
+// This allows the redirect URI to be set after handler creation, based on
+// the server's actual listen address and the backend name.
+func (h *CodexOAuthHandler) SetRedirectURI(redirectURI string) {
+	h.config.RedirectURI = redirectURI
+}
