@@ -1308,6 +1308,85 @@
             justify-content: flex-end;
             margin-top: 1rem;
         }
+        /* ── Shared .btn classes for wizard (same as settings.html) ── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+            text-decoration: none;
+            border: none;
+            font-family: var(--sans);
+        }
+        .btn-primary {
+            background: var(--accent-dim);
+            color: var(--accent);
+            border: 1px solid rgba(34, 211, 238, 0.3);
+        }
+        .btn-primary:hover { background: rgba(34, 211, 238, 0.2); border-color: var(--accent); }
+        .btn-secondary {
+            background: var(--surface-2);
+            color: var(--text-dim);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { color: var(--text); border-color: var(--text-dim); }
+        .btn-danger {
+            background: rgba(248, 113, 113, 0.15);
+            color: var(--red);
+            border: 1px solid rgba(248, 113, 113, 0.3);
+        }
+        .btn-danger:hover { background: rgba(248, 113, 113, 0.25); border-color: var(--red); }
+        /* ── Wizard Step 3 (auth flow) ── */
+        .wizard-auth-box {
+            text-align: center;
+            padding: 1rem 0 0.5rem;
+        }
+        .wizard-device-code {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: 0.4rem;
+            color: var(--accent);
+            background: var(--bg);
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            padding: 0.75rem 1.5rem;
+            margin: 0.75rem 0;
+            display: inline-block;
+            cursor: pointer;
+            user-select: all;
+        }
+        .wizard-spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+            vertical-align: middle;
+            margin-right: 0.4rem;
+        }
+        .wizard-status-row {
+            font-size: 0.82rem;
+            color: var(--text-dim);
+            margin: 0.75rem 0;
+        }
+        .wizard-success {
+            color: var(--green);
+            font-weight: 600;
+            font-size: 0.9rem;
+            padding: 0.5rem 0;
+        }
+        .wizard-error-msg {
+            color: var(--red);
+            font-size: 0.82rem;
+            margin-top: 0.5rem;
+        }
 
         @media (max-width: 768px) {
             .wizard-type-grid { grid-template-columns: 1fr; }
@@ -1602,7 +1681,7 @@
 
                 <!-- Step 2: Configure -->
                 <div class="wizard-step" id="wizard-step-2">
-                    <form method="POST" action="/ui/settings/backends/add" id="add-backend-form">
+                    <form id="add-backend-form">
                         <input type="hidden" name="type" id="wizard-type-input">
                         <div id="wizard-fields-openai">
                             <div class="wizard-form-group">
@@ -1623,11 +1702,6 @@
                                 <label for="wizard-copilot-name">Backend Name</label>
                                 <input type="text" name="name" id="wizard-copilot-name" value="copilot" autocomplete="off" spellcheck="false">
                             </div>
-                            <div class="wizard-info-box">
-                                &#x2139;&#xFE0F; GitHub Copilot uses Device Code Flow for authentication.
-                                After adding the backend, click <strong>Connect</strong> on the backend card to start the login flow.
-                                No API key is needed.
-                            </div>
                             <input type="hidden" name="base_url" value="https://api.githubcopilot.com">
                             <input type="hidden" name="api_key" value="">
                         </div>
@@ -1636,19 +1710,49 @@
                                 <label for="wizard-codex-name">Backend Name</label>
                                 <input type="text" name="name" id="wizard-codex-name" value="codex" autocomplete="off" spellcheck="false">
                             </div>
-                            <div class="wizard-info-box">
-                                &#x2139;&#xFE0F; OpenAI Codex uses OAuth PKCE browser flow for authentication.
-                                After adding the backend, click <strong>Connect</strong> on the backend card to start the login flow.
-                                No API key is needed.
-                            </div>
                             <input type="hidden" name="base_url" value="https://chatgpt.com/backend-api/codex">
                             <input type="hidden" name="api_key" value="">
                         </div>
+                        <div id="wizard-form-error" class="wizard-error-msg" style="display:none"></div>
                         <div class="wizard-nav">
                             <button type="button" class="btn btn-secondary" onclick="wizardBack()">&#x2190; Back</button>
-                            <button type="submit" class="btn btn-primary">Add Backend</button>
+                            <button type="button" class="btn btn-primary" onclick="wizardSubmit()">Add Backend</button>
                         </div>
                     </form>
+                </div>
+
+                <!-- Step 3: Authenticate -->
+                <div class="wizard-step" id="wizard-step-3">
+                    <!-- Codex auth -->
+                    <div id="wizard-auth-codex" style="display:none">
+                        <div class="wizard-auth-box">
+                            <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1rem">Your backend was added. Sign in with OpenAI to authenticate it.</p>
+                            <a id="wizard-codex-auth-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary" onclick="wizardCodexOpened()">&#x1F517; Sign in with OpenAI</a>
+                        </div>
+                        <div class="wizard-status-row" id="wizard-codex-status" style="display:none">
+                            <span class="wizard-spinner"></span>Waiting for authentication in the new tab&hellip;
+                        </div>
+                    </div>
+                    <!-- Copilot device code -->
+                    <div id="wizard-auth-copilot" style="display:none">
+                        <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:0.5rem">Your backend was added. Authenticate using the device code below.</p>
+                        <div style="text-align:center">
+                            <div>Visit: <a id="wizard-copilot-url" href="#" target="_blank" rel="noopener noreferrer" style="color:var(--accent)"></a></div>
+                            <div class="wizard-device-code" id="wizard-copilot-code" title="Click to copy" onclick="wizardCopyCode(this)">…</div>
+                            <button class="btn btn-secondary" style="font-size:0.75rem;padding:0.3rem 0.75rem" onclick="wizardCopyCode(document.getElementById('wizard-copilot-code'))">&#x1F4CB; Copy Code</button>
+                        </div>
+                        <div class="wizard-status-row" id="wizard-copilot-status">
+                            <span class="wizard-spinner"></span>Waiting — enter the code on the GitHub page&hellip;
+                        </div>
+                    </div>
+                    <!-- Shared success / skip -->
+                    <div id="wizard-auth-success" class="wizard-success" style="display:none;text-align:center">
+                        &#x2713; Authenticated! Reloading&hellip;
+                    </div>
+                    <div id="wizard-auth-error" class="wizard-error-msg" style="display:none;text-align:center"></div>
+                    <div class="wizard-nav">
+                        <button type="button" class="btn btn-secondary" id="wizard-skip-btn" onclick="wizardSkip()">Skip &rarr; Go to Models</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1913,9 +2017,13 @@
 
         // ── Add Backend Wizard ───────────────────────────────────
         var wizardType = '';
+        var wizardAddedName = '';
+        var wizardPollTimer = null;
 
         function resetWizard() {
             wizardType = '';
+            wizardAddedName = '';
+            if (wizardPollTimer) { clearInterval(wizardPollTimer); wizardPollTimer = null; }
             document.querySelectorAll('.wizard-type-card').forEach(function(c) { c.classList.remove('selected'); });
             showWizardStep(1);
             // Reset form fields
@@ -1926,6 +2034,15 @@
             if (cn) cn.value = 'copilot';
             var coden = document.getElementById('wizard-codex-name');
             if (coden) coden.value = 'codex';
+            // Reset step 3 state
+            ['wizard-auth-codex','wizard-auth-copilot','wizard-auth-success','wizard-auth-error'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+            var cs = document.getElementById('wizard-codex-status');
+            if (cs) cs.style.display = 'none';
+            var ferr = document.getElementById('wizard-form-error');
+            if (ferr) { ferr.style.display = 'none'; ferr.textContent = ''; }
         }
 
         function selectBackendType(type) {
@@ -1953,6 +2070,135 @@
                 });
             });
             showWizardStep(2);
+        }
+
+        function wizardSubmit() {
+            var form = document.getElementById('add-backend-form');
+            if (!form) return;
+            var data = new FormData(form);
+            var ferr = document.getElementById('wizard-form-error');
+            if (ferr) { ferr.style.display = 'none'; ferr.textContent = ''; }
+            fetch('/ui/settings/backends/add', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: data
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(json) {
+                if (!json.ok) {
+                    if (ferr) { ferr.textContent = 'Error: ' + json.error; ferr.style.display = 'block'; }
+                    return;
+                }
+                wizardAddedName = json.name;
+                if (json.type === 'openai') {
+                    closeModal('modal-add-backend');
+                    location.reload();
+                } else {
+                    wizardStartAuth(json.type, json.name);
+                }
+            })
+            .catch(function(e) {
+                if (ferr) { ferr.textContent = 'Network error — please try again.'; ferr.style.display = 'block'; }
+            });
+        }
+
+        function wizardStartAuth(type, name) {
+            showWizardStep(3);
+            // Check if already authenticated (edge case: re-added backend).
+            wizardCheckOnce(name, function(authed) {
+                if (authed) { wizardAuthSuccess(); return; }
+                if (type === 'codex') {
+                    var link = document.getElementById('wizard-codex-auth-link');
+                    if (link) link.href = '/ui/oauth/login/' + encodeURIComponent(name);
+                    var box = document.getElementById('wizard-auth-codex');
+                    if (box) box.style.display = 'block';
+                } else if (type === 'copilot') {
+                    var box = document.getElementById('wizard-auth-copilot');
+                    if (box) box.style.display = 'block';
+                    fetch('/ui/oauth/device-code-info/' + encodeURIComponent(name))
+                    .then(function(r) { return r.json(); })
+                    .then(function(info) {
+                        if (!info.ok) {
+                            var aerr = document.getElementById('wizard-auth-error');
+                            if (aerr) { aerr.textContent = 'Failed to get device code: ' + info.error; aerr.style.display = 'block'; }
+                            return;
+                        }
+                        var urlEl = document.getElementById('wizard-copilot-url');
+                        var codeEl = document.getElementById('wizard-copilot-code');
+                        if (urlEl) { urlEl.href = info.verification_uri; urlEl.textContent = info.verification_uri; }
+                        if (codeEl) codeEl.textContent = info.user_code;
+                        wizardStartPolling(name);
+                    })
+                    .catch(function() {
+                        var aerr = document.getElementById('wizard-auth-error');
+                        if (aerr) { aerr.textContent = 'Network error while fetching device code.'; aerr.style.display = 'block'; }
+                    });
+                }
+            });
+        }
+
+        function wizardCodexOpened() {
+            // Called when the user clicks the "Sign in with OpenAI" button.
+            var cs = document.getElementById('wizard-codex-status');
+            if (cs) cs.style.display = 'block';
+            wizardStartPolling(wizardAddedName);
+        }
+
+        function wizardStartPolling(name) {
+            if (wizardPollTimer) clearInterval(wizardPollTimer);
+            wizardPollTimer = setInterval(function() {
+                wizardCheckOnce(name, function(authed) {
+                    if (authed) {
+                        clearInterval(wizardPollTimer);
+                        wizardPollTimer = null;
+                        wizardAuthSuccess();
+                    }
+                });
+            }, 2000);
+        }
+
+        function wizardCheckOnce(name, cb) {
+            fetch('/ui/oauth/status')
+            .then(function(r) { return r.text(); })
+            .then(function(html) {
+                var parser = new DOMParser();
+                var doc = parser.parseFromString(html, 'text/html');
+                var card = doc.getElementById('oauth-status-' + name);
+                var authed = card && card.dataset.authenticated === 'true';
+                cb(authed);
+            })
+            .catch(function() { cb(false); });
+        }
+
+        function wizardAuthSuccess() {
+            ['wizard-auth-codex','wizard-auth-copilot'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+            var suc = document.getElementById('wizard-auth-success');
+            if (suc) suc.style.display = 'block';
+            var skip = document.getElementById('wizard-skip-btn');
+            if (skip) skip.style.display = 'none';
+            setTimeout(function() {
+                closeModal('modal-add-backend');
+                location.reload();
+            }, 1500);
+        }
+
+        function wizardSkip() {
+            if (wizardPollTimer) { clearInterval(wizardPollTimer); wizardPollTimer = null; }
+            closeModal('modal-add-backend');
+            location.reload();
+        }
+
+        function wizardCopyCode(el) {
+            if (!el) return;
+            var code = el.textContent.trim();
+            navigator.clipboard.writeText(code).then(function() {
+                var orig = el.textContent;
+                el.textContent = '✓ Copied!';
+                setTimeout(function() { el.textContent = orig; }, 2000);
+            });
         }
 
         function showWizardStep(step) {

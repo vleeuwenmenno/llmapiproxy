@@ -8,6 +8,7 @@ services:
       - ./config.yaml:/app/config.yaml
       - ./stats.db:/app/stats.db
       - ./chat.db:/app/chat.db
+      - ./tokens:/app/tokens
     restart: "no"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]

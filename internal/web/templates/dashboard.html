@@ -609,6 +609,15 @@
             color: var(--text);
         }
 
+        .refresh-countdown {
+            font-size: 0.65rem;
+            font-family: var(--mono);
+            color: var(--text-dim);
+            opacity: 0.7;
+            min-width: 3.2em;
+            text-align: right;
+        }
+
         .pagination {
             display: flex;
             align-items: center;
@@ -731,6 +740,7 @@
                         <option value="60000">1m</option>
                         <option value="0">Off</option>
                     </select>
+                    <span class="refresh-countdown" id="refreshCountdown"></span>
                 </div>
             </div>
         </div>
@@ -867,6 +877,8 @@ var dashWin       = localStorage.getItem('dashWindow') || '1h';
 var dashPage      = 0;
 var dashTimer     = null;
 var dashAutoMs    = parseInt(localStorage.getItem('dashAutoRefresh') || '5000', 10);
+var dashCountdown = 0;
+var dashTickInterval = null;
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 (function() {
@@ -891,17 +903,56 @@ var dashAutoMs    = parseInt(localStorage.getItem('dashAutoRefresh') || '5000', 
 })();
 
 // ── Auto-refresh ──────────────────────────────────────────────────────────
+function updateCountdownDisplay() {
+    var el = document.getElementById('refreshCountdown');
+    if (!el) return;
+    if (dashAutoMs <= 0 || dashCountdown <= 0) {
+        el.textContent = '';
+        return;
+    }
+    var sec = Math.ceil(dashCountdown / 1000);
+    el.textContent = sec + 's';
+}
+
+function startCountdown() {
+    clearInterval(dashTickInterval);
+    if (dashAutoMs <= 0) {
+        dashCountdown = 0;
+        updateCountdownDisplay();
+        return;
+    }
+    dashCountdown = dashAutoMs;
+    updateCountdownDisplay();
+    dashTickInterval = setInterval(function() {
+        dashCountdown -= 1000;
+        if (dashCountdown <= 0) {
+            dashCountdown = 0;
+            clearInterval(dashTickInterval);
+        }
+        updateCountdownDisplay();
+    }, 1000);
+}
+
 function setAutoRefresh(ms) {
     dashAutoMs = parseInt(ms, 10);
     localStorage.setItem('dashAutoRefresh', String(dashAutoMs));
-    // Restart timer with new interval
     clearTimeout(dashTimer);
-    if (dashAutoMs > 0) dashTimer = setTimeout(fetchDash, dashAutoMs);
+    if (dashAutoMs > 0) {
+        dashTimer = setTimeout(fetchDash, dashAutoMs);
+        startCountdown();
+    } else {
+        dashCountdown = 0;
+        clearInterval(dashTickInterval);
+        updateCountdownDisplay();
+    }
 }
 
 function scheduleNext() {
     clearTimeout(dashTimer);
-    if (dashAutoMs > 0) dashTimer = setTimeout(fetchDash, dashAutoMs);
+    if (dashAutoMs > 0) {
+        dashTimer = setTimeout(fetchDash, dashAutoMs);
+        startCountdown();
+    }
 }
 
 // ── Fetch ─────────────────────────────────────────────────────────────────

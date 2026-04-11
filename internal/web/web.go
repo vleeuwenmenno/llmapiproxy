@@ -1606,9 +1606,26 @@ func (u *UI) ToggleBackend(w http.ResponseWriter, r *http.Request) {
 }
 
 // AddBackendPage adds a new backend from the Models page form.
+// isAJAX reports whether the request was sent as an AJAX call (fetch with X-Requested-With header).
+func isAJAX(r *http.Request) bool {
+	return r.Header.Get("X-Requested-With") == "XMLHttpRequest"
+}
+
 func (u *UI) AddBackendPage(w http.ResponseWriter, r *http.Request) {
+	ajax := isAJAX(r)
+
+	sendErr := func(msg string) {
+		if ajax {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": msg})
+		} else {
+			http.Redirect(w, r, "/ui/models?msg=Error:+"+strings.ReplaceAll(msg, " ", "+"), http.StatusSeeOther)
+		}
+	}
+
 	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/ui/models?msg=Error:+failed+to+parse+form.", http.StatusSeeOther)
+		sendErr("failed to parse form")
 		return
 	}
 
@@ -1618,7 +1635,7 @@ func (u *UI) AddBackendPage(w http.ResponseWriter, r *http.Request) {
 	apiKey := strings.TrimSpace(r.FormValue("api_key"))
 
 	if name == "" {
-		http.Redirect(w, r, "/ui/models?msg=Error:+backend+name+is+required.", http.StatusSeeOther)
+		sendErr("backend name is required")
 		return
 	}
 
@@ -1649,20 +1666,26 @@ func (u *UI) AddBackendPage(w http.ResponseWriter, r *http.Request) {
 	case "openai", "":
 		bc.Type = "openai"
 		if bc.BaseURL == "" {
-			http.Redirect(w, r, "/ui/models?msg=Error:+base+URL+is+required+for+OpenAI-compatible+backends.", http.StatusSeeOther)
+			sendErr("base URL is required for OpenAI-compatible backends")
 			return
 		}
 		if bc.APIKey == "" {
-			http.Redirect(w, r, "/ui/models?msg=Error:+API+key+is+required+for+OpenAI-compatible+backends.", http.StatusSeeOther)
+			sendErr("API key is required for OpenAI-compatible backends")
 			return
 		}
 	default:
-		http.Redirect(w, r, "/ui/models?msg=Error:+unsupported+backend+type+"+bcType+".", http.StatusSeeOther)
+		sendErr("unsupported backend type " + bcType)
 		return
 	}
 
 	if err := u.cfgMgr.AddBackend(bc); err != nil {
-		http.Redirect(w, r, "/ui/models?msg=Error:"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		sendErr(err.Error())
+		return
+	}
+
+	if ajax {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "name": name, "type": bc.Type})
 		return
 	}
 	http.Redirect(w, r, "/ui/models?msg=Backend+"+name+"+added.", http.StatusSeeOther)
@@ -2073,6 +2096,53 @@ func (u *UI) OAuthDeviceLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Fallback: redirect to regular login if device code info is not available.
 	http.Redirect(w, r, "/ui/oauth/login/"+backendName, http.StatusSeeOther)
+}
+
+// OAuthDeviceCodeInfo returns device code login info as JSON for the given backend.
+// This is used by the Add Backend wizard to show the device code inline in the modal.
+func (u *UI) OAuthDeviceCodeInfo(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	if backendName == "" {
+		http.Error(w, "backend parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	b := u.registry.Get(backendName)
+	if b == nil {
+		http.Error(w, fmt.Sprintf("backend %q not found", backendName), http.StatusNotFound)
+		return
+	}
+
+	deviceHandler, ok := b.(backend.OAuthDeviceCodeLoginHandler)
+	if !ok {
+		http.Error(w, fmt.Sprintf("backend %q does not support device code login", backendName), http.StatusBadRequest)
+		return
+	}
+
+	authURL, _, err := deviceHandler.InitiateDeviceCodeLogin()
+	if err != nil {
+		log.Printf("oauth device code info error for %s: %v", backendName, err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+
+	var deviceCodeInfo backend.DeviceCodeLoginInfo
+	if err := json.Unmarshal([]byte(authURL), &deviceCodeInfo); err != nil || deviceCodeInfo.UserCode == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "backend does not support device code flow"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"ok":               true,
+		"user_code":        deviceCodeInfo.UserCode,
+		"verification_uri": deviceCodeInfo.VerificationURI,
+		"expires_in":       deviceCodeInfo.ExpiresIn,
+	})
 }
 
 // OAuthDisconnect clears stored tokens for the specified backend.

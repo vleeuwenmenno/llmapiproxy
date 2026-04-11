@@ -56,5 +56,5 @@ func (h *codexLoopbackHandler) handleCallback(w http.ResponseWriter, r *http.Req
 }
 
 func (h *codexLoopbackHandler) settingsURL(msg string) string {
-	return h.appBaseURL + "/ui/settings?msg=" + url.QueryEscape(msg)
+	return h.appBaseURL + "/ui/models?msg=" + url.QueryEscape(msg)
 }
