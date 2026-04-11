@@ -1623,8 +1623,8 @@ func (u *UI) AddBackendPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	bc := config.BackendConfig{
-		Name:   name,
-		Type:   bcType,
+		Name:    name,
+		Type:    bcType,
 		BaseURL: baseURL,
 		APIKey:  apiKey,
 	}
@@ -1641,8 +1641,8 @@ func (u *UI) AddBackendPage(w http.ResponseWriter, r *http.Request) {
 		}
 		if bc.OAuth == nil {
 			bc.OAuth = &config.OAuthConfig{
-				Scopes:  []string{"openid", "profile", "email", "offline_access"},
-				AuthURL: "https://auth.openai.com/oauth/authorize",
+				Scopes:   []string{"openid", "profile", "email", "offline_access"},
+				AuthURL:  "https://auth.openai.com/oauth/authorize",
 				TokenURL: "https://auth.openai.com/oauth/token",
 			}
 		}
@@ -1958,10 +1958,10 @@ func (u *UI) OAuthLogin(w http.ResponseWriter, r *http.Request) {
 	if json.Unmarshal([]byte(authURL), &deviceCodeInfo) == nil && deviceCodeInfo.UserCode != "" {
 		// Device code flow: render the device code page.
 		data := map[string]any{
-			"BackendName":    backendName,
-			"UserCode":       deviceCodeInfo.UserCode,
+			"BackendName":     backendName,
+			"UserCode":        deviceCodeInfo.UserCode,
 			"VerificationURI": deviceCodeInfo.VerificationURI,
-			"ExpiresIn":      deviceCodeInfo.ExpiresIn,
+			"ExpiresIn":       deviceCodeInfo.ExpiresIn,
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := templates.ExecuteTemplate(w, "device_code.html", data); err != nil {
