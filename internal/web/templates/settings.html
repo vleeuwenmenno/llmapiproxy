@@ -817,6 +817,30 @@
         <div class="msg {{if .IsError}}error{{else}}success{{end}}">{{.Message}}</div>
         {{end}}
 
+        <!-- Server Address Section -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">Server Address</div>
+            </div>
+            <p class="section-desc">Configure the host and port the proxy listens on. Changes require a restart to take effect.</p>
+            <form method="POST" action="/ui/settings/server" style="margin-top:0.75rem;">
+                <div class="toggle-row" style="gap:1rem;align-items:flex-end;">
+                    <div style="flex:1;">
+                        <label style="display:block;font-size:0.8rem;color:var(--text-dim);margin-bottom:0.35rem;">Host</label>
+                        <input type="text" name="host" value="{{.ServerHost}}" placeholder="empty = all interfaces (0.0.0.0)"
+                               style="width:100%;padding:0.5rem 0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:0.85rem;">
+                        <span style="display:block;font-size:0.72rem;color:var(--text-dim);margin-top:0.25rem;">Empty = all interfaces. Use <code style="font-family:var(--mono);background:var(--surface-2);padding:0.1em 0.3em;border-radius:3px;">localhost</code> for local only.</span>
+                    </div>
+                    <div style="flex:0 0 140px;">
+                        <label style="display:block;font-size:0.8rem;color:var(--text-dim);margin-bottom:0.35rem;">Port</label>
+                        <input type="number" name="port" value="{{.ServerPort}}" min="1" max="65535"
+                               style="width:100%;padding:0.5rem 0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:0.85rem;">
+                    </div>
+                    <button type="submit" class="btn" style="margin-bottom:0;">Save</button>
+                </div>
+            </form>
+        </div>
+
         <!-- Stats Section -->
         <div class="section">
             <div class="section-header">

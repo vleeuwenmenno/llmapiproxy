@@ -1259,6 +1259,8 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 		"ConfigText":   configText,
 		"Clients":      visibleClients,
 		"ClientsJSON":  template.JS(func() []byte { b, _ := json.Marshal(visibleClients); return b }()),
+		"ServerHost":   cfg.Server.Host,
+		"ServerPort":   cfg.Server.Port,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "settings.html", data); err != nil {
@@ -1411,6 +1413,29 @@ func (u *UI) DeleteClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/ui/settings?msg=Client+deleted.", http.StatusSeeOther)
+}
+
+func (u *UI) UpdateServerAddr(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/ui/settings?msg=Failed+to+parse+form.", http.StatusSeeOther)
+		return
+	}
+	host := strings.TrimSpace(r.FormValue("host"))
+	portStr := strings.TrimSpace(r.FormValue("port"))
+	port := 8080
+	if portStr != "" {
+		var err error
+		port, err = strconv.Atoi(portStr)
+		if err != nil || port < 1 || port > 65535 {
+			http.Redirect(w, r, "/ui/settings?msg=Error:+port+must+be+a+number+between+1+and+65535.", http.StatusSeeOther)
+			return
+		}
+	}
+	if err := u.cfgMgr.UpdateServerAddr(host, port); err != nil {
+		http.Redirect(w, r, "/ui/settings?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/ui/settings?msg=Server+address+updated.+Restart+the+proxy+for+changes+to+take+effect.", http.StatusSeeOther)
 }
 
 func (u *UI) SaveRouting(w http.ResponseWriter, r *http.Request) {

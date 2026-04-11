@@ -125,6 +125,7 @@ func main() {
 		r.Get("/routing/config", ui.RoutingConfigJSON)
 		r.Post("/settings/clients/add", ui.AddClient)
 		r.Post("/settings/clients/delete", ui.DeleteClient)
+		r.Post("/settings/server", ui.UpdateServerAddr)
 		r.Post("/routing/save", ui.SaveRouting)
 
 		staticSub, err := fs.Sub(web.StaticFS(), "static")
@@ -166,9 +167,10 @@ func main() {
 	}()
 
 	go func() {
+		displayURL := fmt.Sprintf("http://localhost:%d", cfg.Server.Port)
 		log.Printf("starting server on %s", cfg.Server.Listen)
-		log.Printf("  API:       http://localhost%s/v1/chat/completions", cfg.Server.Listen)
-		log.Printf("  Dashboard: http://localhost%s/ui/", cfg.Server.Listen)
+		log.Printf("  API:       %s/v1/chat/completions", displayURL)
+		log.Printf("  Dashboard: %s/ui/", displayURL)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server error: %v", err)
 		}

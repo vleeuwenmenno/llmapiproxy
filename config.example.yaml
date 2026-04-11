@@ -2,8 +2,17 @@
 # Copy this file to config.yaml and fill in your API keys.
 
 server:
-  # Address to listen on (host:port)
-  listen: ":8000"
+  # Host to bind to. Empty string = all interfaces (0.0.0.0).
+  # Use "localhost" or "127.0.0.1" to restrict to local access only.
+  # host: ""
+
+  # Port to listen on. Defaults to 8080 if not set.
+  port: 8000
+
+  # Legacy: combined host:port (e.g. ":8000", "localhost:8080").
+  # If set, it is used as a fallback when host/port are not specified.
+  # The host and port fields above take precedence.
+  # listen: ":8000"
 
   # API keys that clients must use to authenticate with this proxy.
   # Clients send: Authorization: Bearer <one-of-these-keys>

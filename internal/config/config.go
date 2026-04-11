@@ -4,9 +4,11 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"log"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -51,7 +53,9 @@ type RoutingConfig struct {
 }
 
 type ServerConfig struct {
-	Listen       string   `yaml:"listen"`
+	Host         string   `yaml:"host,omitempty"`
+	Port         int      `yaml:"port,omitempty"`
+	Listen       string   `yaml:"listen,omitempty"` // Legacy: host:port. New host/port fields take precedence.
 	APIKeys      []string `yaml:"api_keys"`
 	AdminKey     string   `yaml:"admin_key"`
 	StatsPath    string   `yaml:"stats_path"`
@@ -170,7 +174,29 @@ func (b *BackendConfig) IsEnabled() bool {
 }
 
 func (c *Config) Validate() error {
-	if c.Server.Listen == "" {
+	// Resolve listen address from host/port or legacy listen field.
+	// Priority: explicit host/port > legacy listen > defaults.
+	if c.Server.Host != "" || c.Server.Port != 0 {
+		// New fields take precedence.
+		host := c.Server.Host
+		port := c.Server.Port
+		if port == 0 {
+			port = 8080
+		}
+		c.Server.Listen = net.JoinHostPort(host, strconv.Itoa(port))
+	} else if c.Server.Listen != "" {
+		// Legacy listen field: parse to extract host/port.
+		host, portStr, err := net.SplitHostPort(c.Server.Listen)
+		if err == nil {
+			c.Server.Host = host
+			if p, err := strconv.Atoi(portStr); err == nil {
+				c.Server.Port = p
+			}
+		}
+	} else {
+		// Defaults: bind all interfaces, port 8080.
+		c.Server.Host = ""
+		c.Server.Port = 8080
 		c.Server.Listen = ":8080"
 	}
 	if c.Server.StatsPath == "" {
@@ -528,6 +554,28 @@ func (m *Manager) UpdateTitleModel(titleModel string) error {
 func (m *Manager) UpdateDefaultModel(defaultModel string) error {
 	m.mu.Lock()
 	m.current.Server.DefaultModel = defaultModel
+	cfg := m.current
+	m.mu.Unlock()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+// UpdateServerAddr updates the host and port fields, clears the legacy listen
+// field, persists the file, and reloads. The caller should note that a server
+// restart is required for the new address to take effect.
+func (m *Manager) UpdateServerAddr(host string, port int) error {
+	m.mu.Lock()
+	m.current.Server.Host = host
+	m.current.Server.Port = port
+	m.current.Server.Listen = "" // clear legacy field — host/port take precedence
 	cfg := m.current
 	m.mu.Unlock()
 
