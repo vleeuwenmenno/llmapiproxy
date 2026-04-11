@@ -19,6 +19,7 @@ import (
 	"github.com/menno/llmapiproxy/internal/backend"
 	"github.com/menno/llmapiproxy/internal/chat"
 	"github.com/menno/llmapiproxy/internal/config"
+	"github.com/menno/llmapiproxy/internal/oauth"
 	"github.com/menno/llmapiproxy/internal/proxy"
 	"github.com/menno/llmapiproxy/internal/stats"
 	"github.com/menno/llmapiproxy/internal/web"
@@ -72,6 +73,8 @@ func main() {
 		log.Fatalf("failed to open chat database: %v", err)
 	}
 	log.Printf("chat database: %s", cfg.Server.ChatDBPath)
+
+	appBaseURL := oauth.DeriveLocalServerBaseURL(cfg.Server.Listen)
 
 	ui := web.NewUI(cfgMgr, collector, registry, store, chatStore)
 
@@ -181,6 +184,11 @@ func main() {
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	codexLoopbackSrv := &http.Server{
+		Addr:              codexLoopbackListenAddr,
+		Handler:           newCodexLoopbackHandler(registry, appBaseURL),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -207,6 +215,12 @@ func main() {
 			log.Fatalf("server error: %v", err)
 		}
 	}()
+	go func() {
+		log.Printf("starting Codex OAuth loopback callback server on %s", codexLoopbackListenAddr)
+		if err := codexLoopbackSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("codex loopback callback server error: %v", err)
+		}
+	}()
 
 	<-ctx.Done()
 	log.Println("shutting down...")
@@ -216,6 +230,9 @@ func main() {
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("shutdown error: %v", err)
+	}
+	if err := codexLoopbackSrv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("codex loopback shutdown error: %v", err)
 	}
 	if store != nil {
 		store.Close()

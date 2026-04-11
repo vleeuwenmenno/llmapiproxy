@@ -104,9 +104,9 @@ type codexRequest struct {
 	Input         json.RawMessage `json:"input"`
 	Stream        bool            `json:"stream,omitempty"`
 	Temperature   *float64        `json:"temperature,omitempty"`
-	MaxOutputTokens *int          `json:"max_output_tokens,omitempty"`
 	TopP          *float64        `json:"top_p,omitempty"`
-	Instructions  string          `json:"instructions,omitempty"`
+	Instructions  string          `json:"instructions"`
+	Store         bool            `json:"store"`
 
 	// Preserve extra fields from the original request body.
 	Extra map[string]json.RawMessage `json:"-"`
@@ -131,10 +131,6 @@ func (r codexRequest) MarshalJSON() ([]byte, error) {
 		b, _ := json.Marshal(*r.Temperature)
 		m["temperature"] = b
 	}
-	if r.MaxOutputTokens != nil {
-		b, _ := json.Marshal(*r.MaxOutputTokens)
-		m["max_output_tokens"] = b
-	}
 	if r.TopP != nil {
 		b, _ := json.Marshal(*r.TopP)
 		m["top_p"] = b
@@ -143,6 +139,9 @@ func (r codexRequest) MarshalJSON() ([]byte, error) {
 		b, _ := json.Marshal(r.Instructions)
 		m["instructions"] = b
 	}
+
+	// Always send store=false (Codex API rejects requests where store defaults to true).
+	m["store"] = json.RawMessage(`false`)
 
 	// Add extra fields (not overwriting known fields).
 	for k, v := range r.Extra {
@@ -227,27 +226,24 @@ func translateToCodexRequest(req *ChatCompletionRequest) (*codexRequest, error) 
 	}
 
 	// Build the input for the Responses API.
+	// Always send as a list of messages — the Codex API requires a list.
 	var input json.RawMessage
-	if len(conversationMessages) == 1 {
-		// Single user message — can be sent as a plain string.
-		input, _ = json.Marshal(conversationMessages[0].Content)
-	} else {
-		input, _ = json.Marshal(conversationMessages)
-	}
+	input, _ = json.Marshal(conversationMessages)
 
 	codexReq := &codexRequest{
 		Model:        req.Model,
 		Input:        input,
 		Stream:       false, // set to true for streaming calls
 		Temperature:  req.Temperature,
-		Instructions: instructions,
+		Instructions: instructions, // Codex API requires non-empty instructions
 		Extra:        make(map[string]json.RawMessage),
 	}
 
-	// Map max_tokens → max_output_tokens.
-	if req.MaxTokens != nil {
-		codexReq.MaxOutputTokens = req.MaxTokens
+	// Codex API requires non-empty instructions — default to a minimal prompt.
+	if codexReq.Instructions == "" {
+		codexReq.Instructions = "You are a helpful assistant."
 	}
+
 
 	// Preserve extra fields from the raw body.
 	if len(req.RawBody) > 0 {
@@ -256,6 +252,11 @@ func translateToCodexRequest(req *ChatCompletionRequest) (*codexRequest, error) 
 			knownFields := map[string]bool{
 				"model": true, "messages": true, "stream": true,
 				"temperature": true, "max_tokens": true, "max_output_tokens": true,
+				"store": true, "top_p": true, "frequency_penalty": true,
+				"presence_penalty": true, "n": true, "stop": true,
+				"user": true, "logprobs": true, "top_logprobs": true,
+				"response_format": true, "seed": true, "tools": true,
+				"tool_choice": true, "parallel_tool_calls": true,
 			}
 			for k, v := range raw {
 				if !knownFields[k] {

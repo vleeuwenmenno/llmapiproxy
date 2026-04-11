@@ -508,15 +508,9 @@ func TestCodexBackend_TemperatureAndMaxTokens(t *testing.T) {
 		t.Error("temperature not found in forwarded request")
 	}
 
-	// Verify max_output_tokens was set (mapped from max_tokens).
-	if maxRaw, ok := receivedBody["max_output_tokens"]; ok {
-		var gotMax int
-		json.Unmarshal(maxRaw, &gotMax)
-		if gotMax != 500 {
-			t.Errorf("max_output_tokens = %d, want 500", gotMax)
-		}
-	} else {
-		t.Error("max_output_tokens not found in forwarded request")
+	// max_output_tokens is NOT forwarded — the Codex API does not support it.
+	if _, ok := receivedBody["max_output_tokens"]; ok {
+		t.Error("max_output_tokens should NOT be forwarded to Codex API")
 	}
 }
 
@@ -1340,13 +1334,15 @@ func TestCodexBackend_ExtraFields(t *testing.T) {
 		t.Fatalf("ChatCompletion: %v", err)
 	}
 
-	// Verify extra fields were preserved in the forwarded request.
-	if _, ok := receivedBody["presence_penalty"]; !ok {
-		t.Error("presence_penalty should be preserved")
+	// Verify that ChatCompletion-only fields are excluded from the Codex request
+	// (they are not part of the Responses API).
+	if _, ok := receivedBody["presence_penalty"]; ok {
+		t.Error("presence_penalty should NOT be forwarded to Codex Responses API")
 	}
-	if _, ok := receivedBody["frequency_penalty"]; !ok {
-		t.Error("frequency_penalty should be preserved")
+	if _, ok := receivedBody["frequency_penalty"]; ok {
+		t.Error("frequency_penalty should NOT be forwarded to Codex Responses API")
 	}
+	// top_p IS a valid Responses API field and should be present.
 	if _, ok := receivedBody["top_p"]; !ok {
 		t.Error("top_p should be preserved")
 	}

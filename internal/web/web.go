@@ -744,14 +744,18 @@ func (u *UI) PlaygroundModels(w http.ResponseWriter, r *http.Request) {
 func (u *UI) PlaygroundPage(w http.ResponseWriter, r *http.Request) {
 	cfg := u.cfgMgr.Get()
 
-	// Find the internal playground client — its API key is embedded in the
-	// page so the user never has to pick one manually.
+	// Find the API key for the playground. Prefer a named "playground"
+	// client, but fall back to the first server.api_keys entry if no
+	// playground client is configured.
 	playgroundAPIKey := ""
 	for _, c := range cfg.Clients {
 		if c.Name == "playground" && c.APIKey != "" {
 			playgroundAPIKey = c.APIKey
 			break
 		}
+	}
+	if playgroundAPIKey == "" && len(cfg.Server.APIKeys) > 0 {
+		playgroundAPIKey = cfg.Server.APIKeys[0]
 	}
 
 	// Collect all models from enabled backends (prefixed backend/model-id).
@@ -783,14 +787,18 @@ func (u *UI) PlaygroundPage(w http.ResponseWriter, r *http.Request) {
 func (u *UI) ChatPage(w http.ResponseWriter, r *http.Request) {
 	cfg := u.cfgMgr.Get()
 
-	// Find the internal playground client — its API key is embedded in the
-	// page so the user never has to pick one manually.
+	// Find the API key for the playground. Prefer a named "playground"
+	// client, but fall back to the first server.api_keys entry if no
+	// playground client is configured.
 	playgroundAPIKey := ""
 	for _, c := range cfg.Clients {
 		if c.Name == "playground" && c.APIKey != "" {
 			playgroundAPIKey = c.APIKey
 			break
 		}
+	}
+	if playgroundAPIKey == "" && len(cfg.Server.APIKeys) > 0 {
+		playgroundAPIKey = cfg.Server.APIKeys[0]
 	}
 
 	// Collect all models from enabled backends (prefixed backend/model-id).
