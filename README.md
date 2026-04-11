@@ -23,7 +23,7 @@ If you have subscriptions at several LLM providers, you end up juggling:
 - **Unified OpenAI-compatible API** — `/v1/chat/completions`, `/v1/models`, and `/v1/responses` work exactly like OpenAI's API, so any OpenAI-compatible client works out of the box.
 - **Multi-backend routing** — route to different providers based on model name prefix (e.g. `zai/glm-5.1`, `openrouter/anthropic/claude-sonnet-4`).
 - **Streaming support** — SSE streaming is fully proxied to clients.
-- **OAuth backends** — use GitHub Copilot and OpenAI Codex without managing API keys. Copilot reuses your local GitHub authentication; Codex uses an OAuth PKCE flow managed through the web UI.
+- **OAuth backends** — use GitHub Copilot and OpenAI Codex without managing API keys. Copilot uses a GitHub Device Code Flow; Codex uses an OAuth PKCE flow. Both are managed through the web UI.
 - **Native Responses API** — Codex backends support the native `/v1/responses` endpoint for passthrough to the OpenAI Responses API.
 - **Token & latency tracking** — every request is recorded with prompt tokens, completion tokens, latency, backend, and model. Stats persist to SQLite across restarts.
 - **Web dashboard** — live stats, request history, per-backend token breakdown, backend management, OAuth status, and an in-browser config editor.
@@ -43,7 +43,7 @@ Any OpenAI-compatible HTTP API works. The example config includes:
 | [OpenRouter](https://openrouter.ai) | `openai`     | API key                      | 200+ models from many providers                      |
 | [OpenCode Zen](https://opencode.ai) | `openai`     | API key                      | Curated coding models, pay-as-you-go                 |
 | [OpenCode Go](https://opencode.ai)  | `openai`     | API key                      | Subscription tier for coding models                  |
-| [GitHub Copilot](https://github.com/features/copilot) | `copilot` | Local GitHub auth | Reuses `GH_TOKEN` env, `gh` CLI, or `~/.config/gh/hosts.yml` |
+| [GitHub Copilot](https://github.com/features/copilot) | `copilot` | GitHub Device Code Flow | Authenticate via the web UI — no local tools needed |
 | [OpenAI Codex](https://openai.com/codex/) | `codex` | OAuth PKCE flow       | Web-based login flow managed through the settings UI |
 | Any OpenAI-compatible API           | `openai`     | API key                      | Self-hosted, Azure OpenAI, etc.                      |
 
@@ -164,13 +164,9 @@ LLM API Proxy supports two special backend types that authenticate via OAuth ins
 
 ### GitHub Copilot (`copilot`)
 
-The Copilot backend reuses your **local GitHub authentication** — no API key or login flow required. It automatically discovers tokens from the following sources in order:
+The Copilot backend uses **GitHub Device Code Flow** for authentication. You initiate login from the web UI — the proxy displays a code and a verification URL. Visit the URL, enter the code, and authorize the application. The proxy exchanges the resulting GitHub token for a Copilot API token automatically.
 
-1. **Environment variables**: `GH_TOKEN`, `GITHUB_TOKEN`, or `COPILOT_TOKEN`
-2. **`gh` CLI**: runs `gh auth token` to get the current token
-3. **Token files**: reads `~/.config/gh/hosts.yml` for stored GitHub credentials
-
-The discovered GitHub token is exchanged for a short-lived Copilot API token automatically. Tokens are refreshed before expiry.
+No local tools (`gh` CLI, environment variables, or token files) are needed. Tokens are long-lived and validated on-demand.
 
 **Configuration:**
 
@@ -179,12 +175,21 @@ backends:
   - name: copilot
     type: copilot
     base_url: https://api.githubcopilot.com
-    # No api_key needed — uses local GitHub auth.
+    # No api_key needed — authentication uses Device Code Flow.
+    # Optionally override the GitHub OAuth client_id (defaults to Copilot VS Code extension ID):
+    # oauth:
+    #   client_id: "Iv1.b507a08c87ecfe98"
 ```
 
 **Prerequisites:**
 - A GitHub account with Copilot access (Individual, Business, or Enterprise)
-- At least one local GitHub auth source (e.g., `gh auth login`)
+
+**To authenticate:**
+1. Navigate to **Settings** in the web dashboard (`/ui/settings`)
+2. Find the Copilot backend in the OAuth section
+3. Click **Connect** to start the Device Code Flow
+4. Visit the verification URL and enter the displayed code
+5. Authorize the application — the proxy stores the token automatically
 
 ### OpenAI Codex (`codex`)
 
