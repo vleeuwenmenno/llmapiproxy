@@ -79,3 +79,27 @@ Template: `internal/web/templates/oauth_status.html` — HTMX auto-refresh every
 }
 ```
 Status is "degraded" if any OAuth backend needs re-authentication.
+
+## Dynamic Redirect URI (fix-codex-oauth-redirect)
+
+The Codex OAuth redirect URI is now derived dynamically from the server's listen address and the backend's configured name, instead of being hardcoded to `http://localhost:8000/ui/oauth/callback/codex`.
+
+### How it works
+1. `Registry.LoadFromConfig()` stores `cfg.Server.Listen` in `r.listenAddr`
+2. `createCodexBackend()` calls `oauth.DeriveRedirectURI(r.listenAddr, bc.Name)` to construct the redirect URI
+3. The redirect URI format is `http://<host>:<port>/ui/oauth/callback/<backendName>`
+
+### `oauth.DeriveRedirectURI(listenAddr, backendName)`
+- Handles `:port`, `0.0.0.0:port`, `localhost:port`, `host:port`, and empty listen addresses
+- Normalizes `0.0.0.0` and empty host to `localhost`
+- Falls back to `:8000` for empty listen addresses
+
+### `CodexOAuthHandler.SetRedirectURI(redirectURI)`
+- Allows updating the redirect URI after handler creation
+- Useful for testing or dynamic reconfiguration
+
+### Impact on the OAuth flow
+- The redirect URI is set once when the backend is created/loaded
+- It's used both in the authorize URL and the token exchange (they must match)
+- The pending state stores a copy of the redirect URI at the time of `AuthorizeURL()`, so config changes during a flow don't break it
+- Hot-reload correctly updates the redirect URI if the listen address changes
