@@ -10,13 +10,36 @@ Supports any provider with an OpenAI-compatible API (OpenRouter, Anthropic via c
 
 ## Quick Start
 
-### Install
+### Docker (recommended)
+
+```bash
+# Pull and run the latest release
+docker run -p 8000:8080 \
+  -v $(pwd)/config.yaml:/app/config.yaml:ro \
+  -v $(pwd)/stats.db:/data/stats.db \
+  -v $(pwd)/chat.db:/data/chat.db \
+  ghcr.io/vleeuwenmenno/llmapiproxy:latest
+```
+
+Or with docker compose — copy the example file and add your config:
+
+```bash
+cp config.example.yaml config.yaml
+cp docker-compose.example.yml docker-compose.yml
+docker compose up -d
+```
+
+> Your `config.yaml` should set `server.stats_path: /data/stats.db` and `server.chat_db_path: /data/chat.db` when running in Docker so the databases persist.
+
+Then open [http://localhost:8000/ui/](http://localhost:8000/ui/).
+
+### Install from source
 
 ```bash
 go install github.com/vleeuwenmenno/llmapiproxy/cmd/llmapiproxy@latest
 ```
 
-Or build from source:
+Or build locally:
 
 ```bash
 git clone https://github.com/vleeuwenmenno/llmapiproxy
