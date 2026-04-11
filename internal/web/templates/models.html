@@ -1099,6 +1099,220 @@
             to   { opacity: 1; transform: translateY(0); }
         }
 
+        /* ── OAuth Status (inside backend cards) ───────────── */
+        .oauth-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            display: inline-block;
+        }
+        .oauth-status-dot-valid {
+            background: var(--green);
+            box-shadow: 0 0 6px rgba(52, 211, 153, 0.5);
+        }
+        .oauth-status-dot-expiring {
+            background: var(--amber);
+            box-shadow: 0 0 6px rgba(251, 191, 36, 0.5);
+        }
+        .oauth-status-dot-expired {
+            background: var(--red);
+            box-shadow: 0 0 6px rgba(248, 113, 113, 0.5);
+        }
+        .oauth-status-dot-missing {
+            background: var(--text-dim);
+        }
+        .oauth-status-text {
+            font-size: 0.7rem;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .oauth-text-valid { color: var(--green); }
+        .oauth-text-expiring { color: var(--amber); }
+        .oauth-text-missing { color: var(--text-dim); }
+
+        .oauth-card-section {
+            padding: 0.6rem 1.1rem 0.75rem;
+            border-top: 1px solid var(--border);
+        }
+        .oauth-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            margin-top: 0.4rem;
+        }
+        .btn-oauth-xs {
+            font-size: 0.68rem;
+            padding: 0.2rem 0.55rem;
+            border-radius: 4px;
+            border: 1px solid;
+            cursor: pointer;
+            font-family: var(--sans);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        .btn-oauth-xs-primary {
+            background: var(--accent-dim);
+            color: var(--accent);
+            border-color: rgba(34, 211, 238, 0.3);
+        }
+        .btn-oauth-xs-primary:hover { background: rgba(34, 211, 238, 0.2); border-color: var(--accent); }
+        .btn-oauth-xs-danger {
+            background: rgba(248, 113, 113, 0.1);
+            color: var(--red);
+            border-color: rgba(248, 113, 113, 0.25);
+        }
+        .btn-oauth-xs-danger:hover { background: rgba(248, 113, 113, 0.2); border-color: var(--red); }
+        .btn-oauth-xs-secondary {
+            background: var(--surface-2);
+            color: var(--text-dim);
+            border-color: var(--border);
+        }
+        .btn-oauth-xs-secondary:hover { color: var(--text); border-color: var(--text-dim); }
+
+        .oauth-meta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.3rem 1rem;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            margin-top: 0.3rem;
+        }
+        .oauth-meta-row strong { color: var(--text); font-weight: 500; }
+        .oauth-expiry-valid { color: var(--green); }
+        .oauth-expiry-expiring { color: var(--amber); }
+        .oauth-expiry-expired { color: var(--red); }
+
+        /* ── Add Backend Button ── */
+        .add-backend-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.5rem 1.1rem;
+            border-radius: 8px;
+            border: 1px dashed var(--border);
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-family: var(--sans);
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.15s ease;
+        }
+        .add-backend-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        /* ── Delete backend button ── */
+        .delete-backend-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            padding: 0.15rem 0.35rem;
+            border-radius: 3px;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+        }
+        .delete-backend-btn:hover {
+            color: var(--red);
+            background: rgba(248, 113, 113, 0.1);
+        }
+
+        /* ── Add Backend Modal ── */
+        .wizard-step { display: none; }
+        .wizard-step.active { display: block; }
+        .wizard-type-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+            margin-bottom: 1.25rem;
+        }
+        .wizard-type-card {
+            padding: 1rem;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--surface-2);
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.15s ease;
+        }
+        .wizard-type-card:hover {
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+        .wizard-type-card.selected {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 1px var(--accent);
+        }
+        .wizard-type-card .wizard-icon {
+            font-size: 1.75rem;
+            margin-bottom: 0.5rem;
+        }
+        .wizard-type-card .wizard-label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 0.25rem;
+        }
+        .wizard-type-card .wizard-desc {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            line-height: 1.4;
+        }
+        .wizard-form-group {
+            margin-bottom: 0.85rem;
+        }
+        .wizard-form-group label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-dim);
+            margin-bottom: 0.3rem;
+        }
+        .wizard-form-group input {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 0.82rem;
+            box-sizing: border-box;
+        }
+        .wizard-form-group input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .wizard-info-box {
+            padding: 0.6rem 0.85rem;
+            border-radius: 6px;
+            background: var(--accent-dim);
+            border: 1px solid rgba(34, 211, 238, 0.2);
+            font-size: 0.78rem;
+            color: var(--accent);
+            margin-bottom: 0.85rem;
+            line-height: 1.5;
+        }
+        .wizard-nav {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: flex-end;
+            margin-top: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .wizard-type-grid { grid-template-columns: 1fr; }
+        }
+
         /* ── Mobile Responsive ── */
         @media (max-width: 768px) {
             nav { padding: 0.75rem 1rem; }
@@ -1220,6 +1434,7 @@
         <div class="section-title">Backends</div>
         <div class="backend-grid">
         {{range .Backends}}
+        {{$oauth := index $.OAuthByBackend .Name}}
             <div class="backend-card{{if not .Enabled}} disabled{{end}}{{if .IsDynamic}} collapsed{{end}}" data-backend="{{.Name}}"{{if not .Enabled}} data-disabled="true"{{end}}>
                 <div class="backend-header" onclick="toggleCard(event, '{{.Name}}')">
                     <div class="backend-name">
@@ -1228,8 +1443,18 @@
                         <span class="collapse-chevron">&#x25BE;</span>
                     </div>
                     <div style="display:flex;align-items:center;gap:0.5rem" onclick="event.stopPropagation()">
+                    {{if $oauth}}
+                    <span class="oauth-status-dot oauth-status-dot-{{$oauth.TokenState}}" title="{{$oauth.TokenState}}"></span>
+                    <span class="oauth-status-text oauth-text-{{if eq $oauth.TokenState `valid`}}valid{{else if eq $oauth.TokenState `expiring`}}expiring{{else}}missing{{end}}">
+                        {{if eq $oauth.TokenState "valid"}}connected{{else if eq $oauth.TokenState "expiring"}}expiring{{else}}not connected{{end}}
+                    </span>
+                    {{end}}
                     <span class="model-count" id="count-{{.Name}}">{{if not .Enabled}}disabled{{else if .StaticCount}}{{.StaticCount}} models{{else}}&hellip;{{end}}</span>
                     {{if and .IsDynamic .Enabled}}<button class="refresh-models-btn" onclick="refreshBackendModels(event, '{{.Name}}')" title="Refresh model list from upstream">&#x21BB;</button>{{end}}
+                    <form method="POST" action="/ui/settings/backends/delete" style="display:contents" onsubmit="return confirm('Delete backend {{.Name}}? This cannot be undone.')">
+                        <input type="hidden" name="name" value="{{.Name}}">
+                        <button type="submit" class="delete-backend-btn" title="Delete backend {{.Name}}">&#x2715;</button>
+                    </form>
                     <form method="POST" action="/ui/settings/backends/toggle" style="display:contents">
                         <input type="hidden" name="name" value="{{.Name}}">
                         <input type="hidden" name="enabled" value="{{if .Enabled}}false{{else}}true{{end}}">
@@ -1243,7 +1468,9 @@
                 </div>
                 <div class="model-list" id="models-{{.Name}}">
                     <div style="padding:0.3rem 1.1rem 0.2rem;font-family:var(--mono);font-size:0.65rem;color:var(--text-dim)">{{.BaseURL}}</div>
-                    {{if .IsDynamic}}
+                    {{if and $oauth (not $oauth.Authenticated) .Enabled}}
+                    <div style="padding:0.85rem 1.1rem;font-size:0.8rem;color:var(--text-dim);font-style:italic">Authentication required — connect below to load models.</div>
+                    {{else if .IsDynamic}}
                     <span class="dynamic-badge">&#x221E; dynamic &#x2014; uses /v1/models from upstream</span>
                     {{if .Enabled}}<div class="model-loading"><div class="spinner"></div><span>Loading models&#x2026;</span></div>{{else}}<div style="padding:0.85rem 1.1rem;font-size:0.75rem;color:var(--text-dim);font-family:var(--mono)">Enable this backend to load models.</div>{{end}}
                     {{else}}
@@ -1255,8 +1482,47 @@
                     {{end}}
                     {{end}}
                 </div>
+                {{if and $oauth .Enabled}}
+                <div class="oauth-card-section" id="oauth-{{.Name}}">
+                    <div class="oauth-actions">
+                    {{if eq .Type "codex"}}
+                        {{if $oauth.NeedsReauth}}
+                            <a href="/ui/oauth/login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-primary" target="_blank" rel="noopener noreferrer">Re-authenticate (Browser)</a>
+                            <a href="/ui/oauth/device-login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-secondary" target="_blank" rel="noopener noreferrer">Device Code</a>
+                        {{else if $oauth.Authenticated}}
+                            <form method="POST" action="/ui/oauth/disconnect/{{.Name}}" style="display:inline"><button type="submit" class="btn-oauth-xs btn-oauth-xs-danger" onclick="return confirm('Disconnect {{.Name}}?')">Disconnect</button></form>
+                        {{else}}
+                            <a href="/ui/oauth/login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-primary" target="_blank" rel="noopener noreferrer">Connect (Browser)</a>
+                            <a href="/ui/oauth/device-login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-secondary" target="_blank" rel="noopener noreferrer">Device Code</a>
+                        {{end}}
+                    {{else if eq .Type "copilot"}}
+                        {{if not $oauth.Authenticated}}
+                            <a href="/ui/oauth/login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-primary" target="_blank" rel="noopener noreferrer">{{if $oauth.TokenSource}}Re-authenticate{{else}}Connect{{end}}</a>
+                        {{end}}
+                        {{if or $oauth.Authenticated $oauth.TokenSource}}
+                            <button type="button" class="btn-oauth-xs btn-oauth-xs-secondary" hx-post="/ui/oauth/check-status/{{.Name}}" hx-target="#oauth-{{.Name}}" hx-swap="outerHTML">Check Status</button>
+                        {{end}}
+                        {{if or $oauth.Authenticated $oauth.TokenSource}}
+                            <form method="POST" action="/ui/oauth/disconnect/{{.Name}}" style="display:inline"><button type="submit" class="btn-oauth-xs btn-oauth-xs-danger" onclick="return confirm('Clear token for {{.Name}}?')">Disconnect</button></form>
+                        {{end}}
+                    {{end}}
+                    </div>
+                    {{if or $oauth.Authenticated $oauth.TokenSource}}
+                    <div class="oauth-meta-row">
+                        {{if $oauth.TokenSource}}<span>Source: <strong>{{$oauth.TokenSource}}</strong></span>{{end}}
+                        {{if $oauth.TokenExpiry}}<span>Expires: <strong class="oauth-expiry-{{$oauth.TokenState}}">{{$oauth.TokenExpiry}}</strong></span>{{end}}
+                        {{if $oauth.LastRefresh}}<span>Refreshed: <strong>{{$oauth.LastRefresh}}</strong></span>{{end}}
+                    </div>
+                    {{else if $oauth.NeedsReauth}}
+                    <div class="oauth-meta-row" style="color:var(--amber);font-style:italic">Token expired or missing — re-authentication required</div>
+                    {{end}}
+                </div>
+                {{end}}
             </div>
             {{end}}
+            <button class="add-backend-btn" onclick="openModal('modal-add-backend')">
+                &#43; Add Backend
+            </button>
         </div>
 
         <div id="overlap-section">{{if .Overlaps}}
@@ -1303,6 +1569,90 @@
             </button>
         </div>
     </main>
+
+    <!-- ── Add Backend Modal ──────────────────────────────────────── -->
+    <div class="modal-overlay" id="modal-add-backend" onclick="closeOnBackdrop(event, 'modal-add-backend')">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>&#43; Add Backend</h2>
+                <button class="modal-close" onclick="closeModal('modal-add-backend')">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Step 1: Choose type -->
+                <div class="wizard-step active" id="wizard-step-1">
+                    <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1rem">Choose the type of backend to add:</p>
+                    <div class="wizard-type-grid">
+                        <div class="wizard-type-card" data-type="openai" onclick="selectBackendType('openai')">
+                            <div class="wizard-icon">&#x1F517;</div>
+                            <div class="wizard-label">OpenAI Compatible</div>
+                            <div class="wizard-desc">Any provider with an OpenAI-compatible API (OpenRouter, Z.ai, etc.)</div>
+                        </div>
+                        <div class="wizard-type-card" data-type="copilot" onclick="selectBackendType('copilot')">
+                            <div class="wizard-icon">&#x1F4BB;</div>
+                            <div class="wizard-label">GitHub Copilot</div>
+                            <div class="wizard-desc">Uses GitHub Device Code Flow for auth. No API key needed.</div>
+                        </div>
+                        <div class="wizard-type-card" data-type="codex" onclick="selectBackendType('codex')">
+                            <div class="wizard-icon">&#x1F916;</div>
+                            <div class="wizard-label">OpenAI Codex</div>
+                            <div class="wizard-desc">Uses OAuth PKCE browser flow. No API key needed.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Configure -->
+                <div class="wizard-step" id="wizard-step-2">
+                    <form method="POST" action="/ui/settings/backends/add" id="add-backend-form">
+                        <input type="hidden" name="type" id="wizard-type-input">
+                        <div id="wizard-fields-openai">
+                            <div class="wizard-form-group">
+                                <label for="wizard-name">Backend Name</label>
+                                <input type="text" name="name" id="wizard-name" placeholder="e.g. openrouter, zai" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="wizard-form-group">
+                                <label for="wizard-base-url">Base URL</label>
+                                <input type="text" name="base_url" id="wizard-base-url" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="wizard-form-group">
+                                <label for="wizard-api-key">API Key</label>
+                                <input type="text" name="api_key" id="wizard-api-key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+                            </div>
+                        </div>
+                        <div id="wizard-fields-copilot" style="display:none">
+                            <div class="wizard-form-group">
+                                <label for="wizard-copilot-name">Backend Name</label>
+                                <input type="text" name="name" id="wizard-copilot-name" value="copilot" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="wizard-info-box">
+                                &#x2139;&#xFE0F; GitHub Copilot uses Device Code Flow for authentication.
+                                After adding the backend, click <strong>Connect</strong> on the backend card to start the login flow.
+                                No API key is needed.
+                            </div>
+                            <input type="hidden" name="base_url" value="https://api.githubcopilot.com">
+                            <input type="hidden" name="api_key" value="">
+                        </div>
+                        <div id="wizard-fields-codex" style="display:none">
+                            <div class="wizard-form-group">
+                                <label for="wizard-codex-name">Backend Name</label>
+                                <input type="text" name="name" id="wizard-codex-name" value="codex" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="wizard-info-box">
+                                &#x2139;&#xFE0F; OpenAI Codex uses OAuth PKCE browser flow for authentication.
+                                After adding the backend, click <strong>Connect</strong> on the backend card to start the login flow.
+                                No API key is needed.
+                            </div>
+                            <input type="hidden" name="base_url" value="https://chatgpt.com/backend-api/codex">
+                            <input type="hidden" name="api_key" value="">
+                        </div>
+                        <div class="wizard-nav">
+                            <button type="button" class="btn btn-secondary" onclick="wizardBack()">&#x2190; Back</button>
+                            <button type="submit" class="btn btn-primary">Add Backend</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- ── Routing Config Modal ──────────────────────────────────────── -->
     <div class="modal-overlay" id="modal-routing" onclick="closeOnBackdrop(event, 'modal-routing')">
@@ -1544,6 +1894,7 @@
             document.getElementById(id).classList.add('open');
             document.body.style.overflow = 'hidden';
             if (id === 'modal-zed' && !zedConfigBuilt) buildZedConfig();
+            if (id === 'modal-add-backend') resetWizard();
         }
         function closeModal(id) {
             document.getElementById(id).classList.remove('open');
@@ -1559,6 +1910,60 @@
                 });
             }
         });
+
+        // ── Add Backend Wizard ───────────────────────────────────
+        var wizardType = '';
+
+        function resetWizard() {
+            wizardType = '';
+            document.querySelectorAll('.wizard-type-card').forEach(function(c) { c.classList.remove('selected'); });
+            showWizardStep(1);
+            // Reset form fields
+            var form = document.getElementById('add-backend-form');
+            if (form) form.reset();
+            // Reset Copilot/Codex defaults
+            var cn = document.getElementById('wizard-copilot-name');
+            if (cn) cn.value = 'copilot';
+            var coden = document.getElementById('wizard-codex-name');
+            if (coden) coden.value = 'codex';
+        }
+
+        function selectBackendType(type) {
+            wizardType = type;
+            document.querySelectorAll('.wizard-type-card').forEach(function(c) {
+                c.classList.toggle('selected', c.getAttribute('data-type') === type);
+            });
+            document.getElementById('wizard-type-input').value = type;
+            // Show/hide field sets and disable inputs in hidden ones
+            // so only the active set submits values.
+            var sets = {
+                openai: document.getElementById('wizard-fields-openai'),
+                copilot: document.getElementById('wizard-fields-copilot'),
+                codex: document.getElementById('wizard-fields-codex')
+            };
+            Object.keys(sets).forEach(function(key) {
+                var el = sets[key];
+                if (!el) return;
+                var show = (key === type);
+                el.style.display = show ? 'block' : 'none';
+                el.querySelectorAll('input').forEach(function(inp) {
+                    if (inp.id === 'wizard-type-input') return;
+                    if (!show) { inp.setAttribute('disabled', 'disabled'); }
+                    else { inp.removeAttribute('disabled'); }
+                });
+            });
+            showWizardStep(2);
+        }
+
+        function showWizardStep(step) {
+            document.querySelectorAll('.wizard-step').forEach(function(el) { el.classList.remove('active'); });
+            var s = document.getElementById('wizard-step-' + step);
+            if (s) s.classList.add('active');
+        }
+
+        function wizardBack() {
+            showWizardStep(1);
+        }
 
         function copyText(btn, text) {
             navigator.clipboard.writeText(text).then(() => {

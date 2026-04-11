@@ -293,6 +293,14 @@
                 gap: 0.75rem;
             }
 
+            .dash-controls {
+                width: 100%;
+            }
+
+            .refresh-controls {
+                width: 100%;
+            }
+
             .window-selector {
                 flex-wrap: wrap;
             }
@@ -541,9 +549,65 @@
             align-items: center;
             justify-content: space-between;
             margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 0.75rem;
         }
 
         .dash-header h1 { margin-bottom: 0; }
+
+        .dash-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .refresh-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .refresh-btn {
+            background: none;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 0.3rem 0.7rem;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            font-family: var(--mono);
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+
+        .refresh-btn:hover {
+            background: var(--accent-dim);
+        }
+
+        .refresh-btn:active {
+            transform: rotate(180deg);
+            transition: transform 0.3s ease;
+        }
+
+        .auto-refresh-select {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 0.3rem 0.4rem;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            font-family: var(--mono);
+            cursor: pointer;
+            transition: all 0.15s;
+            outline: none;
+        }
+
+        .auto-refresh-select:hover,
+        .auto-refresh-select:focus {
+            border-color: var(--accent);
+            color: var(--text);
+        }
 
         .pagination {
             display: flex;
@@ -650,12 +714,24 @@
     <main>
         <div class="dash-header">
             <h1>Dashboard</h1>
-            <div class="window-selector">
-                <button class="window-btn" data-window="1h">1h</button>
-                <button class="window-btn" data-window="2h">2h</button>
-                <button class="window-btn" data-window="3h">3h</button>
-                <button class="window-btn" data-window="6h">6h</button>
-                <button class="window-btn" data-window="12h">12h</button>
+            <div class="dash-controls">
+                <div class="window-selector">
+                    <button class="window-btn" data-window="5m">5m</button>
+                    <button class="window-btn" data-window="15m">15m</button>
+                    <button class="window-btn" data-window="30m">30m</button>
+                    <button class="window-btn" data-window="1h">1h</button>
+                    <button class="window-btn" data-window="2h">2h</button>
+                </div>
+                <div class="refresh-controls">
+                    <button class="refresh-btn" onclick="fetchDash()" title="Refresh now">&#x21bb; Refresh</button>
+                    <select class="auto-refresh-select" id="autoRefreshSelect" onchange="setAutoRefresh(this.value)" title="Auto-refresh interval">
+                        <option value="5000">5s</option>
+                        <option value="15000">15s</option>
+                        <option value="30000">30s</option>
+                        <option value="60000">1m</option>
+                        <option value="0">Off</option>
+                    </select>
+                </div>
             </div>
         </div>
 
@@ -787,9 +863,10 @@ function esc(s) {
 function setText(id, val) { document.getElementById(id).textContent = val; }
 
 // ── State ─────────────────────────────────────────────────────────────────
-var dashWin   = localStorage.getItem('dashWindow') || '1h';
-var dashPage  = 0;
-var dashTimer = null;
+var dashWin       = localStorage.getItem('dashWindow') || '1h';
+var dashPage      = 0;
+var dashTimer     = null;
+var dashAutoMs    = parseInt(localStorage.getItem('dashAutoRefresh') || '5000', 10);
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 (function() {
@@ -805,8 +882,27 @@ var dashTimer = null;
             fetchDash();
         });
     });
+
+    // Restore auto-refresh selector from localStorage
+    var sel = document.getElementById('autoRefreshSelect');
+    if (sel) sel.value = String(dashAutoMs);
+
     fetchDash();
 })();
+
+// ── Auto-refresh ──────────────────────────────────────────────────────────
+function setAutoRefresh(ms) {
+    dashAutoMs = parseInt(ms, 10);
+    localStorage.setItem('dashAutoRefresh', String(dashAutoMs));
+    // Restart timer with new interval
+    clearTimeout(dashTimer);
+    if (dashAutoMs > 0) dashTimer = setTimeout(fetchDash, dashAutoMs);
+}
+
+function scheduleNext() {
+    clearTimeout(dashTimer);
+    if (dashAutoMs > 0) dashTimer = setTimeout(fetchDash, dashAutoMs);
+}
 
 // ── Fetch ─────────────────────────────────────────────────────────────────
 function fetchDash(page) {
@@ -816,10 +912,10 @@ function fetchDash(page) {
         .then(function(r) { return r.json(); })
         .then(function(d) {
             renderDash(d);
-            dashTimer = setTimeout(fetchDash, 10000);
+            scheduleNext();
         })
         .catch(function() {
-            dashTimer = setTimeout(fetchDash, 10000);
+            scheduleNext();
         });
 }
 

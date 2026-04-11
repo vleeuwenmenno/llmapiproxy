@@ -133,14 +133,14 @@ const pageSize = 25
 
 func parseWindowParam(s string) (time.Duration, string) {
 	switch s {
+	case "5m":
+		return 5 * time.Minute, "5m"
+	case "15m":
+		return 15 * time.Minute, "15m"
+	case "30m":
+		return 30 * time.Minute, "30m"
 	case "2h":
 		return 2 * time.Hour, "2h"
-	case "3h":
-		return 3 * time.Hour, "3h"
-	case "6h":
-		return 6 * time.Hour, "6h"
-	case "12h":
-		return 12 * time.Hour, "12h"
 	default:
 		return 1 * time.Hour, "1h"
 	}
@@ -186,7 +186,7 @@ type dashRecPage struct {
 }
 
 // DashboardData returns all dashboard data as a single JSON response.
-// Supports ?window=1h|2h|3h|6h|12h and ?page=N.
+// Supports ?window=5m|15m|30m|1h|2h and ?page=N.
 func (u *UI) DashboardData(w http.ResponseWriter, r *http.Request) {
 	windowDur, windowLabel := parseWindowParam(r.URL.Query().Get("window"))
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
@@ -373,6 +373,7 @@ func renderConfigMessage(w http.ResponseWriter, configText string, message strin
 // BackendEntry holds display info for the models page.
 type BackendEntry struct {
 	Name        string
+	Type        string // "openai", "copilot", "codex"
 	BaseURL     string
 	Models      []ModelEntry // enriched model metadata (nil for dynamic backends)
 	IsDynamic   bool         // true when no explicit model list (accepts all)
@@ -472,6 +473,7 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 
 		entries = append(entries, BackendEntry{
 			Name:        bc.Name,
+			Type:        bc.Type,
 			BaseURL:     bc.BaseURL,
 			Models:      modelEntries, // nil for dynamic; IDs-only for static
 			IsDynamic:   isDynamic,
@@ -541,6 +543,13 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Build a map of backend name → OAuthStatus for quick lookup in templates.
+	oauthStatuses := u.registry.OAuthStatuses()
+	oauthByBackend := make(map[string]backend.OAuthStatus, len(oauthStatuses))
+	for _, s := range oauthStatuses {
+		oauthByBackend[s.BackendName] = s
+	}
+
 	data := map[string]any{
 		"Backends":       entries,
 		"Overlaps":       overlaps,
@@ -551,6 +560,7 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		"GlobalStrategy": cfg.Routing.Strategy,
 		"ServerAPIKeys":  apiKeyEntries,
 		"CurlModels":     curlModels,
+		"OAuthByBackend": oauthByBackend,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -1344,7 +1354,6 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 		"ServerHost":    cfg.Server.Host,
 		"ServerPort":    cfg.Server.Port,
 		"ModelCacheTTL": cfg.Server.ModelCacheTTL.String(),
-		"OAuthStatuses": u.registry.OAuthStatuses(),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "settings.html", data); err != nil {
@@ -1594,6 +1603,88 @@ func (u *UI) ToggleBackend(w http.ResponseWriter, r *http.Request) {
 		status = "enabled"
 	}
 	http.Redirect(w, r, redirectTo+"?msg=Backend+"+name+"+"+status+".", http.StatusSeeOther)
+}
+
+// AddBackendPage adds a new backend from the Models page form.
+func (u *UI) AddBackendPage(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/ui/models?msg=Error:+failed+to+parse+form.", http.StatusSeeOther)
+		return
+	}
+
+	bcType := strings.TrimSpace(r.FormValue("type"))
+	name := strings.TrimSpace(r.FormValue("name"))
+	baseURL := strings.TrimSpace(r.FormValue("base_url"))
+	apiKey := strings.TrimSpace(r.FormValue("api_key"))
+
+	if name == "" {
+		http.Redirect(w, r, "/ui/models?msg=Error:+backend+name+is+required.", http.StatusSeeOther)
+		return
+	}
+
+	bc := config.BackendConfig{
+		Name:   name,
+		Type:   bcType,
+		BaseURL: baseURL,
+		APIKey:  apiKey,
+	}
+
+	// Apply defaults for known backend types.
+	switch bcType {
+	case "copilot":
+		if bc.BaseURL == "" {
+			bc.BaseURL = "https://api.githubcopilot.com"
+		}
+	case "codex":
+		if bc.BaseURL == "" {
+			bc.BaseURL = "https://chatgpt.com/backend-api/codex"
+		}
+		if bc.OAuth == nil {
+			bc.OAuth = &config.OAuthConfig{
+				Scopes:  []string{"openid", "profile", "email", "offline_access"},
+				AuthURL: "https://auth.openai.com/oauth/authorize",
+				TokenURL: "https://auth.openai.com/oauth/token",
+			}
+		}
+	case "openai", "":
+		bc.Type = "openai"
+		if bc.BaseURL == "" {
+			http.Redirect(w, r, "/ui/models?msg=Error:+base+URL+is+required+for+OpenAI-compatible+backends.", http.StatusSeeOther)
+			return
+		}
+		if bc.APIKey == "" {
+			http.Redirect(w, r, "/ui/models?msg=Error:+API+key+is+required+for+OpenAI-compatible+backends.", http.StatusSeeOther)
+			return
+		}
+	default:
+		http.Redirect(w, r, "/ui/models?msg=Error:+unsupported+backend+type+"+bcType+".", http.StatusSeeOther)
+		return
+	}
+
+	if err := u.cfgMgr.AddBackend(bc); err != nil {
+		http.Redirect(w, r, "/ui/models?msg=Error:"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/ui/models?msg=Backend+"+name+"+added.", http.StatusSeeOther)
+}
+
+// DeleteBackendPage removes a backend from the Models page.
+func (u *UI) DeleteBackendPage(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/ui/models?msg=Error:+failed+to+parse+form.", http.StatusSeeOther)
+		return
+	}
+	name := r.FormValue("name")
+	if name == "" {
+		http.Redirect(w, r, "/ui/models?msg=Error:+backend+name+is+required.", http.StatusSeeOther)
+		return
+	}
+
+	if err := u.cfgMgr.DeleteBackend(name); err != nil {
+		http.Redirect(w, r, "/ui/models?msg=Error:"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/ui/models?msg=Backend+"+name+"+deleted.", http.StatusSeeOther)
 }
 
 // --- OAuth management handlers ---
@@ -1900,7 +1991,7 @@ func (u *UI) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 	if errParam != "" {
 		errDesc := r.URL.Query().Get("error_description")
 		log.Printf("oauth callback error for %s: %s: %s", backendName, errParam, errDesc)
-		http.Redirect(w, r, "/ui/settings?msg=OAuth+authentication+failed:+"+errParam, http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/models?msg=OAuth+authentication+failed:+"+errParam, http.StatusSeeOther)
 		return
 	}
 
@@ -1923,12 +2014,12 @@ func (u *UI) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 
 	if err := callbackHandler.HandleCallback(r.Context(), code, state); err != nil {
 		log.Printf("oauth callback error for %s: %v", backendName, err)
-		http.Redirect(w, r, "/ui/settings?msg=OAuth+callback+failed:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/models?msg=OAuth+callback+failed:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
 		return
 	}
 
 	log.Printf("oauth: successfully authenticated backend %s", backendName)
-	http.Redirect(w, r, "/ui/settings?msg="+backendName+"+authentication+successful!", http.StatusSeeOther)
+	http.Redirect(w, r, "/ui/models?msg="+backendName+"+authentication+successful!", http.StatusSeeOther)
 }
 
 // OAuthDeviceLogin initiates the device code flow for the specified backend.
@@ -2006,12 +2097,12 @@ func (u *UI) OAuthDisconnect(w http.ResponseWriter, r *http.Request) {
 
 	if err := disconnectHandler.Disconnect(); err != nil {
 		log.Printf("oauth disconnect error for %s: %v", backendName, err)
-		http.Redirect(w, r, "/ui/settings?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/models?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
 		return
 	}
 
 	log.Printf("oauth: disconnected backend %s", backendName)
-	http.Redirect(w, r, "/ui/settings?msg="+backendName+"+disconnected+successfully.", http.StatusSeeOther)
+	http.Redirect(w, r, "/ui/models?msg="+backendName+"+disconnected+successfully.", http.StatusSeeOther)
 }
 
 // RoutingConfigJSON returns the current routing configuration as JSON (used by

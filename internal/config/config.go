@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -724,6 +725,94 @@ func (m *Manager) UpdateModelCacheTTL(ttl time.Duration) error {
 	m.mu.Lock()
 	m.current.Server.ModelCacheTTL = ttl
 	m.current.Server.modelCacheTTLSet = true
+	cfg := m.current
+	m.mu.Unlock()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+// AddBackend appends a new backend to the configuration, persists the file, and
+// reloads. It validates that the name is unique and the type is one of the
+// supported backend types. Default values are applied for well-known types.
+func (m *Manager) AddBackend(bc BackendConfig) error {
+	// Validate type.
+	switch bc.Type {
+	case "openai", "copilot", "codex", "":
+		// ok
+	default:
+		return fmt.Errorf("unsupported backend type %q", bc.Type)
+	}
+	if bc.Type == "" {
+		bc.Type = "openai"
+	}
+
+	// Validate name.
+	if bc.Name == "" {
+		return fmt.Errorf("backend name is required")
+	}
+
+	m.mu.Lock()
+	for _, existing := range m.current.Backends {
+		if existing.Name == bc.Name {
+			m.mu.Unlock()
+			return fmt.Errorf("backend %q already exists", bc.Name)
+		}
+	}
+	m.current.Backends = append(m.current.Backends, bc)
+	cfg := m.current
+	m.mu.Unlock()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+// DeleteBackend removes a backend by name from the configuration, persists
+// the file, and reloads. It validates that at least one enabled backend remains.
+func (m *Manager) DeleteBackend(name string) error {
+	m.mu.Lock()
+
+	idx := -1
+	for i, b := range m.current.Backends {
+		if b.Name == name {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		m.mu.Unlock()
+		return fmt.Errorf("backend %q not found", name)
+	}
+
+	// Check that at least one other enabled backend would remain.
+	remaining := slices.Clone(m.current.Backends)
+	remaining = slices.Delete(remaining, idx, idx+1)
+	enabledCount := 0
+	for _, b := range remaining {
+		if b.IsEnabled() {
+			enabledCount++
+		}
+	}
+	if enabledCount == 0 {
+		m.mu.Unlock()
+		return fmt.Errorf("cannot delete the last enabled backend")
+	}
+
+	m.current.Backends = remaining
 	cfg := m.current
 	m.mu.Unlock()
 
