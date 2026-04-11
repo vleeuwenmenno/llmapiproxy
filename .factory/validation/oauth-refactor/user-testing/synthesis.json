@@ -1,0 +1,17 @@
+{
+  "milestone": "oauth-refactor",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null,
+  "notes": "oauth-refactor is a refactoring milestone with no new assertions (all features have empty fulfills arrays). The refactoring replaced Copilot local token discovery with GitHub Device Code Flow and added Codex Device Code Flow as an alternative to PKCE browser login. Validation verified: (1) All 780+ Go tests pass including new device code flow tests. (2) Proxy builds and runs correctly. (3) Web UI renders OAuth status with both browser and device code login options. (4) Health endpoint reflects backend status. (5) Model listing works. (6) Config and README updated. The 19 previously-pending assertions from prior milestones remain blocked by credential requirements and are unaffected by this refactoring."
+}
