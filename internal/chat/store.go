@@ -284,7 +284,7 @@ func (s *ChatStore) SaveMessage(sessionID, role, content string, tokens, promptT
 
 	// Bump session updated_at so it sorts to the top of the list.
 	if _, err := s.db.Exec(`UPDATE sessions SET updated_at=? WHERE id=?`, now, sessionID); err != nil {
-	log.Error().Err(err).Msg("chat: failed to bump session updated_at")
+		log.Error().Err(err).Msg("chat: failed to bump session updated_at")
 	}
 
 	return &Message{

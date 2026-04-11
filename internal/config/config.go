@@ -529,11 +529,11 @@ func (m *Manager) WatchFile() error {
 						if elapsed := time.Since(time.UnixMilli(m.selfWriteAt.Load())); elapsed < time.Second {
 							return
 						}
-					log.Info().Msg("config file changed externally, reloading...")
-					if err := m.Reload(); err != nil {
-						log.Error().Err(err).Msg("config reload failed")
-					} else {
-						log.Info().Msg("config reloaded successfully")
+						log.Info().Msg("config file changed externally, reloading...")
+						if err := m.Reload(); err != nil {
+							log.Error().Err(err).Msg("config reload failed")
+						} else {
+							log.Info().Msg("config reloaded successfully")
 						}
 					})
 				}

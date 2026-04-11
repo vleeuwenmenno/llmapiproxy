@@ -84,14 +84,14 @@ func (s *Store) Save(r Record) {
 		boolToInt(r.Fallback),
 	)
 	if err != nil {
-	log.Error().Err(err).Msg("stats: failed to save record")
+		log.Error().Err(err).Msg("stats: failed to save record")
 	}
 }
 
 // DeleteAll removes every record from the database.
 func (s *Store) DeleteAll() {
 	if _, err := s.db.Exec(`DELETE FROM requests`); err != nil {
-	log.Error().Err(err).Msg("stats: failed to clear records")
+		log.Error().Err(err).Msg("stats: failed to clear records")
 	}
 }
 
