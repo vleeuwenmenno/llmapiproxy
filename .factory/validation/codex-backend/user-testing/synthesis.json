@@ -1,0 +1,82 @@
+{
+  "milestone": "codex-backend",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 52,
+    "passed": 50,
+    "failed": 2,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-TOKEN-020",
+    "VAL-TOKEN-021",
+    "VAL-TOKEN-022",
+    "VAL-TOKEN-039",
+    "VAL-TOKEN-041",
+    "VAL-TOKEN-042",
+    "VAL-TOKEN-043",
+    "VAL-CODEX-001",
+    "VAL-CODEX-002",
+    "VAL-CODEX-003",
+    "VAL-CODEX-004",
+    "VAL-CODEX-005",
+    "VAL-CODEX-006",
+    "VAL-CODEX-007",
+    "VAL-CODEX-008",
+    "VAL-CODEX-009",
+    "VAL-CODEX-012",
+    "VAL-CODEX-013",
+    "VAL-CODEX-014",
+    "VAL-CODEX-015",
+    "VAL-CODEX-016",
+    "VAL-CODEX-017",
+    "VAL-CODEX-018",
+    "VAL-CODEX-019",
+    "VAL-CODEX-020",
+    "VAL-CODEX-021",
+    "VAL-CODEX-022",
+    "VAL-CODEX-023",
+    "VAL-CODEX-024",
+    "VAL-CODEX-025",
+    "VAL-CODEX-026",
+    "VAL-CODEX-027",
+    "VAL-CODEX-028",
+    "VAL-CODEX-029",
+    "VAL-CODEX-030",
+    "VAL-CODEX-031",
+    "VAL-CODEX-032",
+    "VAL-CODEX-033",
+    "VAL-CODEX-034",
+    "VAL-CODEX-035",
+    "VAL-CODEX-036",
+    "VAL-CODEX-037",
+    "VAL-CODEX-038",
+    "VAL-CODEX-039",
+    "VAL-CODEX-040",
+    "VAL-CODEX-041",
+    "VAL-CODEX-042",
+    "VAL-CODEX-043",
+    "VAL-CODEX-044",
+    "VAL-CODEX-045"
+  ],
+  "failedAssertions": [
+    {
+      "id": "VAL-CODEX-010",
+      "reason": "Blocked: requires real OpenAI OAuth credentials and browser-based authentication flow. PKCE generation logic is validated in unit tests but the full browser-initiated redirect to OpenAI cannot be tested without real credentials."
+    },
+    {
+      "id": "VAL-CODEX-011",
+      "reason": "Blocked: requires real OpenAI OAuth credentials and browser-based authentication flow. Callback handler logic is validated in unit tests but the full end-to-end OAuth exchange cannot be tested without real credentials."
+    }
+  ],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added Flow Validator Guidance sections for Codex Backend Core and Codex OAuth Flow testing surfaces, including isolation rules, boundaries, tool setup, and important notes about credential requirements",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null
+}

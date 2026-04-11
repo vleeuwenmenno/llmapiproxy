@@ -1,0 +1,315 @@
+{
+  "groupId": "codex-oauth-flow",
+  "testedAt": "2026-04-11T02:44:00+02:00",
+  "isolation": {
+    "method": "Go unit tests with mock HTTP servers (httptest.NewServer)",
+    "noLiveProxy": true,
+    "noExternalAPIs": true,
+    "mockTokensAt": "internal/backend/tokens/codex-token.json",
+    "testFiles": [
+      "internal/oauth/codex_oauth_test.go",
+      "internal/backend/codex_test.go"
+    ]
+  },
+  "toolsUsed": ["go-test"],
+  "assertions": [
+    {
+      "id": "VAL-TOKEN-020",
+      "title": "Proactive Codex token refresh using refresh token",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestRefreshWithRetry_ExpiredTokenRefreshes — store expired access token with valid refresh token, call RefreshWithRetry",
+          "expected": "Handler uses stored refresh token to obtain new access token; new token stored and returned",
+          "observed": "Test passed — expired token triggered refresh via refresh_token, mock token server received refresh_token grant_type request, new access token 'refreshed-access' returned and stored"
+        }
+      ],
+      "evidence": {
+        "testFunctions": ["TestRefreshWithRetry_ExpiredTokenRefreshes"],
+        "testOutput": "codex-oauth-flow/oauth-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-021",
+      "title": "Codex refresh token rotation",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestRefreshToken_Success — store token with old refresh token, mock server returns new refresh token",
+          "expected": "New refresh token is stored, old one discarded",
+          "observed": "Test passed — store updated from 'old-refresh-token' to 'rotated-refresh-token' after refresh"
+        },
+        {
+          "action": "Run TestRefreshToken_Rotation — perform two sequential refreshes, each returning a new refresh token",
+          "expected": "Each refresh uses the previous refresh token; store always has the latest",
+          "observed": "Test passed — first refresh used initial-refresh → got refresh-token-1; second used refresh-token-1 → got refresh-token-2; store has refresh-token-2"
+        }
+      ],
+      "evidence": {
+        "testFunctions": ["TestRefreshToken_Success", "TestRefreshToken_Rotation"],
+        "testOutput": "codex-oauth-flow/oauth-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-022",
+      "title": "Codex refresh token expiry or revocation",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestRefreshToken_RefreshTokenRevoked — store token with revoked refresh token, mock server returns 401 invalid_grant",
+          "expected": "Refresh fails with error containing 'refresh failed'; error logged clearly",
+          "observed": "Test passed — error returned containing 'refresh failed'; no infinite retry loop"
+        },
+        {
+          "action": "Run TestRefreshToken_NoRefreshToken — store token without refresh token",
+          "expected": "Error returned indicating no refresh token available",
+          "observed": "Test passed — error 'no refresh token' returned, clear re-auth message"
+        },
+        {
+          "action": "Run TestCodexBackend_OAuthStatus_WithExpiredTokenNoRefresh — check OAuthStatus with expired token and no refresh token",
+          "expected": "NeedsReauth=true, indicating re-authentication required",
+          "observed": "Test passed — NeedsReauth=true when token expired without refresh token"
+        }
+      ],
+      "evidence": {
+        "testFunctions": ["TestRefreshToken_RefreshTokenRevoked", "TestRefreshToken_NoRefreshToken", "TestCodexBackend_OAuthStatus_WithExpiredTokenNoRefresh"],
+        "testOutput": "codex-oauth-flow/oauth-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-039",
+      "title": "Upstream 401 triggers immediate re-authentication (Codex)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestCodexBackend_Upstream401_Retry — mock upstream returns 401 on first request, then 200 with valid response on second",
+          "expected": "Proxy refreshes token and retries request; client receives successful response",
+          "observed": "Test passed — 2 attempts made (initial 401 + retry after refresh), client received 'Success after retry' content"
+        },
+        {
+          "action": "Run TestCodexBackend_Upstream401_LoopPrevention — mock upstream always returns 401",
+          "expected": "Only one retry attempt; error returned to client after second 401",
+          "observed": "Test passed — at most 2 attempts (loop prevention), error returned to client"
+        }
+      ],
+      "evidence": {
+        "testFunctions": ["TestCodexBackend_Upstream401_Retry", "TestCodexBackend_Upstream401_LoopPrevention"],
+        "testOutput": "codex-oauth-flow/backend-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-041",
+      "title": "OAuth callback CSRF protection (state parameter validation)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestHandleCallback_InvalidState — call HandleCallback with state that was never initiated",
+          "expected": "Error returned with 'invalid or expired state'; no tokens stored",
+          "observed": "Test passed — error 'codex oauth callback: invalid or expired state parameter' returned"
+        },
+        {
+          "action": "Run TestHandleCallback_MissingState — call HandleCallback with empty state string",
+          "expected": "Error returned for missing state",
+          "observed": "Test passed — error returned for empty state"
+        },
+        {
+          "action": "Run TestHandleCallback_ReplayProtection — call HandleCallback twice with same state",
+          "expected": "First call succeeds, second call fails with invalid state error",
+          "observed": "Test passed — first callback succeeded, second callback returned 'invalid or expired state'"
+        }
+      ],
+      "evidence": {
+        "testFunctions": ["TestHandleCallback_InvalidState", "TestHandleCallback_MissingState", "TestHandleCallback_ReplayProtection"],
+        "testOutput": "codex-oauth-flow/oauth-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-042",
+      "title": "PKCE code verifier never logged or persisted to disk",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestPKCEVerifier_NeverPersisted — generate AuthorizeURL (creates PKCE), then check token store and file for verifier",
+          "expected": "Token store empty before callback; no 'verifier' or 'code_verifier' in token file",
+          "observed": "Test passed — token store was empty after AuthorizeURL; no verifier references in file"
+        },
+        {
+          "action": "Run TestPKCEVerifier_NotInTokenData — complete full OAuth flow, then read persisted token file JSON",
+          "expected": "No PKCE-related fields (verifier, pkce) in persisted token JSON",
+          "observed": "Test passed — token JSON keys checked, none contained 'verifier' or 'pkce'"
+        },
+        {
+          "action": "Run TestAuthorizeURL_PKCENotExposed — call GetPendingState and verify PKCE field is nil",
+          "expected": "GetPendingState returns state without PKCE verifier",
+          "observed": "Test passed — pending.PKCE was nil, verifier not exposed outside handler"
+        }
+      ],
+      "evidence": {
+        "testFunctions": ["TestPKCEVerifier_NeverPersisted", "TestPKCEVerifier_NotInTokenData", "TestAuthorizeURL_PKCENotExposed"],
+        "testOutput": "codex-oauth-flow/oauth-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-043",
+      "title": "OAuth callback timeout — pending state cleaned up",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestStateCleanup_OnTimeout — add expired and fresh pending states, run cleanup, verify expired removed and fresh kept",
+          "expected": "Expired state cleaned up, fresh state preserved",
+          "observed": "Test passed — expired state was removed, fresh state remained"
+        },
+        {
+          "action": "Run TestStateCleanup_LateCallback — add expired state, then attempt HandleCallback",
+          "expected": "Late callback returns error containing 'expired'",
+          "observed": "Test passed — error 'codex oauth callback: authorization flow expired' returned"
+        },
+        {
+          "action": "Run TestStateCleanup_OnCallback — verify state removed after callback (even failed one)",
+          "expected": "Pending state count goes to 0 after callback",
+          "observed": "Test passed — pending state count was 0 after callback attempt"
+        }
+      ],
+      "evidence": {
+        "testFunctions": ["TestStateCleanup_OnTimeout", "TestStateCleanup_LateCallback", "TestStateCleanup_OnCallback"],
+        "testOutput": "codex-oauth-flow/oauth-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CODEX-010",
+      "title": "OAuth PKCE flow initiation from web UI",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Cannot test — requires real OpenAI OAuth credentials and browser-based authentication flow",
+          "expected": "Browser redirects to OpenAI auth URL with PKCE params (code_challenge, code_challenge_method=S256, response_type=code, state)",
+          "observed": "Not tested — no real OpenAI credentials available"
+        }
+      ],
+      "evidence": {
+        "testFunctions": [],
+        "note": "Would require agent-browser + real OpenAI account"
+      },
+      "issues": "Requires real OpenAI OAuth credentials and browser-based authentication flow. The PKCE generation logic is validated in unit tests (TestGeneratePKCE, TestAuthorizeURL), but the full browser-initiated redirect flow cannot be tested without real credentials."
+    },
+    {
+      "id": "VAL-CODEX-011",
+      "title": "OAuth callback exchanges authorization code for tokens",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Cannot test — requires completing a real OAuth flow through OpenAI",
+          "expected": "After auth, tokens stored and API works",
+          "observed": "Not tested — no real OpenAI credentials available"
+        }
+      ],
+      "evidence": {
+        "testFunctions": [],
+        "note": "Would require completing real OpenAI OAuth flow"
+      },
+      "issues": "Requires real OpenAI OAuth credentials and browser-based authentication flow. The callback handler logic is validated in unit tests (TestHandleCallback_Success), but the full end-to-end OAuth flow cannot be tested without real credentials."
+    },
+    {
+      "id": "VAL-CODEX-012",
+      "title": "OAuth callback rejects invalid or expired authorization codes",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestHandleCallback_TokenExchangeFailure — mock token server returns 400 invalid_grant for bad authorization code",
+          "expected": "Error returned containing 'token exchange failed'; no tokens stored",
+          "observed": "Test passed — error 'codex oauth callback: token exchange failed' returned, pending state was cleaned up"
+        },
+        {
+          "action": "Run TestHandleCallback_InvalidState — callback with state that was never initiated",
+          "expected": "Error returned, no token exchange attempted",
+          "observed": "Test passed — error 'invalid or expired state parameter' returned before any code exchange"
+        },
+        {
+          "action": "Run TestCodexBackend_HandleCallback_InvalidState — backend-level callback with invalid state",
+          "expected": "Error returned",
+          "observed": "Test passed — error returned for invalid state at backend level"
+        }
+      ],
+      "evidence": {
+        "testFunctions": ["TestHandleCallback_TokenExchangeFailure", "TestHandleCallback_InvalidState", "TestCodexBackend_HandleCallback_InvalidState"],
+        "testOutput": ["codex-oauth-flow/oauth-test-output.txt", "codex-oauth-flow/backend-test-output.txt"],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CODEX-013",
+      "title": "Token refresh via refresh_token when access token expires",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestRefreshWithRetry_ExpiredTokenRefreshes — store expired access token with valid refresh token",
+          "expected": "Automatic refresh triggered; new access token stored; request completes successfully",
+          "observed": "Test passed — expired token triggered RefreshToken, mock server received refresh_token grant, new access token 'refreshed-access' stored and returned"
+        },
+        {
+          "action": "Run TestCodexBackend_Upstream401_Retry — upstream returns 401, triggering token refresh and request retry",
+          "expected": "Token refreshed and request retried successfully",
+          "observed": "Test passed — token refreshed via mock server, request retried with new token, client received successful response"
+        }
+      ],
+      "evidence": {
+        "testFunctions": ["TestRefreshWithRetry_ExpiredTokenRefreshes", "TestCodexBackend_Upstream401_Retry"],
+        "testOutput": ["codex-oauth-flow/oauth-test-output.txt", "codex-oauth-flow/backend-test-output.txt"],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CODEX-014",
+      "title": "Token refresh failure returns clear authentication error",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestRefreshToken_RefreshTokenRevoked — store token with revoked refresh token, mock server returns 401",
+          "expected": "Clear error about refresh failure, does not expose token details",
+          "observed": "Test passed — error contains 'refresh failed' with HTTP status code, no raw token values in error message"
+        },
+        {
+          "action": "Run TestRefreshToken_NoToken — call RefreshToken with no stored token",
+          "expected": "Error indicating no token available",
+          "observed": "Test passed — 'no token available for refresh' error"
+        },
+        {
+          "action": "Run TestCodexBackend_NoTokens — make request with no stored token at all",
+          "expected": "Error mentioning authentication/OAuth required",
+          "observed": "Test passed — error mentions 'authentication' or 'OAuth'"
+        }
+      ],
+      "evidence": {
+        "testFunctions": ["TestRefreshToken_RefreshTokenRevoked", "TestRefreshToken_NoToken", "TestCodexBackend_NoTokens"],
+        "testOutput": ["codex-oauth-flow/oauth-test-output.txt", "codex-oauth-flow/backend-test-output.txt"],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [
+    {
+      "description": "VAL-CODEX-010 and VAL-CODEX-011 require real OpenAI OAuth credentials and browser-based authentication flow — no credentials available in this environment",
+      "affectedAssertions": ["VAL-CODEX-010", "VAL-CODEX-011"],
+      "quickFixAttempted": "N/A — credentials are a prerequisite, not an infrastructure issue"
+    }
+  ],
+  "summary": "Tested 12 assertions: 10 passed, 2 blocked (VAL-CODEX-010, VAL-CODEX-011 require real OpenAI OAuth credentials). All 10 testable assertions passed via Go unit tests with mock HTTP servers. Build verification passed successfully."
+}
