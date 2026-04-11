@@ -1,0 +1,61 @@
+{
+  "featureId": "oauth-web-ui",
+  "reviewedAt": "2026-04-11T03:30:00Z",
+  "commitId": "9a745d9",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The OAuth web UI implementation adds the correct backend logic (OAuthStatus with TokenState, handler methods for login/callback/disconnect/status, settings page integration) and comprehensive tests (16 tests). However, the UI is broken in practice due to two critical gaps: (1) All CSS classes referenced in oauth_status.html (oauth-status-dot-*, oauth-backend-card, btn-oauth-*, oauth-backend-meta, etc.) have zero CSS definitions — the visual indicators, card layout, and button styling will not render. (2) The settings page (settings.html) does not include the HTMX library, so the auto-refresh via hx-trigger='every 30s' will not work. A third issue is that the 'Check Status' button for Copilot required by the feature description is missing.",
+    "issues": [
+      {
+        "file": "internal/web/templates/oauth_status.html",
+        "line": 7,
+        "severity": "blocking",
+        "description": "CSS classes oauth-status-dot, oauth-status-dot-valid/expiring/expired/missing, oauth-backend-card, oauth-backend-header, oauth-backend-info, oauth-backend-name-row, oauth-backend-name, oauth-backend-type-badge, oauth-backend-details, oauth-detail-label, oauth-detail-value, oauth-text-*, oauth-backend-actions, btn-oauth-primary, btn-oauth-danger, oauth-backend-meta, oauth-meta-item, oauth-meta-label, oauth-meta-value, oauth-expiry-*, oauth-meta-warning, oauth-empty are all used in this template but have NO CSS definitions anywhere — not in settings.html inline <style>, not in any external CSS file, not in internal/web/static/. The entire OAuth section will render as unstyled HTML with no visual indicators, no card layout, and no styled buttons."
+      },
+      {
+        "file": "internal/web/templates/settings.html",
+        "line": 1,
+        "severity": "blocking",
+        "description": "The settings.html template does not include the HTMX library (<script src=\"/ui/static/htmx.min.js\"></script>). All other pages (dashboard.html, config.html, models.html) include HTMX. The oauth_status.html template uses hx-get, hx-trigger='every 30s', and hx-swap='innerHTML' for auto-refresh, but these HTMX attributes are completely inert without the library loaded. The 30-second auto-refresh will not work. This breaks the requirement for 'HTMX auto-refresh'."
+      },
+      {
+        "file": "internal/web/templates/oauth_status.html",
+        "line": 46,
+        "severity": "non_blocking",
+        "description": "The feature description requires 'Check Status button for Copilot' but the Copilot section only shows a Disconnect button when authenticated. There is no 'Check Status' button that manually triggers a token refresh. While the HTMX auto-refresh partially addresses this, there is no manual trigger for checking/refreshing the Copilot token status as specified."
+      },
+      {
+        "file": "internal/web/web_test.go",
+        "line": 270,
+        "severity": "non_blocking",
+        "description": "TestOAuthCallback_ErrorParamRedirectsToSettings has a code smell: it creates an httptest.Server AFTER making a first HTTP request (to 'http://localhost' which is wrong), then reassigns resp/err with a second request. The first request to localhost is dead code that will fail silently or leak a goroutine depending on system behavior."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The settings.html page is the only main page that does not include the HTMX library. Other pages (dashboard.html, config.html, models.html) all include <script src=\"/ui/static/htmx.min.js\"></script>. The AGENTS.md mentions 'HTMX for dynamic updates' but doesn't specify that HTMX must be included on every page that uses HTMX fragments. This gap led the worker to embed HTMX-powered fragments (oauth_status.html) into a page that doesn't load HTMX.",
+      "evidence": "settings.html has no HTMX script tag. Compare to dashboard.html line 1 which includes it. oauth_status.html uses hx-get, hx-trigger, hx-swap attributes."
+    },
+    {
+      "area": "conventions",
+      "observation": "The codebase uses inline <style> blocks in HTML templates for CSS (settings.html has ~300 lines of inline CSS). There is no external CSS file for UI styles. The worker followed this pattern by adding CSS class names to oauth_status.html but did not add the corresponding CSS rules to the settings.html <style> block, resulting in completely unstyled elements.",
+      "evidence": "settings.html contains a large <style> block with CSS variables and component styles. oauth_status.html references ~25 CSS classes that don't exist anywhere."
+    },
+    {
+      "area": "skills",
+      "observation": "The go-backend-worker skill says to use agent-browser for UI verification when the feature involves /ui/ routes or templates. The handoff shows no evidence of agent-browser usage. The worker only verified via curl and manual observation. While the handoff mentions 'Navigated to http://localhost:8000/ui/settings', this appears to be a manual check rather than using agent-browser as the skill requires.",
+      "evidence": "Handoff skillFeedback.followedProcedure=true, but the verification section only shows curl commands and an 'interactiveChecks' entry that appears to be manual rather than agent-browser based. Skill step 8 says 'Use agent-browser skill to navigate to settings page and verify OAuth section'."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The worker created a library document (.factory/library/oauth-web-ui.md) documenting the OAuth web UI architecture, which is good practice. However, it doesn't mention the CSS or HTMX dependency gaps, suggesting these weren't noticed during implementation.",
+      "evidence": ".factory/library/oauth-web-ui.md was created in commit 9a745d9 documenting endpoints, OAuthStatus fields, and template architecture, but omits any mention of required CSS styles or the HTMX dependency on the settings page."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The OAuth web UI feature implements solid backend logic and tests (16 test cases covering status, login, callback, disconnect, visual indicators), but has two blocking issues that render the UI non-functional: (1) No CSS definitions exist for any of the ~25 CSS classes used in the OAuth status template — the colored status dots, card layout, and button styling will not render. (2) The settings page does not load the HTMX library, making the 30-second auto-refresh completely non-functional. A third issue is the missing 'Check Status' button for Copilot. The implementation would pass with CSS styles added to settings.html's <style> block, an HTMX script tag added to settings.html, and ideally a Check Status button for Copilot."
+}

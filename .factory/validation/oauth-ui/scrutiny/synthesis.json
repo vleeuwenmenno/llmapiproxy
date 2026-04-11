@@ -1,0 +1,90 @@
+{
+  "milestone": "oauth-ui",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "go test ./...", "exitCode": 0 },
+    "typecheck": { "passed": true, "command": "go build ./...", "exitCode": 0 },
+    "lint": { "passed": true, "command": "go vet ./...", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 1,
+    "failed": 1,
+    "failedFeatures": ["oauth-web-ui"]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "oauth-web-ui",
+      "severity": "blocking",
+      "description": "Missing CSS definitions for ~25 CSS classes used in oauth_status.html template. Classes like oauth-status-dot-*, oauth-backend-card, btn-oauth-*, etc. are referenced but have zero CSS definitions — not in settings.html's inline <style> block, not in any external CSS file. The OAuth section will render as unstyled HTML with no visual indicators, no card layout, and no styled buttons."
+    },
+    {
+      "featureId": "oauth-web-ui",
+      "severity": "blocking",
+      "description": "settings.html does not include the HTMX library (<script src=\"/ui/static/htmx.min.js\"></script>). All other main pages (dashboard.html, config.html, models.html) include HTMX. The oauth_status.html template uses hx-get, hx-trigger='every 30s', and hx-swap='innerHTML' for auto-refresh, but these HTMX attributes are completely inert without the library loaded. The 30-second auto-refresh will not work."
+    }
+  ],
+  "nonBlockingIssues": [
+    {
+      "featureId": "oauth-web-ui",
+      "severity": "non_blocking",
+      "description": "Missing 'Check Status' button for Copilot as specified in the feature description. The Copilot section only shows a Disconnect button when authenticated."
+    },
+    {
+      "featureId": "oauth-web-ui",
+      "severity": "non_blocking",
+      "description": "TestOAuthCallback_ErrorParamRedirectsToSettings has dead code: creates an httptest.Server AFTER making a first HTTP request to 'http://localhost'."
+    },
+    {
+      "featureId": "cross-area-integration",
+      "severity": "non_blocking",
+      "description": "TestCrossArea_NoGitHubToken is environment-dependent — the developer's authenticated gh CLI means the discoverer finds a real GitHub token, making the test pass for the wrong reason."
+    },
+    {
+      "featureId": "cross-area-integration",
+      "severity": "non_blocking",
+      "description": "TestCrossArea_SIGHUPPreservesTokenState creates a new registry to simulate reload rather than exercising actual hot-reload code paths."
+    },
+    {
+      "featureId": "cross-area-integration",
+      "severity": "non_blocking",
+      "description": "TestCrossArea_BackendTogglingWithOAuth uses separate registries instead of toggling on a single registry."
+    },
+    {
+      "featureId": "cross-area-integration",
+      "severity": "non_blocking",
+      "description": "TestCrossArea_OAuthDisconnectAndReauth re-auth step depends on host gh CLI."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention: All pages that embed HTMX-powered fragments must include the HTMX library (<script src=\"/ui/static/htmx.min.js\"></script>). When adding new HTMX fragments, verify the parent page loads HTMX. Pages currently loading HTMX: dashboard.html, config.html, models.html. Pages missing HTMX: settings.html.",
+      "evidence": "oauth-web-ui feature embedded oauth_status.html (uses hx-get, hx-trigger, hx-swap) into settings.html, which doesn't load HTMX. This broke the 30-second auto-refresh. Review by scrutiny-feature-reviewer confirmed.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention: When adding CSS class names to HTML templates, ensure the corresponding CSS rules are added to the appropriate <style> block or external stylesheet. The project uses inline <style> blocks in templates (e.g., settings.html has ~300 lines of inline CSS). New classes must have corresponding rules.",
+      "evidence": "oauth-web-ui feature added ~25 CSS class names to oauth_status.html but never added CSS definitions. The settings.html <style> block was not updated. This is the second time CSS was missed — a pattern suggesting unclear convention.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Worker didn't follow TDD red-green cycle for integration tests",
+      "reason": "The go-backend-worker skill says to write tests first, but for integration tests against already-existing implementation code, strict TDD is less meaningful. No skill change needed."
+    },
+    {
+      "observation": "oauth.NewDiscoverer() host-dependency implications for test isolation",
+      "reason": "already-documented — github-token-discovery.md and user-testing.md both note the discoverer's priority chain and testing implications"
+    },
+    {
+      "observation": "copilotTestEnv functional options pattern should be documented",
+      "reason": "This is a test-internal pattern, not a convention that needs to be in AGENTS.md. Workers can read existing tests for patterns."
+    }
+  ],
+  "previousRound": null
+}
