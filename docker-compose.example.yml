@@ -1,0 +1,31 @@
+# docker-compose.example.yml — production reference
+#
+# Copy this file to docker-compose.yml and provide your own config.yaml.
+#
+# Your config.yaml should set the following paths so data persists in the named volume:
+#
+#   server:
+#     stats_path: /data/stats.db
+#     chat_db_path: /data/chat.db
+#
+# Then run:
+#   docker compose up -d
+
+services:
+  llmapiproxy:
+    image: ghcr.io/vleeuwenmenno/llmapiproxy:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - llmapiproxy_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  llmapiproxy_data:

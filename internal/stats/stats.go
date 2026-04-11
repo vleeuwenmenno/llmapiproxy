@@ -13,6 +13,8 @@ type Record struct {
 	PromptTokens     int       `json:"prompt_tokens"`
 	CompletionTokens int       `json:"completion_tokens"`
 	TotalTokens      int       `json:"total_tokens"`
+	CachedTokens     int       `json:"cached_tokens"`
+	ReasoningTokens  int       `json:"reasoning_tokens"`
 	LatencyMs        int64     `json:"latency_ms"`
 	StatusCode       int       `json:"status_code"`
 	Error            string    `json:"error,omitempty"`
@@ -20,6 +22,47 @@ type Record struct {
 	ResponseBody     string    `json:"response_body,omitempty"`
 	Client           string    `json:"client,omitempty"`
 	ID               int64     `json:"id,omitempty"`
+
+	// Routing metadata (set when multiple backends are configured for the model).
+	Strategy          string `json:"strategy,omitempty"`           // e.g. "priority", "round-robin", "race"
+	AttemptedBackends string `json:"attempted_backends,omitempty"` // comma-separated, e.g. "zai-coding,zen"
+	Fallback          bool   `json:"fallback,omitempty"`           // true if winning backend was not the first attempted
+}
+
+// StatsFilter narrows analytics queries.
+type StatsFilter struct {
+	From    time.Time
+	To      time.Time
+	Backend string
+	Model   string
+	Client  string
+	ErrOnly bool
+}
+
+// TimePoint is one time-bucket in a time-series query.
+type TimePoint struct {
+	BucketTime   time.Time `json:"t"`
+	Requests     int       `json:"req"`
+	Tokens       int       `json:"tok"`
+	Errors       int       `json:"err"`
+	AvgLatencyMs int64     `json:"lat"`
+}
+
+// Percentiles holds latency distribution values.
+type Percentiles struct {
+	P50 int64 `json:"p50"`
+	P90 int64 `json:"p90"`
+	P99 int64 `json:"p99"`
+}
+
+// RankRow holds aggregated stats for one dimension value (model/backend/client).
+type RankRow struct {
+	Name     string  `json:"name"`
+	Requests int     `json:"req"`
+	Tokens   int     `json:"tok"`
+	Errors   int     `json:"err"`
+	AvgLatMs int64   `json:"lat"`
+	ErrPct   float64 `json:"err_pct"`
 }
 
 // Summary provides aggregated statistics.
@@ -28,6 +71,8 @@ type Summary struct {
 	TotalTokens     int            `json:"total_tokens"`
 	TotalErrors     int            `json:"total_errors"`
 	AvgLatencyMs    int64          `json:"avg_latency_ms"`
+	TotalCached     int            `json:"total_cached"`
+	TotalReasoning  int            `json:"total_reasoning"`
 	ByBackend       map[string]int `json:"by_backend"`
 	ByModel         map[string]int `json:"by_model"`
 	TokensByBackend map[string]int `json:"tokens_by_backend"`
@@ -136,6 +181,47 @@ func (c *Collector) Clear() {
 	}
 }
 
+// FilteredPaged returns a page of records (newest first) within an optional time window
+// and the total count of matching records. since=0 means all time.
+func (c *Collector) FilteredPaged(since time.Duration, page, pageSize int) ([]Record, int) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	var cutoff time.Time
+	if since > 0 {
+		cutoff = time.Now().Add(-since)
+	}
+
+	// Records are stored oldest-first; find the first index inside the window.
+	n := len(c.records)
+	start := 0
+	if !cutoff.IsZero() {
+		for start < n && c.records[start].Timestamp.Before(cutoff) {
+			start++
+		}
+	}
+
+	total := n - start
+	if total <= 0 {
+		return nil, 0
+	}
+
+	skip := page * pageSize
+	result := make([]Record, 0, pageSize)
+	// Iterate newest-first
+	for i := n - 1; i >= start; i-- {
+		if skip > 0 {
+			skip--
+			continue
+		}
+		result = append(result, c.records[i])
+		if len(result) >= pageSize {
+			break
+		}
+	}
+	return result, total
+}
+
 // Summarize returns aggregate stats over a given duration (0 = all time).
 func (c *Collector) Summarize(since time.Duration) Summary {
 	c.mu.RLock()
@@ -162,6 +248,8 @@ func (c *Collector) Summarize(since time.Duration) Summary {
 		}
 		s.TotalRequests++
 		s.TotalTokens += r.TotalTokens
+		s.TotalCached += r.CachedTokens
+		s.TotalReasoning += r.ReasoningTokens
 		totalLatency += r.LatencyMs
 		s.ByBackend[r.Backend]++
 		s.ByModel[r.Model]++
@@ -178,4 +266,24 @@ func (c *Collector) Summarize(since time.Duration) Summary {
 		s.AvgLatencyMs = totalLatency / int64(s.TotalRequests)
 	}
 	return s
+}
+
+// BackendRoutingStats holds aggregated routing stats for a single backend within a model.
+type BackendRoutingStats struct {
+	Name      string  `json:"name"`
+	Requests  int     `json:"requests"`
+	AvgLatMs  int64   `json:"avg_lat_ms"`
+	Errors    int     `json:"errors"`
+	Fallbacks int     `json:"fallbacks"`
+	WinPct    float64 `json:"win_pct"`
+}
+
+// ModelRoutingStats holds aggregated routing stats for a single model.
+type ModelRoutingStats struct {
+	Model        string                `json:"model"`
+	Strategy     string                `json:"strategy"`
+	Backends     []BackendRoutingStats `json:"backends"`
+	TotalReqs    int                   `json:"total_requests"`
+	FallbackRate float64               `json:"fallback_rate"`
+	AvgLatMs     int64                 `json:"avg_lat_ms"`
 }

@@ -78,6 +78,8 @@ func (m *mockBackend) ListModels(_ context.Context) ([]backend.Model, error) {
 	return models, nil
 }
 
+func (m *mockBackend) ClearModelCache() {}
+
 func boolPtr(b bool) *bool { return &b }
 
 // newTestCollector creates a stats.Collector for testing.
@@ -193,7 +195,7 @@ func successResponse() *backend.ChatCompletionResponse {
 		Choices: []backend.Choice{
 			{
 				Index:        0,
-				Message:      &backend.Message{Role: "assistant", Content: "Hello from Copilot!"},
+				Message:      &backend.Message{Role: "assistant", Content: json.RawMessage(`"Hello from Copilot!"`)},
 				FinishReason: &stop,
 			},
 		},
@@ -398,7 +400,7 @@ func TestCopilotProxy_PerClientBackendKeyOverrides(t *testing.T) {
 		Type:    "openai",
 		BaseURL: upstream.URL,
 		APIKey:  "default-api-key",
-	})
+	}, 0)
 
 	// Client config with backend key override.
 	clientWithOverride := config.ClientConfig{

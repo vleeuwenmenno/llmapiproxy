@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLM API Proxy — Dashboard</title>
-    <script src="/ui/static/htmx.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap');
 
@@ -112,6 +111,219 @@
             color: var(--accent);
         }
 
+        /* ── Mobile Menu Styles ── */
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--text);
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 6px;
+            transition: background 0.15s;
+        }
+
+        .mobile-menu-btn:hover {
+            background: var(--accent-dim);
+        }
+
+        .mobile-menu-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .nav-links-mobile {
+            display: none;
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 280px;
+            max-width: 80vw;
+            height: 100vh;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            z-index: 1000;
+            flex-direction: column;
+            padding: 1rem;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        }
+
+        .nav-links-mobile.open {
+            transform: translateX(0);
+        }
+
+        .nav-links-mobile .mobile-menu-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 1rem;
+        }
+
+        .nav-links-mobile .mobile-menu-title {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .nav-links-mobile .mobile-menu-close {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 6px;
+            font-size: 1.25rem;
+            line-height: 1;
+            transition: all 0.15s;
+        }
+
+        .nav-links-mobile .mobile-menu-close:hover {
+            color: var(--text);
+            background: var(--accent-dim);
+        }
+
+        .nav-links-mobile a {
+            color: var(--text-dim);
+            text-decoration: none;
+            padding: 0.875rem 1rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .nav-links-mobile a:hover, .nav-links-mobile a.active {
+            color: var(--text);
+            background: var(--accent-dim);
+        }
+
+        .nav-links-mobile a.active {
+            color: var(--accent);
+        }
+
+        .nav-links-mobile .theme-toggle-mobile {
+            margin-top: auto;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            cursor: pointer;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.15s;
+        }
+
+        .nav-links-mobile .theme-toggle-mobile:hover {
+            border-color: var(--accent);
+        }
+
+        .mobile-menu-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .mobile-menu-overlay.open {
+            display: block;
+            opacity: 1;
+        }
+
+        /* ── Mobile Responsive ── */
+        @media (max-width: 768px) {
+            nav {
+                padding: 0.75rem 1rem;
+            }
+
+            nav .links {
+                display: none;
+            }
+
+            .mobile-menu-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .nav-links-mobile {
+                display: flex;
+            }
+
+            main {
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 1.25rem;
+                margin-bottom: 1rem;
+            }
+
+            .cards {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 0.75rem;
+                margin-bottom: 1.5rem;
+            }
+
+            .card {
+                padding: 1rem;
+            }
+
+            .card .value {
+                font-size: 1.25rem;
+            }
+
+            .dash-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.75rem;
+            }
+
+            .window-selector {
+                flex-wrap: wrap;
+            }
+
+            .backend-grid {
+                grid-template-columns: 1fr;
+            }
+
+            table {
+                display: block;
+                overflow-x: auto;
+                white-space: nowrap;
+                font-size: 0.7rem;
+            }
+
+            th, td {
+                padding: 0.5rem 0.75rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .cards {
+                grid-template-columns: 1fr;
+            }
+
+            .window-btn {
+                padding: 0.35rem 0.5rem;
+                font-size: 0.7rem;
+            }
+        }
+
         main {
             max-width: 1200px;
             margin: 0 auto;
@@ -215,7 +427,6 @@
 
         td {
             padding: 0.6rem 1rem;
-            font-size: 0.8rem;
             border-bottom: 1px solid var(--border);
             font-family: var(--mono);
             font-size: 0.75rem;
@@ -296,17 +507,43 @@
             font-size: 0.875rem;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
+        .window-selector {
+            display: flex;
+            gap: 0.35rem;
+            align-items: center;
         }
 
-        .cards .card, .backend-card {
-            animation: fadeIn 0.3s ease both;
+        .window-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 0.25rem 0.65rem;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            font-family: var(--mono);
+            transition: all 0.15s;
         }
-        .cards .card:nth-child(2) { animation-delay: 0.05s; }
-        .cards .card:nth-child(3) { animation-delay: 0.1s; }
-        .cards .card:nth-child(4) { animation-delay: 0.15s; }
+
+        .window-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .window-btn.active {
+            background: var(--accent-dim);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .dash-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+        }
+
+        .dash-header h1 { margin-bottom: 0; }
 
         .pagination {
             display: flex;
@@ -367,6 +604,27 @@
 </head>
 <body>
     <div class="noise"></div>
+
+    <!-- Mobile Menu Overlay -->
+    <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="closeMobileMenu()"></div>
+
+    <!-- Mobile Navigation Drawer -->
+    <div class="nav-links-mobile" id="navLinksMobile">
+        <div class="mobile-menu-header">
+            <span class="mobile-menu-title">Menu</span>
+            <button class="mobile-menu-close" onclick="closeMobileMenu()">&#10005;</button>
+        </div>
+        <a href="/ui/" class="active">&#128200; Dashboard</a>
+        <a href="/ui/analytics">&#128202; Analytics</a>
+        <a href="/ui/routing">&#128260; Routing</a>
+        <a href="/ui/models">&#129302; Models</a>
+        <a href="/ui/chat">&#128172; Chat</a>
+        <a href="/ui/settings">&#9881; Settings</a>
+        <button class="theme-toggle-mobile" onclick="toggleTheme(); closeMobileMenu();" id="themeBtnMobile">
+            <span id="themeIconMobile">&#9728;</span> Toggle Theme
+        </button>
+    </div>
+
     <nav>
         <div class="logo">
             <div class="icon">&#9889;</div>
@@ -374,42 +632,324 @@
         </div>
         <div class="links">
             <a href="/ui/" class="active">Dashboard</a>
+            <a href="/ui/analytics">Analytics</a>
+            <a href="/ui/routing">Routing</a>
             <a href="/ui/models">Models</a>
-            <a href="/ui/playground">Playground</a>
+            <a href="/ui/chat">Chat</a>
             <a href="/ui/settings">Settings</a>
-            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">☀</button>
+            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">&#9728;</button>
         </div>
+        <button class="mobile-menu-btn" onclick="openMobileMenu()" aria-label="Open menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+        </button>
     </nav>
     <main>
-        <div id="quota-section" hx-get="/ui/quota" hx-trigger="load" hx-swap="innerHTML"></div>
-        <div id="stats-content" hx-get="/ui/stats" hx-trigger="every 10s" hx-swap="innerHTML">
-            {{template "stats_fragment.html" .}}
+        <div class="dash-header">
+            <h1>Dashboard</h1>
+            <div class="window-selector">
+                <button class="window-btn" data-window="1h">1h</button>
+                <button class="window-btn" data-window="2h">2h</button>
+                <button class="window-btn" data-window="3h">3h</button>
+                <button class="window-btn" data-window="6h">6h</button>
+                <button class="window-btn" data-window="12h">12h</button>
+            </div>
         </div>
+
+        <!-- Summary cards — the card <div> elements are permanent; only inner text is updated -->
+        <div class="cards">
+            <div class="card">
+                <div class="label" id="d-req-label">Requests</div>
+                <div class="value accent" id="d-req">—</div>
+                <div class="sub" id="d-req-sub">&nbsp;</div>
+            </div>
+            <div class="card">
+                <div class="label" id="d-tok-label">Tokens</div>
+                <div class="value" id="d-tok">—</div>
+                <div class="sub" id="d-tok-sub">&nbsp;</div>
+            </div>
+            <div class="card">
+                <div class="label" id="d-lat-label">Avg Latency</div>
+                <div class="value green" id="d-lat">—</div>
+                <div class="sub" id="d-lat-sub">&nbsp;</div>
+            </div>
+            <div class="card">
+                <div class="label" id="d-err-label">Errors</div>
+                <div class="value green" id="d-err">—</div>
+                <div class="sub" id="d-err-sub">&nbsp;</div>
+            </div>
+            <div class="card" id="d-cache-card" style="display:none">
+                <div class="label" id="d-cache-label">Cached Tokens</div>
+                <div class="value" id="d-cache" style="color:var(--amber)">—</div>
+                <div class="sub" id="d-cache-sub">&nbsp;</div>
+            </div>
+            <div class="card" id="d-reason-card" style="display:none">
+                <div class="label" id="d-reason-label">Reasoning Tokens</div>
+                <div class="value" id="d-reason" style="color:#a78bfa">—</div>
+                <div class="sub" id="d-reason-sub">&nbsp;</div>
+            </div>
+        </div>
+
+        <div class="section-title">Backends</div>
+        <div class="backend-grid" id="d-backends-grid">
+            <div class="empty">Loading…</div>
+        </div>
+
+        <div id="d-clients-section" style="display:none">
+            <div class="section-title">Clients</div>
+            <div class="backend-grid" id="d-clients-grid"></div>
+        </div>
+
+        <div class="section-title" style="justify-content:space-between">
+            <span>Recent Requests</span>
+            <span id="d-recent-meta" style="font-size:0.75rem;color:var(--text-dim);text-transform:none;letter-spacing:0"></span>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th title="Status: green dot = success, red dot = error"></th>
+                    <th title="Time the request was received">Time</th>
+                    <th title="Backend that served the request; ↩ means another backend was tried first (fallback)">Backend</th>
+                    <th title="Model identifier used for this request">Model</th>
+                    <th title="Total tokens used (prompt + completion); ⚡ cached, 🧠 reasoning">Tokens</th>
+                    <th title="End-to-end response latency">Latency</th>
+                    <th title="SSE = server-sent events streaming; — = standard response">Stream</th>
+                    <th title="Named client / API key that sent the request">Client</th>
+                </tr>
+            </thead>
+            <tbody id="d-recent-tbody">
+                <tr><td colspan="8" class="empty">Loading…</td></tr>
+            </tbody>
+        </table>
+        <div class="pagination" id="d-recent-pag"></div>
     </main>
     <div id="detail-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:200;overflow-y:auto" onclick="if(event.target===this)this.style.display='none'">
       <div id="detail-content" style="max-width:700px;margin:4rem auto;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem"></div>
     </div>
-</body>
 <script>
+// ── Theme ─────────────────────────────────────────────────────────────────
 (function() {
     var saved = localStorage.getItem('theme') || 'dark';
     if (saved === 'light') document.body.classList.add('light');
-    else if (saved === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches) document.body.classList.add('light');
-    document.getElementById('themeBtn').textContent = document.body.classList.contains('light') ? '🌙' : '☀';
+    var icon = document.body.classList.contains('light') ? '🌙' : '☀';
+    document.getElementById('themeBtn').textContent = icon;
+    var themeIconMobile = document.getElementById('themeIconMobile');
+    if (themeIconMobile) themeIconMobile.textContent = icon;
 })();
 function toggleTheme() {
     var isLight = document.body.classList.toggle('light');
     localStorage.setItem('theme', isLight ? 'light' : 'dark');
-    document.getElementById('themeBtn').textContent = isLight ? '🌙' : '☀';
+    var icon = isLight ? '🌙' : '☀';
+    document.getElementById('themeBtn').textContent = icon;
+    var themeIconMobile = document.getElementById('themeIconMobile');
+    if (themeIconMobile) themeIconMobile.textContent = icon;
 }
+
+// ── Mobile Menu ───────────────────────────────────────────────────────────
+function openMobileMenu() {
+    document.getElementById('navLinksMobile').classList.add('open');
+    document.getElementById('mobileMenuOverlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeMobileMenu() {
+    document.getElementById('navLinksMobile').classList.remove('open');
+    document.getElementById('mobileMenuOverlay').classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeMobileMenu();
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function fmtDur(ms) {
+    if (!ms) return '0ms';
+    if (ms < 1000) return ms + 'ms';
+    return (ms / 1000).toFixed(2) + 's';
+}
+function fmtNum(n) {
+    if (n === undefined || n === null) return '—';
+    if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+    return String(n);
+}
+function fmtTime(iso) {
+    return new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function setText(id, val) { document.getElementById(id).textContent = val; }
+
+// ── State ─────────────────────────────────────────────────────────────────
+var dashWin   = localStorage.getItem('dashWindow') || '1h';
+var dashPage  = 0;
+var dashTimer = null;
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+(function() {
+    document.querySelectorAll('.window-btn').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.window === dashWin);
+        btn.addEventListener('click', function() {
+            dashWin  = btn.dataset.window;
+            dashPage = 0;
+            localStorage.setItem('dashWindow', dashWin);
+            document.querySelectorAll('.window-btn').forEach(function(b) {
+                b.classList.toggle('active', b.dataset.window === dashWin);
+            });
+            fetchDash();
+        });
+    });
+    fetchDash();
+})();
+
+// ── Fetch ─────────────────────────────────────────────────────────────────
+function fetchDash(page) {
+    if (page !== undefined) dashPage = page;
+    clearTimeout(dashTimer);
+    fetch('/ui/dashboard/data?window=' + dashWin + '&page=' + dashPage)
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            renderDash(d);
+            dashTimer = setTimeout(fetchDash, 10000);
+        })
+        .catch(function() {
+            dashTimer = setTimeout(fetchDash, 10000);
+        });
+}
+
+// ── Render ────────────────────────────────────────────────────────────────
+function renderDash(d) {
+    var lbl = d.window_label || dashWin;
+    var ws  = d.window_stats || {};
+    var td  = d.today        || {};
+    var at  = d.all_time     || {};
+
+    // Cards — update textContent only; card <div> nodes are never removed so no animation fires
+    setText('d-req-label', 'Requests (' + lbl + ')');
+    setText('d-req',       fmtNum(ws.total_requests));
+    setText('d-req-sub',   fmtNum(td.total_requests) + ' today · ' + fmtNum(at.total_requests) + ' all time');
+
+    setText('d-tok-label', 'Tokens (' + lbl + ')');
+    setText('d-tok',       fmtNum(ws.total_tokens));
+    setText('d-tok-sub',   fmtNum(td.total_tokens) + ' today · ' + fmtNum(at.total_tokens) + ' all time');
+
+    setText('d-lat-label', 'Avg Latency (' + lbl + ')');
+    setText('d-lat',       fmtDur(ws.avg_latency_ms));
+    setText('d-lat-sub',   fmtDur(at.avg_latency_ms) + ' all time');
+
+    setText('d-err-label', 'Errors (' + lbl + ')');
+    setText('d-err',       fmtNum(ws.total_errors));
+    setText('d-err-sub',   fmtNum(td.total_errors) + ' today · ' + fmtNum(at.total_errors) + ' all time');
+    document.getElementById('d-err').className = 'value ' + ((ws.total_errors || 0) > 0 ? 'red' : 'green');
+
+    // Cache card — show only when there are cached tokens anywhere
+    var hasCached = (ws.total_cached || 0) > 0 || (at.total_cached || 0) > 0;
+    document.getElementById('d-cache-card').style.display = hasCached ? '' : 'none';
+    if (hasCached) {
+        setText('d-cache-label', 'Cached Tokens (' + lbl + ')');
+        setText('d-cache',       fmtNum(ws.total_cached));
+        setText('d-cache-sub',   fmtNum(td.total_cached) + ' today · ' + fmtNum(at.total_cached) + ' all time');
+    }
+
+    // Reasoning card — show only when there are reasoning tokens anywhere
+    var hasReasoning = (ws.total_reasoning || 0) > 0 || (at.total_reasoning || 0) > 0;
+    document.getElementById('d-reason-card').style.display = hasReasoning ? '' : 'none';
+    if (hasReasoning) {
+        setText('d-reason-label', 'Reasoning Tokens (' + lbl + ')');
+        setText('d-reason',       fmtNum(ws.total_reasoning));
+        setText('d-reason-sub',   fmtNum(td.total_reasoning) + ' today · ' + fmtNum(at.total_reasoning) + ' all time');
+    }
+
+    // Backends grid
+    var backends = d.backends || [];
+    document.getElementById('d-backends-grid').innerHTML = backends.length > 0
+        ? backends.map(function(b) {
+            return '<div class="backend-card">'
+                + '<div class="name"><span class="dot"></span> ' + esc(b.name) + '</div>'
+                + '<div class="row"><span>Requests</span><span>' + fmtNum(b.requests) + '</span></div>'
+                + '<div class="row"><span>Tokens</span><span>'   + fmtNum(b.tokens)   + '</span></div>'
+                + '<div class="row"><span>Errors</span><span>'   + fmtNum(b.errors)   + '</span></div>'
+                + '</div>';
+          }).join('')
+        : '<div class="empty">No backend activity in this window.</div>';
+
+    // Clients grid
+    var clients = d.clients || [];
+    var csEl = document.getElementById('d-clients-section');
+    if (clients.length > 0) {
+        csEl.style.display = '';
+        document.getElementById('d-clients-grid').innerHTML = clients.map(function(c) {
+            return '<div class="backend-card">'
+                + '<div class="name"><span class="dot"></span> ' + esc(c.name || '(anonymous)') + '</div>'
+                + '<div class="row"><span>Requests</span><span>' + fmtNum(c.requests) + '</span></div>'
+                + '<div class="row"><span>Tokens</span><span>'   + fmtNum(c.tokens)   + '</span></div>'
+                + '</div>';
+        }).join('');
+    } else {
+        csEl.style.display = 'none';
+    }
+
+    // Recent requests
+    var rec   = d.recent || {};
+    var items = rec.items || [];
+    if (rec.total > 0) {
+        var from = rec.page * 25 + 1;
+        var to   = Math.min((rec.page + 1) * 25, rec.total);
+        setText('d-recent-meta', from + '–' + to + ' of ' + rec.total);
+    } else {
+        setText('d-recent-meta', '');
+    }
+
+    document.getElementById('d-recent-tbody').innerHTML = items.length > 0
+        ? items.map(function(r) {
+            var tokDetail = fmtNum(r.total_tokens);
+            if (r.cached_tokens > 0) tokDetail += ' <span title="Cached tokens" style="color:var(--amber);font-size:0.7rem">⚡' + fmtNum(r.cached_tokens) + '</span>';
+            if (r.reasoning_tokens > 0) tokDetail += ' <span title="Reasoning tokens" style="color:#a78bfa;font-size:0.7rem">🧠' + fmtNum(r.reasoning_tokens) + '</span>';
+            return '<tr style="cursor:pointer" onclick="showDetail(' + r.id + ')">'
+                + '<td>' + (r.error ? '<span class="status-err" title="' + esc(r.error) + '"></span>' : '<span class="status-ok"></span>') + '</td>'
+                + '<td>' + fmtTime(r.timestamp) + '</td>'
+                + '<td>' + esc(r.backend) + (r.fallback ? ' <span title="Fallback: tried ' + esc(r.attempted_backends) + '" style="color:var(--amber);font-size:0.75rem">↩</span>' : '') + '</td>'
+                + '<td>' + esc(r.model) + '</td>'
+                + '<td>' + tokDetail + '</td>'
+                + '<td>' + fmtDur(r.latency_ms) + '</td>'
+                + '<td>' + (r.stream ? 'SSE' : '—') + '</td>'
+                + '<td>' + esc(r.client) + '</td>'
+                + '</tr>';
+          }).join('')
+        : '<tr><td colspan="8" class="empty">No requests recorded in this window.</td></tr>';
+
+    // Pagination
+    var pag = document.getElementById('d-recent-pag');
+    if (!rec.total_pages || rec.total_pages <= 1) {
+        pag.innerHTML = '';
+    } else {
+        pag.innerHTML =
+            (rec.page > 0
+                ? '<button class="page-btn" onclick="fetchDash(' + (rec.page - 1) + ')">&#8592; Prev</button>'
+                : '<button class="page-btn" disabled>&#8592; Prev</button>')
+            + '<span class="page-info">Page ' + (rec.page + 1) + ' / ' + rec.total_pages + '</span>'
+            + (rec.page + 1 < rec.total_pages
+                ? '<button class="page-btn" onclick="fetchDash(' + (rec.page + 1) + ')">Next &#8594;</button>'
+                : '<button class="page-btn" disabled>Next &#8594;</button>');
+    }
+}
+
+// ── Detail modal ──────────────────────────────────────────────────────────
 function showDetail(id) {
-    var modal = document.getElementById('detail-modal');
+    var modal   = document.getElementById('detail-modal');
     var content = document.getElementById('detail-content');
     modal.style.display = 'block';
     content.innerHTML = '<p style="color:var(--text-dim)">Loading...</p>';
     fetch('/ui/stats/detail?id=' + id)
-        .then(r => r.text())
-        .then(html => { content.innerHTML = html; });
+        .then(function(r) { return r.text(); })
+        .then(function(html) { content.innerHTML = html; });
 }
 </script>
+</body>
 </html>

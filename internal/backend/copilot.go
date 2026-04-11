@@ -60,7 +60,7 @@ func NewCopilotBackend(cfg config.BackendConfig, deviceCodeHandler *oauth.Device
 	return &CopilotBackend{
 		name:              cfg.Name,
 		baseURL:           strings.TrimRight(cfg.BaseURL, "/"),
-		models:            cfg.Models,
+		models:            cfg.ModelIDs(),
 		client:            &http.Client{Timeout: 5 * time.Minute},
 		deviceCodeHandler: deviceCodeHandler,
 		tokenStore:        tokenStore,
@@ -89,6 +89,9 @@ func (b *CopilotBackend) SupportsModel(modelID string) bool {
 	}
 	return false
 }
+
+// ClearModelCache is a no-op for Copilot backends (no model caching).
+func (b *CopilotBackend) ClearModelCache() {}
 
 // ChatCompletion sends a non-streaming chat completion request to the Copilot API.
 // It obtains or validates the Copilot token, sets required headers, and forwards

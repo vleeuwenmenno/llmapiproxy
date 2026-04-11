@@ -107,7 +107,7 @@ func codexTestHelper(t *testing.T) (*CodexBackend, *httptest.Server, func()) {
 		Name:    "codex",
 		Type:    "codex",
 		BaseURL: upstream.URL,
-		Models:  []string{"o4-mini", "gpt-5.2-codex"},
+		Models: []config.ModelConfig{{ID: "o4-mini"}, {ID: "gpt-5.2-codex"}},
 	}
 
 	b := NewCodexBackend(cfg, oauthHandler, ts, nil)
@@ -204,7 +204,7 @@ func TestCodexBackend_ChatCompletion(t *testing.T) {
 	req := &ChatCompletionRequest{
 		Model: "o4-mini",
 		Messages: []Message{
-			{Role: "user", Content: "Hello"},
+			{Role: "user", Content: json.RawMessage(`"Hello"`)},
 		},
 	}
 
@@ -225,7 +225,7 @@ func TestCodexBackend_ChatCompletion(t *testing.T) {
 	if resp.Choices[0].Message == nil {
 		t.Fatal("choice message is nil")
 	}
-	if resp.Choices[0].Message.Content != "Hello from Codex!" {
+	if string(resp.Choices[0].Message.Content) != "\"Hello from Codex!\"" {
 		t.Errorf("content = %q, want %q", resp.Choices[0].Message.Content, "Hello from Codex!")
 	}
 	if resp.Choices[0].Message.Role != "assistant" {
@@ -241,7 +241,7 @@ func TestCodexBackend_ResponseMetadata(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	resp, err := b.ChatCompletion(context.Background(), req)
@@ -268,7 +268,7 @@ func TestCodexBackend_UsageStats(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	resp, err := b.ChatCompletion(context.Background(), req)
@@ -298,7 +298,7 @@ func TestCodexBackend_FinishReason_Stop(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	resp, err := b.ChatCompletion(context.Background(), req)
@@ -353,7 +353,7 @@ func TestCodexBackend_FinishReason_Length(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	resp, err := b.ChatCompletion(context.Background(), req)
@@ -407,10 +407,10 @@ func TestCodexBackend_MultiTurn(t *testing.T) {
 	req := &ChatCompletionRequest{
 		Model: "o4-mini",
 		Messages: []Message{
-			{Role: "system", Content: "You are a helpful assistant."},
-			{Role: "user", Content: "Hello"},
-			{Role: "assistant", Content: "Hi there!"},
-			{Role: "user", Content: "Tell me more"},
+			{Role: "system", Content: json.RawMessage(`"You are a helpful assistant."`)},
+			{Role: "user", Content: json.RawMessage(`"Hello"`)},
+			{Role: "assistant", Content: json.RawMessage(`"Hi there!"`)},
+			{Role: "user", Content: json.RawMessage(`"Tell me more"`)},
 		},
 	}
 
@@ -487,7 +487,7 @@ func TestCodexBackend_TemperatureAndMaxTokens(t *testing.T) {
 	maxTokens := 500
 	req := &ChatCompletionRequest{
 		Model:       "o4-mini",
-		Messages:    []Message{{Role: "user", Content: "test"}},
+		Messages:    []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 		Temperature: &temp,
 		MaxTokens:   &maxTokens,
 	}
@@ -551,7 +551,7 @@ func TestCodexBackend_ChatCompletionStream(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "Hello"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
 	}
 
 	stream, err := b.ChatCompletionStream(context.Background(), req)
@@ -620,7 +620,7 @@ func TestCodexBackend_Streaming_FinishReason(t *testing.T) {
 
 	stream, err := b.ChatCompletionStream(context.Background(), &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	})
 	if err != nil {
 		t.Fatalf("ChatCompletionStream: %v", err)
@@ -694,9 +694,9 @@ func TestCodexBackend_ListModels(t *testing.T) {
 		}
 	}
 
-	for _, expected := range []string{"o4-mini", "gpt-5.2-codex"} {
-		if !modelIDs[expected] {
-			t.Errorf("expected model %q in list", expected)
+	for _, expected := range []config.ModelConfig{{ID: "o4-mini"}, {ID: "gpt-5.2-codex"}} {
+		if !modelIDs[expected.ID] {
+			t.Errorf("expected model %s in list", expected.ID)
 		}
 	}
 }
@@ -743,15 +743,15 @@ func TestCodexBackend_ListModels_Default(t *testing.T) {
 func TestCodexBackend_SupportsModel(t *testing.T) {
 	tests := []struct {
 		name   string
-		models []string
+		models []config.ModelConfig
 		check  string
 		want   bool
 	}{
 		{"empty models list (accepts all)", nil, "anything", true},
-		{"exact match", []string{"o4-mini"}, "o4-mini", true},
-		{"no match", []string{"o4-mini"}, "gpt-5", false},
-		{"wildcard match", []string{"gpt-5/*"}, "gpt-5/codex", true},
-		{"wildcard no match", []string{"gpt-5/*"}, "o3/mini", false},
+		{"exact match", []config.ModelConfig{{ID: "o4-mini"}}, "o4-mini", true},
+		{"no match", []config.ModelConfig{{ID: "o4-mini"}}, "gpt-5", false},
+		{"wildcard match", []config.ModelConfig{{ID: "gpt-5/*"}}, "gpt-5/codex", true},
+		{"wildcard no match", []config.ModelConfig{{ID: "gpt-5/*"}}, "o3/mini", false},
 	}
 
 	for _, tt := range tests {
@@ -822,7 +822,7 @@ func TestCodexBackend_ForceStreaming_NonStreamingSendsStreamTrue(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 		// Note: Stream is NOT set (client requests non-streaming).
 	}
 
@@ -843,7 +843,7 @@ func TestCodexBackend_ForceStreaming_NonStreamingSendsStreamTrue(t *testing.T) {
 	if len(resp.Choices) == 0 {
 		t.Fatal("expected at least one choice")
 	}
-	if resp.Choices[0].Message.Content != "Force streaming response" {
+	if string(resp.Choices[0].Message.Content) != "\"Force streaming response\"" {
 		t.Errorf("content = %q, want %q", resp.Choices[0].Message.Content, "Force streaming response")
 	}
 }
@@ -907,7 +907,7 @@ func TestCodexBackend_ForceStreaming_ResponseFromCompletedEvent(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	resp, err := b.ChatCompletion(context.Background(), req)
@@ -919,7 +919,7 @@ func TestCodexBackend_ForceStreaming_ResponseFromCompletedEvent(t *testing.T) {
 	if resp.ID != "resp-stream-to-nonstream" {
 		t.Errorf("id = %q, want %q", resp.ID, "resp-stream-to-nonstream")
 	}
-	if resp.Choices[0].Message.Content != "Hello World!" {
+	if string(resp.Choices[0].Message.Content) != "\"Hello World!\"" {
 		t.Errorf("content = %q, want %q", resp.Choices[0].Message.Content, "Hello World!")
 	}
 	if resp.Usage == nil {
@@ -970,7 +970,7 @@ func TestCodexBackend_ForceStreaming_StreamingUnchanged(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	stream, err := b.ChatCompletionStream(context.Background(), req)
@@ -1042,7 +1042,7 @@ func TestCodexBackend_ForceStreaming_IncompleteStatusFromSSE(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	resp, err := b.ChatCompletion(context.Background(), req)
@@ -1079,7 +1079,7 @@ func TestCodexBackend_NoTokens(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	_, err = b.ChatCompletion(context.Background(), req)
@@ -1112,7 +1112,7 @@ func TestCodexBackend_RateLimit(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -1145,7 +1145,7 @@ func TestCodexBackend_ModelNotFound(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "nonexistent-model",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -1172,7 +1172,7 @@ func TestCodexBackend_SubscriptionError(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -1204,7 +1204,7 @@ func TestCodexBackend_ServerError(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -1278,7 +1278,7 @@ func TestCodexBackend_ToolCalling(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "Use tool X"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"Use tool X"`)}},
 		RawBody:  []byte(`{"model":"o4-mini","messages":[{"role":"user","content":"Use tool X"}],"tools":[{"type":"function","name":"my_func"}]}`),
 	}
 
@@ -1331,7 +1331,7 @@ func TestCodexBackend_ExtraFields(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 		RawBody:  []byte(`{"model":"o4-mini","messages":[{"role":"user","content":"test"}],"top_p":0.9,"presence_penalty":0.5,"frequency_penalty":0.3}`),
 	}
 
@@ -1398,7 +1398,7 @@ func TestCodexBackend_ConcurrentRequests(t *testing.T) {
 			defer wg.Done()
 			req := &ChatCompletionRequest{
 				Model:    "o4-mini",
-				Messages: []Message{{Role: "user", Content: "test"}},
+				Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 			}
 			_, err := b.ChatCompletion(context.Background(), req)
 			if err != nil {
@@ -1486,7 +1486,7 @@ func TestCodexBackend_ConcurrentMixed(t *testing.T) {
 		defer wg.Done()
 		req := &ChatCompletionRequest{
 			Model:    "o4-mini",
-			Messages: []Message{{Role: "user", Content: "non-stream test"}},
+			Messages: []Message{{Role: "user", Content: json.RawMessage(`"non-stream test"`)}},
 		}
 		resp, err := b.ChatCompletion(context.Background(), req)
 		if err != nil {
@@ -1504,7 +1504,7 @@ func TestCodexBackend_ConcurrentMixed(t *testing.T) {
 		defer wg.Done()
 		req := &ChatCompletionRequest{
 			Model:    "o4-mini",
-			Messages: []Message{{Role: "user", Content: "stream test"}},
+			Messages: []Message{{Role: "user", Content: json.RawMessage(`"stream test"`)}},
 		}
 		stream, err := b.ChatCompletionStream(context.Background(), req)
 		if err != nil {
@@ -1543,7 +1543,7 @@ func TestCodexBackend_CoexistenceWithOpenAI(t *testing.T) {
 		Name:    "codex",
 		Type:    "codex",
 		BaseURL: "https://chatgpt.com/backend-api/codex",
-		Models:  []string{"o4-mini"},
+		Models: []config.ModelConfig{{ID: "o4-mini"}},
 	}
 	b := NewCodexBackend(cfg, nil, ts, nil)
 	r.Register("codex", b)
@@ -1554,9 +1554,9 @@ func TestCodexBackend_CoexistenceWithOpenAI(t *testing.T) {
 		Type:    "openai",
 		BaseURL: "https://openrouter.ai/api/v1",
 		APIKey:  "test-key",
-		Models:  []string{"openai/gpt-4o"},
+		Models: []config.ModelConfig{{ID: "openai/gpt-4o"}},
 	}
-	r.Register("openrouter", NewOpenAI(openaiCfg))
+	r.Register("openrouter", NewOpenAI(openaiCfg, 0))
 
 	// Verify both backends exist.
 	if !r.Has("codex") {
@@ -1592,7 +1592,7 @@ func TestCodexBackend_PrefixRouting(t *testing.T) {
 		Name:    "codex",
 		Type:    "codex",
 		BaseURL: "https://chatgpt.com/backend-api/codex",
-		Models:  []string{"o4-mini", "gpt-5.2-codex"},
+		Models: []config.ModelConfig{{ID: "o4-mini"}, {ID: "gpt-5.2-codex"}},
 	}
 	b := NewCodexBackend(cfg, nil, ts, nil)
 	r.Register("codex", b)
@@ -1635,7 +1635,7 @@ func TestCodexBackend_PrefixRoutingNoCrossMatch(t *testing.T) {
 		Name:    "codex",
 		Type:    "codex",
 		BaseURL: "https://chatgpt.com/backend-api/codex",
-		Models:  []string{"o4-mini"},
+		Models: []config.ModelConfig{{ID: "o4-mini"}},
 	}
 	b := NewCodexBackend(cfg, nil, ts, nil)
 	r.Register("codex", b)
@@ -1690,7 +1690,7 @@ func TestCodexBackend_Unicode(t *testing.T) {
 	unicodeContent := "Hello 你好 🎉 café naïve résumé"
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: unicodeContent}},
+		Messages: []Message{{Role: "user", Content: func() json.RawMessage { b, _ := json.Marshal(unicodeContent); return b }()}},
 	}
 
 	resp, err := b.ChatCompletion(context.Background(), req)
@@ -1699,13 +1699,13 @@ func TestCodexBackend_Unicode(t *testing.T) {
 	}
 
 	// Verify unicode in response was preserved.
-	if !strings.Contains(resp.Choices[0].Message.Content, "你好") {
+	if !strings.Contains(string(resp.Choices[0].Message.Content), "你好") {
 		t.Error("Chinese characters not preserved in response")
 	}
-	if !strings.Contains(resp.Choices[0].Message.Content, "🎉") {
+	if !strings.Contains(string(resp.Choices[0].Message.Content), "🎉") {
 		t.Error("Emoji not preserved in response")
 	}
-	if !strings.Contains(resp.Choices[0].Message.Content, "café") {
+	if !strings.Contains(string(resp.Choices[0].Message.Content), "café") {
 		t.Error("Accented characters not preserved in response")
 	}
 
@@ -1755,12 +1755,14 @@ func TestCodexBackend_LargeRequestBody(t *testing.T) {
 
 	// Build a large messages array (50+ messages).
 	messages := make([]Message, 51)
-	messages[0] = Message{Role: "system", Content: "You are helpful."}
+	messages[0] = Message{Role: "system", Content: json.RawMessage(`"You are helpful."`)}
 	for i := 1; i < 51; i++ {
 		if i%2 == 1 {
-			messages[i] = Message{Role: "user", Content: fmt.Sprintf("User message %d", i)}
+			b, _ := json.Marshal(fmt.Sprintf("User message %d", i))
+			messages[i] = Message{Role: "user", Content: b}
 		} else {
-			messages[i] = Message{Role: "assistant", Content: fmt.Sprintf("Assistant reply %d", i)}
+			b, _ := json.Marshal(fmt.Sprintf("Assistant reply %d", i))
+			messages[i] = Message{Role: "assistant", Content: b}
 		}
 	}
 
@@ -1822,7 +1824,7 @@ func TestCodexBackend_Upstream401_Retry(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	resp, err := b.ChatCompletion(context.Background(), req)
@@ -1830,7 +1832,7 @@ func TestCodexBackend_Upstream401_Retry(t *testing.T) {
 		t.Fatalf("ChatCompletion after 401 retry: %v", err)
 	}
 
-	if resp.Choices[0].Message.Content != "Success after retry" {
+	if string(resp.Choices[0].Message.Content) != "\"Success after retry\"" {
 		t.Errorf("content = %q, want %q", resp.Choices[0].Message.Content, "Success after retry")
 	}
 
@@ -1857,7 +1859,7 @@ func TestCodexBackend_Upstream401_LoopPrevention(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -1952,7 +1954,7 @@ func TestCodexBackend_EndpointURL(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -1982,7 +1984,7 @@ func TestCodexBackend_EmptyStream(t *testing.T) {
 
 	stream, err := b.ChatCompletionStream(context.Background(), &ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	})
 	if err != nil {
 		t.Fatalf("ChatCompletionStream: %v", err)
@@ -2243,7 +2245,7 @@ func TestCodexBackend_DeviceCodeLogin(t *testing.T) {
 	cfg := config.BackendConfig{
 		Name:   "codex",
 		Type:   "codex",
-		Models: []string{"o4-mini"},
+		Models: []config.ModelConfig{{ID: "o4-mini"}},
 	}
 
 	oauthHandler := oauth.NewCodexOAuthHandler(ts, oauthCfg)
@@ -2309,7 +2311,7 @@ func TestCodexBackend_DeviceCodeLogin_NoHandler(t *testing.T) {
 	cfg := config.BackendConfig{
 		Name:   "codex",
 		Type:   "codex",
-		Models: []string{"o4-mini"},
+		Models: []config.ModelConfig{{ID: "o4-mini"}},
 	}
 
 	// Create backend without device code handler (nil).

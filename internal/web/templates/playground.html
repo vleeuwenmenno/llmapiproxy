@@ -200,16 +200,19 @@
         }
         .combo-list.open { display: block; }
         .combo-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
             padding: 0.45rem 0.75rem;
             font-size: 0.78rem;
             font-family: var(--mono);
             cursor: pointer;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
             color: var(--text);
         }
         .combo-item:hover, .combo-item.active { background: var(--accent-dim); color: var(--accent); }
+        .combo-model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+        .combo-model-meta { font-size: 0.65rem; color: var(--text-dim); white-space: nowrap; flex-shrink: 0; }
         .combo-spinner {
             padding: 0.5rem 0.75rem;
             font-size: 0.78rem;
@@ -434,6 +437,8 @@
         </div>
         <div class="links">
             <a href="/ui/">Dashboard</a>
+            <a href="/ui/analytics">Analytics</a>
+            <a href="/ui/routing">Routing</a>
             <a href="/ui/models">Models</a>
             <a href="/ui/playground" class="active">Playground</a>
             <a href="/ui/settings">Settings</a>
@@ -444,17 +449,9 @@
     <div class="workspace">
         <!-- Sidebar -->
         <aside class="sidebar">
-            <div class="section-label">API Key</div>
-            <div class="field">
-                <label for="api-key-select">Key</label>
-                <select id="api-key-select">
-                    {{range .APIKeys}}
-                    <option value="{{.Value}}">{{.Label}}</option>
-                    {{end}}
-                </select>
-            </div>
+            <!-- The playground authenticates automatically using an internal "playground" client key — no manual key selection needed. -->
+            <input type="hidden" id="api-key" value="{{.PlaygroundAPIKey}}">
 
-            <hr class="divider">
             <div class="section-label">Model</div>
             <div class="field">
                 <label for="model-input">Model</label>
@@ -509,7 +506,7 @@
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                     </svg>
-                    <p>Select a model and API key, then start chatting.</p>
+                    <p>Select a model and start chatting.</p>
                 </div>
             </div>
 
@@ -571,6 +568,26 @@ var statusText  = document.getElementById('status-text');
 var allModels = {{json .Models}};
 var activeIdx = -1;
 
+function fmtCtx(n) {
+    if (!n) return '';
+    if (n >= 1000000) return Math.round(n/1000000) + 'M';
+    if (n >= 1000)    return Math.round(n/1000) + 'K';
+    return String(n);
+}
+
+function modelLabel(m) {
+    if (typeof m === 'string') return m;
+    var label = m.id;
+    var tags = [];
+    if (m.context_length)   tags.push(fmtCtx(m.context_length) + ' ctx');
+    if (m.max_output_tokens) tags.push(fmtCtx(m.max_output_tokens) + ' out');
+    return label + (tags.length ? '  (' + tags.join(', ') + ')' : '');
+}
+
+function modelID(m) {
+    return (typeof m === 'string') ? m : m.id;
+}
+
 function renderList(items) {
     var list = document.getElementById('model-list');
     list.innerHTML = '';
@@ -584,10 +601,23 @@ function renderList(items) {
         items.forEach(function(m, i) {
             var el = document.createElement('div');
             el.className = 'combo-item';
-            el.textContent = m;
+            var id = modelID(m);
+            var nameSpan = document.createElement('span');
+            nameSpan.className = 'combo-model-name';
+            nameSpan.textContent = id;
+            el.appendChild(nameSpan);
+            if (typeof m === 'object' && (m.context_length || m.max_output_tokens)) {
+                var metaSpan = document.createElement('span');
+                metaSpan.className = 'combo-model-meta';
+                var tags = [];
+                if (m.context_length)    tags.push(fmtCtx(m.context_length) + ' ctx');
+                if (m.max_output_tokens) tags.push(fmtCtx(m.max_output_tokens) + ' out');
+                metaSpan.textContent = tags.join('  ');
+                el.appendChild(metaSpan);
+            }
             el.addEventListener('mousedown', function(ev) {
                 ev.preventDefault();
-                document.getElementById('model-input').value = m;
+                document.getElementById('model-input').value = id;
                 closeList();
             });
             list.appendChild(el);
@@ -608,7 +638,7 @@ function closeList() {
 function filteredModels(q) {
     if (!q) return allModels;
     var lq = q.toLowerCase();
-    return allModels.filter(function(m) { return m.toLowerCase().indexOf(lq) !== -1; });
+    return allModels.filter(function(m) { return modelID(m).toLowerCase().indexOf(lq) !== -1; });
 }
 
 (function() {
@@ -637,7 +667,7 @@ function filteredModels(q) {
             items.forEach(function(el, i) { el.classList.toggle('active', i === activeIdx); });
         } else if (e.key === 'Enter' && activeIdx >= 0) {
             e.preventDefault();
-            input.value = items[activeIdx].textContent;
+            input.value = items[activeIdx].dataset.modelId || items[activeIdx].querySelector('.combo-model-name').textContent;
             closeList();
         } else if (e.key === 'Escape') {
             closeList();
@@ -657,7 +687,7 @@ async function fetchModels() {
         var input = document.getElementById('model-input');
         openList(filteredModels(input.value));
         if (!input.value && allModels.length > 0) {
-            input.value = allModels[0];
+            input.value = modelID(allModels[0]);
             closeList();
         }
     } catch(e) {
@@ -741,7 +771,7 @@ async function sendMessage() {
 
 
     try {
-        var apiKey      = document.getElementById('api-key-select').value;
+        var apiKey      = document.getElementById('api-key').value;
         var modelId     = document.getElementById('model-input').value.trim();
         var sysPrompt   = document.getElementById('sys-prompt').value.trim();
         var temperature = parseFloat(document.getElementById('temperature').value);

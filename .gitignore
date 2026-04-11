@@ -1,3 +1,4 @@
 config.yaml
 stats.db
-llmapiproxy
+*.db
+/llmapiproxy

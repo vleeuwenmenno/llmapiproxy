@@ -1,43 +1,20 @@
-<h1>Dashboard</h1>
-
-<div class="cards">
-    <div class="card">
-        <div class="label">Requests (1h)</div>
-        <div class="value accent">{{.Hour.TotalRequests}}</div>
-        <div class="sub">{{.Today.TotalRequests}} today &middot; {{.AllTime.TotalRequests}} all time</div>
-    </div>
-    <div class="card">
-        <div class="label">Tokens (1h)</div>
-        <div class="value">{{.Hour.TotalTokens}}</div>
-        <div class="sub">{{.Today.TotalTokens}} today &middot; {{.AllTime.TotalTokens}} all time</div>
-    </div>
-    <div class="card">
-        <div class="label">Avg Latency (1h)</div>
-        <div class="value green">{{formatDuration .Hour.AvgLatencyMs}}</div>
-        <div class="sub">{{formatDuration .AllTime.AvgLatencyMs}} all time</div>
-    </div>
-    <div class="card">
-        <div class="label">Errors (1h)</div>
-        <div class="value {{if gt .Hour.TotalErrors 0}}red{{else}}green{{end}}">{{.Hour.TotalErrors}}</div>
-        <div class="sub">{{.Today.TotalErrors}} today &middot; {{.AllTime.TotalErrors}} all time</div>
-    </div>
-</div>
-
 <div class="section-title">Backends</div>
 <div class="backend-grid">
-    {{range $name, $count := .AllTime.ByBackend}}
-    <div class="backend-card">
-        <div class="name"><span class="dot"></span> {{$name}}</div>
-        <div class="row"><span>Requests</span> <span>{{$count}}</span></div>
-        <div class="row"><span>Tokens</span> <span>{{index $.AllTime.TokensByBackend $name}}</span></div>
-        <div class="row">
-            <span>Errors</span>
-            <span>{{index $.AllTime.ErrorsByBackend $name}}</span>
-        </div>
+  {{range $name, $count := .AllTime.ByBackend}}
+  <div class="backend-card">
+    <div class="name"><span class="dot"></span> {{$name}}</div>
+    <div class="row"><span>Requests</span> <span>{{$count}}</span></div>
+    <div class="row">
+      <span>Tokens</span> <span>{{index $.AllTime.TokensByBackend $name}}</span>
     </div>
-    {{else}}
-    <div class="empty">No backend activity yet. Send your first request!</div>
-    {{end}}
+    <div class="row">
+      <span>Errors</span>
+      <span>{{index $.AllTime.ErrorsByBackend $name}}</span>
+    </div>
+  </div>
+  {{else}}
+  <div class="empty">No backend activity yet. Send your first request!</div>
+  {{end}}
 </div>
 
 {{if .AllTime.ByClient}}
@@ -45,67 +22,94 @@
 <div class="backend-grid">
   {{range $name, $count := .AllTime.ByClient}}
   <div class="backend-card">
-    <div class="name"><span class="dot"></span> {{if $name}}{{$name}}{{else}}(anonymous){{end}}</div>
+    <div class="name">
+      <span class="dot"></span> {{if $name}}{{$name}}{{else}}(anonymous){{end}}
+    </div>
     <div class="row"><span>Requests</span><span>{{$count}}</span></div>
-    <div class="row"><span>Tokens</span><span>{{index $.AllTime.TokensByClient $name}}</span></div>
+    <div class="row">
+      <span>Tokens</span><span>{{index $.AllTime.TokensByClient $name}}</span>
+    </div>
   </div>
   {{end}}
 </div>
 {{end}}
 
-<div class="section-title" style="justify-content:space-between">
-    <span>Recent Requests</span>
-    {{if gt .TotalCount 0}}
-    <span style="font-size:0.75rem;color:var(--text-dim);text-transform:none;letter-spacing:0">
-        {{add (mul .Page .PageSize) 1}}–{{min (add (mul .Page .PageSize) .PageSize) .TotalCount}} of {{.TotalCount}}
-    </span>
-    {{end}}
+<div class="section-title" style="justify-content: space-between">
+  <span>Recent Requests</span>
+  {{if gt .TotalCount 0}}
+  <span
+    style="
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      text-transform: none;
+      letter-spacing: 0;
+    "
+  >
+    {{add (mul .Page .PageSize) 1}}–{{min (add (mul .Page .PageSize) .PageSize)
+    .TotalCount}} of {{.TotalCount}}
+  </span>
+  {{end}}
 </div>
 {{if .Recent}}
 <table>
-    <thead>
-        <tr>
-            <th></th>
-            <th>Time</th>
-            <th>Backend</th>
-            <th>Model</th>
-            <th>Tokens</th>
-            <th>Latency</th>
-            <th>Stream</th>
-            <th>Client</th>
-        </tr>
-    </thead>
-    <tbody>
+  <thead>
+    <tr>
+      <th></th>
+      <th>Time</th>
+      <th>Backend</th>
+      <th>Model</th>
+      <th>Tokens</th>
+      <th>Latency</th>
+      <th>Stream</th>
+      <th>Client</th>
+    </tr>
+  </thead>
+  <tbody>
     {{range .Recent}}
-        <tr style="cursor:pointer" {{if .ID}}onclick="showDetail({{.ID}})"{{end}}>
-            <td>{{if .Error}}<span class="status-err" title="{{.Error}}"></span>{{else}}<span class="status-ok"></span>{{end}}</td>
-            <td>{{formatTime .Timestamp}}</td>
-            <td>{{.Backend}}</td>
-            <td>{{.Model}}</td>
-            <td>{{.TotalTokens}}</td>
-            <td>{{formatDuration .LatencyMs}}</td>
-            <td>{{if .Stream}}SSE{{else}}&mdash;{{end}}</td>
-            <td>{{.Client}}</td>
-        </tr>
+    <tr style="cursor: pointer" {{if .ID}}onclick="showDetail({{.ID}})" {{end}}>
+      <td>
+        {{if .Error}}<span class="status-err" title="{{.Error}}"></span
+        >{{else}}<span class="status-ok"></span>{{end}}
+      </td>
+      <td>{{formatTime .Timestamp}}</td>
+      <td>{{.Backend}}</td>
+      <td>{{.Model}}</td>
+      <td>{{.TotalTokens}}</td>
+      <td>{{formatDuration .LatencyMs}}</td>
+      <td>{{if .Stream}}SSE{{else}}&mdash;{{end}}</td>
+      <td>{{.Client}}</td>
+    </tr>
     {{end}}
-    </tbody>
+  </tbody>
 </table>
 {{if gt .TotalPages 1}}
 <div class="pagination">
-    {{if gt .Page 0}}
-    <button class="page-btn" hx-get="/ui/stats?page={{sub .Page 1}}" hx-target="#stats-content" hx-swap="innerHTML">&#8592; Prev</button>
-    {{else}}
-    <button class="page-btn" disabled>&#8592; Prev</button>
-    {{end}}
-    <span class="page-info">Page {{add .Page 1}} / {{.TotalPages}}</span>
-    {{if lt (add .Page 1) .TotalPages}}
-    <button class="page-btn" hx-get="/ui/stats?page={{add .Page 1}}" hx-target="#stats-content" hx-swap="innerHTML">Next &#8594;</button>
-    {{else}}
-    <button class="page-btn" disabled>Next &#8594;</button>
-    {{end}}
+  {{if gt .Page 0}}
+  <button
+    class="page-btn"
+    hx-get="/ui/stats?page={{sub .Page 1}}"
+    hx-target="#stats-content"
+    hx-swap="innerHTML"
+  >
+    &#8592; Prev
+  </button>
+  {{else}}
+  <button class="page-btn" disabled>&#8592; Prev</button>
+  {{end}}
+  <span class="page-info">Page {{add .Page 1}} / {{.TotalPages}}</span>
+  {{if lt (add .Page 1) .TotalPages}}
+  <button
+    class="page-btn"
+    hx-get="/ui/stats?page={{add .Page 1}}"
+    hx-target="#stats-content"
+    hx-swap="innerHTML"
+  >
+    Next &#8594;
+  </button>
+  {{else}}
+  <button class="page-btn" disabled>Next &#8594;</button>
+  {{end}}
 </div>
-{{end}}
-{{else}}
+{{end}} {{else}}
 <div class="empty">No requests recorded yet.</div>
 {{end}}
-

@@ -132,7 +132,7 @@ type copilotTestOpts struct {
 	copilotToken   string
 	upstreamResp   map[string]any
 	upstreamStatus int
-	models         []string
+	models         []config.ModelConfig
 }
 
 type copilotTracker struct {
@@ -169,8 +169,8 @@ func openaiTestEnv(t *testing.T) (backend.Backend, func()) {
 		Type:    "openai",
 		BaseURL: upstream.URL,
 		APIKey:  "test-or-key",
-		Models:  []string{"openai/gpt-4o", "anthropic/claude-sonnet-4"},
-	})
+		Models: []config.ModelConfig{{ID: "openai/gpt-4o"}, {ID: "anthropic/claude-sonnet-4"}},
+	}, 0)
 
 	return b, upstream.Close
 }
@@ -198,7 +198,7 @@ func TestCrossArea_CopilotColdStart(t *testing.T) {
 
 	req := &backend.ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []backend.Message{{Role: "user", Content: "Hello"}},
+		Messages: []backend.Message{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
 	}
 	resp, err := copilotB.ChatCompletion(context.Background(), req)
 	if err != nil {
@@ -208,7 +208,7 @@ func TestCrossArea_CopilotColdStart(t *testing.T) {
 	if len(resp.Choices) == 0 || resp.Choices[0].Message == nil {
 		t.Fatal("expected non-empty choices in response")
 	}
-	if resp.Choices[0].Message.Content != "Hello from Copilot!" {
+	if string(resp.Choices[0].Message.Content) != "\"Hello from Copilot!\"" {
 		t.Errorf("response content = %q, want %q", resp.Choices[0].Message.Content, "Hello from Copilot!")
 	}
 
@@ -250,7 +250,7 @@ func TestCrossArea_CopilotTokenRefreshDuringUse(t *testing.T) {
 
 	req := &backend.ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []backend.Message{{Role: "user", Content: "Hello"}},
+		Messages: []backend.Message{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
 	}
 
 	// Three sequential requests — all should succeed using cached token.
@@ -259,7 +259,7 @@ func TestCrossArea_CopilotTokenRefreshDuringUse(t *testing.T) {
 		if err != nil {
 			t.Fatalf("request %d error: %v", i+1, err)
 		}
-		if resp.Choices[0].Message.Content != "Hello from Copilot!" {
+	if string(resp.Choices[0].Message.Content) != "\"Hello from Copilot!\"" {
 			t.Errorf("request %d response = %q", i+1, resp.Choices[0].Message.Content)
 		}
 	}
@@ -403,7 +403,7 @@ func TestCrossArea_SIGHUPPreservesTokenState(t *testing.T) {
 
 	req := &backend.ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []backend.Message{{Role: "user", Content: "Hello"}},
+		Messages: []backend.Message{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
 	}
 	_, err := copilotB.ChatCompletion(context.Background(), req)
 	if err != nil {
@@ -444,7 +444,7 @@ func TestCrossArea_SIGHUPPreservesTokenState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("post-reload request error: %v", err)
 	}
-	if resp.Choices[0].Message.Content != "Hello from Copilot!" {
+	if string(resp.Choices[0].Message.Content) != "\"Hello from Copilot!\"" {
 		t.Errorf("post-reload response = %q", resp.Choices[0].Message.Content)
 	}
 }
@@ -567,13 +567,13 @@ func TestCrossArea_TokenPersistenceAcrossRestarts(t *testing.T) {
 
 	req := &backend.ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []backend.Message{{Role: "user", Content: "Hello"}},
+		Messages: []backend.Message{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
 	}
 	resp, err := b1.ChatCompletion(context.Background(), req)
 	if err != nil {
 		t.Fatalf("first instance error: %v", err)
 	}
-	if resp.Choices[0].Message.Content != "Hello!" {
+	if string(resp.Choices[0].Message.Content) != "\"Hello!\"" {
 		t.Errorf("first response = %q", resp.Choices[0].Message.Content)
 	}
 
@@ -609,7 +609,7 @@ func TestCrossArea_TokenPersistenceAcrossRestarts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("restarted instance error: %v", err)
 	}
-	if resp2.Choices[0].Message.Content != "Hello!" {
+	if string(resp2.Choices[0].Message.Content) != "\"Hello!\"" {
 		t.Errorf("restarted response = %q", resp2.Choices[0].Message.Content)
 	}
 }
@@ -683,7 +683,7 @@ func TestCrossArea_NoGitHubToken(t *testing.T) {
 
 	req := &backend.ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []backend.Message{{Role: "user", Content: "Hello"}},
+		Messages: []backend.Message{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
 	}
 	_, err = b.ChatCompletion(context.Background(), req)
 	if err == nil {
@@ -767,7 +767,7 @@ func TestCrossArea_OAuthTokenExpiry_NoRefresh(t *testing.T) {
 	b := backend.NewCodexBackend(
 		config.BackendConfig{
 			Name: "codex", Type: "codex", BaseURL: "https://chatgpt.com/backend-api/codex",
-			Models: []string{"o4-mini"},
+			Models: []config.ModelConfig{{ID: "o4-mini"}},
 		},
 		oauthHandler, ts, nil)
 
@@ -784,7 +784,7 @@ func TestCrossArea_OAuthTokenExpiry_NoRefresh(t *testing.T) {
 
 	req := &backend.ChatCompletionRequest{
 		Model:    "o4-mini",
-		Messages: []backend.Message{{Role: "user", Content: "Hello"}},
+		Messages: []backend.Message{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
 	}
 	_, err := b.ChatCompletion(context.Background(), req)
 	if err == nil {
@@ -828,7 +828,7 @@ func TestCrossArea_SimultaneousOAuthFlows(t *testing.T) {
 	codexB := backend.NewCodexBackend(
 		config.BackendConfig{
 			Name: "codex", Type: "codex", BaseURL: codexUpstream.URL,
-			Models: []string{"o4-mini"},
+			Models: []config.ModelConfig{{ID: "o4-mini"}},
 		},
 		codexHandler, codexTS, nil)
 
@@ -1076,7 +1076,7 @@ func TestCrossArea_OAuthStreaming(t *testing.T) {
 
 	req := &backend.ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []backend.Message{{Role: "user", Content: "Hello"}},
+		Messages: []backend.Message{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
 		Stream:   true,
 	}
 
@@ -1167,7 +1167,7 @@ func TestCrossArea_HealthCheckReflectsOAuthStatus(t *testing.T) {
 	// Force a request to populate token.
 	req := &backend.ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []backend.Message{{Role: "user", Content: "Hello"}},
+		Messages: []backend.Message{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
 	}
 	_, _ = copilotB.ChatCompletion(context.Background(), req)
 
@@ -1219,7 +1219,7 @@ func TestCrossArea_OAuthDisconnectAndReauth(t *testing.T) {
 
 	req := &backend.ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []backend.Message{{Role: "user", Content: "Hello"}},
+		Messages: []backend.Message{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
 	}
 	_, err := copilotB.ChatCompletion(context.Background(), req)
 	if err != nil {

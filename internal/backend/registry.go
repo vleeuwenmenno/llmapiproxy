@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/menno/llmapiproxy/internal/config"
 	"github.com/menno/llmapiproxy/internal/oauth"
@@ -22,12 +23,14 @@ type Registry struct {
 	backends    map[string]Backend
 	tokenStores map[string]*oauth.TokenStore // preserved across reloads
 	listenAddr  string                       // server listen address for deriving OAuth redirect URIs
+	rrTracker   *RoundRobinTracker
 }
 
 func NewRegistry() *Registry {
 	return &Registry{
 		backends:    make(map[string]Backend),
 		tokenStores: make(map[string]*oauth.TokenStore),
+		rrTracker:   newRoundRobinTracker(),
 	}
 }
 
@@ -43,6 +46,8 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 	// Store the listen address for deriving OAuth redirect URIs.
 	r.listenAddr = cfg.Server.Listen
 
+	cacheTTL := cfg.Server.ModelCacheTTL
+
 	newBackends := make(map[string]Backend, len(cfg.Backends))
 	newTokenStores := make(map[string]*oauth.TokenStore)
 
@@ -57,7 +62,7 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 			existingTS = r.tokenStores[bc.Name]
 		}
 
-		b, ts, err := r.createBackend(bc, existingTS)
+		b, ts, err := r.createBackend(bc, existingTS, cacheTTL)
 		if err != nil {
 			log.Printf("warning: skipping backend %q: %v", bc.Name, err)
 			continue
@@ -75,7 +80,7 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 // createBackend instantiates the appropriate backend based on the config type.
 // If existingTS is non-nil, it is reused instead of creating a new token store.
 // Returns the backend and (for OAuth backends) the token store used.
-func (r *Registry) createBackend(bc config.BackendConfig, existingTS *oauth.TokenStore) (Backend, *oauth.TokenStore, error) {
+func (r *Registry) createBackend(bc config.BackendConfig, existingTS *oauth.TokenStore, cacheTTL time.Duration) (Backend, *oauth.TokenStore, error) {
 	switch bc.Type {
 	case "copilot":
 		b, ts, err := r.createCopilotBackend(bc, existingTS)
@@ -90,7 +95,7 @@ func (r *Registry) createBackend(bc config.BackendConfig, existingTS *oauth.Toke
 		}
 		return b, ts, nil
 	case "openai", "":
-		return NewOpenAI(bc), nil, nil
+		return NewOpenAI(bc, cacheTTL), nil, nil
 	default:
 		return nil, nil, fmt.Errorf("unknown backend type %q", bc.Type)
 	}
@@ -359,7 +364,9 @@ func (r *Registry) GetTokenStore(name string) *oauth.TokenStore {
 
 // ResolveRoute returns an ordered list of RouteEntry values for the given model,
 // consulting the explicit routing config first and falling back to prefix/wildcard resolution.
-func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]RouteEntry, error) {
+// It also returns the resolved routing strategy and the stagger delay in milliseconds
+// (only relevant for the "staggered-race" strategy; 0 means use the default of 500ms).
+func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]RouteEntry, string, int, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -372,7 +379,21 @@ func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]R
 				}
 			}
 			if len(entries) > 0 {
-				return entries, nil
+				strategy := mr.Strategy
+				if strategy == "" {
+					strategy = routing.Strategy
+				}
+				if strategy == "" {
+					strategy = config.StrategyPriority
+				}
+				staggerDelayMs := mr.StaggerDelayMs
+				if staggerDelayMs == 0 {
+					staggerDelayMs = routing.StaggerDelayMs
+				}
+				if strategy == config.StrategyRoundRobin {
+					entries = r.rrTracker.Next(model, entries)
+				}
+				return entries, strategy, staggerDelayMs, nil
 			}
 		}
 	}
@@ -382,18 +403,18 @@ func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]R
 		if b, ok := r.backends[parts[0]]; ok {
 			modelID := parts[1]
 			if b.SupportsModel(modelID) {
-				return []RouteEntry{{Backend: b, ModelID: modelID}}, nil
+				return []RouteEntry{{Backend: b, ModelID: modelID}}, config.StrategyPriority, 0, nil
 			}
 		}
 	}
 
 	for _, b := range r.backends {
 		if b.SupportsModel(model) {
-			return []RouteEntry{{Backend: b, ModelID: model}}, nil
+			return []RouteEntry{{Backend: b, ModelID: model}}, config.StrategyPriority, 0, nil
 		}
 	}
 
-	return nil, fmt.Errorf("no backend found for model %q", model)
+	return nil, "", 0, fmt.Errorf("no backend found for model %q", model)
 }
 
 // RegisterBackend registers a backend by name, replacing any existing backend

@@ -59,7 +59,7 @@ backends:
 
 	collector := stats.NewCollector(1000)
 
-	ui := NewUI(cfgMgr, collector, registry, nil)
+	ui := NewUI(cfgMgr, collector, registry, nil, nil)
 
 	cleanup := func() {
 		os.RemoveAll(tmpDir)
@@ -627,7 +627,7 @@ backends:
 	registry := backend.NewRegistry()
 	registry.LoadFromConfig(cfgMgr.Get())
 	collector := stats.NewCollector(1000)
-	ui := NewUI(cfgMgr, collector, registry, nil)
+	ui := NewUI(cfgMgr, collector, registry, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ui/oauth/status", nil)
 	w := httptest.NewRecorder()
@@ -927,7 +927,7 @@ backends:
 
 	collector := stats.NewCollector(1000)
 
-	ui := NewUI(cfgMgr, collector, registry, nil)
+	ui := NewUI(cfgMgr, collector, registry, nil, nil)
 
 	cleanup := func() {
 		os.RemoveAll(tmpDir)
@@ -1088,7 +1088,7 @@ func TestOAuthCheckStatus_TriggersTokenRefreshForCopilot(t *testing.T) {
 		Name:    "copilot",
 		Type:    "copilot",
 		BaseURL: "https://api.githubcopilot.com",
-		Models:  []string{"gpt-4o"},
+		Models: []config.ModelConfig{{ID: "gpt-4o"}},
 	}
 	mockBackend := backend.NewCopilotBackend(cfg, deviceCodeHandler, mockStore)
 	ui.registry.RegisterBackend("copilot", mockBackend)

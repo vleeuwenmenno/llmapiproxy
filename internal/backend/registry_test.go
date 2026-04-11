@@ -275,7 +275,7 @@ func TestRegistry_HotReload_UpdatesBackend(t *testing.T) {
 				Name:    "copilot",
 				Type:    "copilot",
 				BaseURL: "https://api.githubcopilot.com",
-				Models:  []string{"gpt-4o"},
+				Models: []config.ModelConfig{{ID: "gpt-4o"}},
 			},
 		},
 	}
@@ -293,7 +293,7 @@ func TestRegistry_HotReload_UpdatesBackend(t *testing.T) {
 				Name:    "copilot",
 				Type:    "copilot",
 				BaseURL: "https://api.githubcopilot.com",
-				Models:  []string{"o3"},
+				Models: []config.ModelConfig{{ID: "o3"}},
 			},
 		},
 	}
@@ -800,7 +800,7 @@ func TestRegistry_HotReload_RemovesCodexAtRuntime(t *testing.T) {
 				Type:    "openai",
 				BaseURL: "https://openrouter.ai/api/v1",
 				APIKey:  "sk-or-key",
-				Models:  []string{"openai/gpt-4o"},
+				Models: []config.ModelConfig{{ID: "openai/gpt-4o"}},
 			},
 		},
 	}

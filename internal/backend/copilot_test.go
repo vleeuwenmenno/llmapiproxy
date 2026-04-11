@@ -169,7 +169,7 @@ func TestCopilotBackend_ChatCompletion(t *testing.T) {
 	req := &ChatCompletionRequest{
 		Model: "gpt-4o",
 		Messages: []Message{
-			{Role: "user", Content: "Hello"},
+			{Role: "user", Content: json.RawMessage(`"Hello"`)},
 		},
 	}
 
@@ -191,7 +191,7 @@ func TestCopilotBackend_ChatCompletion(t *testing.T) {
 	if resp.Choices[0].Message == nil {
 		t.Fatal("choice message is nil")
 	}
-	if resp.Choices[0].Message.Content != "Hello from Copilot!" {
+	if string(resp.Choices[0].Message.Content) != "\"Hello from Copilot!\"" {
 		t.Errorf("content = %q, want %q", resp.Choices[0].Message.Content, "Hello from Copilot!")
 	}
 }
@@ -206,7 +206,7 @@ func TestCopilotBackend_ChatCompletion_Usage(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []Message{{Role: "user", Content: "Hi"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
 	}
 
 	resp, err := b.ChatCompletion(context.Background(), req)
@@ -260,7 +260,7 @@ func TestCopilotBackend_ChatCompletionStream(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []Message{{Role: "user", Content: "Hello"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
 	}
 
 	stream, err := b.ChatCompletionStream(context.Background(), req)
@@ -312,7 +312,7 @@ func TestCopilotBackend_Streaming_DeltaObjects(t *testing.T) {
 
 	stream, err := b.ChatCompletionStream(context.Background(), &ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	})
 	if err != nil {
 		t.Fatalf("ChatCompletionStream: %v", err)
@@ -337,7 +337,7 @@ func TestCopilotBackend_ListModels(t *testing.T) {
 		Name:    "copilot",
 		Type:    "copilot",
 		BaseURL: "https://api.githubcopilot.com",
-		Models:  []string{"gpt-4o", "gpt-4.1", "o3"},
+		Models: []config.ModelConfig{{ID: "gpt-4o"}, {ID: "gpt-4.1"}, {ID: "o3"}},
 	}
 
 	dir, cleanup := helperTempDir(t)
@@ -367,9 +367,9 @@ func TestCopilotBackend_ListModels(t *testing.T) {
 		}
 	}
 
-	for _, expected := range []string{"gpt-4o", "gpt-4.1", "o3"} {
-		if !modelIDs[expected] {
-			t.Errorf("expected model %q in list", expected)
+	for _, expected := range []config.ModelConfig{{ID: "gpt-4o"},{ID: "gpt-4.1"},{ID: "o3"}} {
+		if !modelIDs[expected.ID] {
+			t.Errorf("expected model %q in list", expected.ID)
 		}
 	}
 }
@@ -401,7 +401,7 @@ func TestCopilotBackend_RequiredHeaders(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -465,7 +465,7 @@ func TestCopilotBackend_PrefixRouting(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -496,7 +496,7 @@ func TestCopilotBackend_NoToken(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -530,7 +530,7 @@ func TestCopilotBackend_RateLimit(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -563,7 +563,7 @@ func TestCopilotBackend_ModelNotFound(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "nonexistent-model",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -591,7 +591,7 @@ func TestCopilotBackend_SubscriptionError(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -649,7 +649,7 @@ func TestCopilotBackend_Upstream401_RetryWithReauth(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	resp, err := b.ChatCompletion(context.Background(), req)
@@ -660,7 +660,7 @@ func TestCopilotBackend_Upstream401_RetryWithReauth(t *testing.T) {
 	if len(resp.Choices) == 0 {
 		t.Fatal("expected at least one choice after retry")
 	}
-	if resp.Choices[0].Message.Content != "Success after retry" {
+	if string(resp.Choices[0].Message.Content) != "\"Success after retry\"" {
 		t.Errorf("content = %q, want %q", resp.Choices[0].Message.Content, "Success after retry")
 	}
 
@@ -690,7 +690,7 @@ func TestCopilotBackend_Upstream401_LoopPrevention(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -762,15 +762,15 @@ func TestCopilotBackend_EnterpriseURL(t *testing.T) {
 func TestCopilotBackend_SupportsModel(t *testing.T) {
 	tests := []struct {
 		name   string
-		models []string
+		models []config.ModelConfig
 		check  string
 		want   bool
 	}{
 		{"empty models list (accepts all)", nil, "anything", true},
-		{"exact match", []string{"gpt-4o"}, "gpt-4o", true},
-		{"no match", []string{"gpt-4o"}, "claude-3", false},
-		{"wildcard match", []string{"openai/*"}, "openai/gpt-4o", true},
-		{"wildcard no match", []string{"openai/*"}, "anthropic/claude-3", false},
+		{"exact match", []config.ModelConfig{{ID: "gpt-4o"}}, "gpt-4o", true},
+		{"no match", []config.ModelConfig{{ID: "gpt-4o"}}, "claude-3", false},
+		{"wildcard match", []config.ModelConfig{{ID: "openai/*"}}, "openai/gpt-4o", true},
+		{"wildcard no match", []config.ModelConfig{{ID: "openai/*"}}, "anthropic/claude-3", false},
 	}
 
 	for _, tt := range tests {
@@ -831,7 +831,7 @@ func TestCopilotBackend_ConcurrentRequests(t *testing.T) {
 			defer wg.Done()
 			req := &ChatCompletionRequest{
 				Model:    "gpt-4o",
-				Messages: []Message{{Role: "user", Content: "test"}},
+				Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 			}
 			_, err := b.ChatCompletion(context.Background(), req)
 			if err != nil {
@@ -867,7 +867,7 @@ func TestCopilotBackend_PartialPrefixNoMatch(t *testing.T) {
 		Name:    "copilot",
 		Type:    "copilot",
 		BaseURL: "https://api.githubcopilot.com",
-		Models:  []string{"gpt-4o", "o3"},
+		Models: []config.ModelConfig{{ID: "gpt-4o"}, {ID: "o3"}},
 	}, deviceCodeHandler, ts)
 
 	r.backends["copilot"] = backend
@@ -945,7 +945,7 @@ func TestCopilotBackend_TokenRevalidationOnExpiry(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []Message{{Role: "user", Content: "test"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 	}
 
 	resp, err := b.ChatCompletion(context.Background(), req)
@@ -1031,7 +1031,7 @@ func TestCopilotBackend_IgnoresAPIKeyOverride(t *testing.T) {
 
 	req := &ChatCompletionRequest{
 		Model:          "gpt-4o",
-		Messages:       []Message{{Role: "user", Content: "test"}},
+		Messages:       []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 		APIKeyOverride: "sk-custom-key",
 	}
 
@@ -1078,7 +1078,7 @@ func TestCopilotBackend_RewriteBody(t *testing.T) {
 	rawBody := `{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}],"temperature":0.7,"top_p":0.9}`
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
-		Messages: []Message{{Role: "user", Content: "hi"}},
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
 		RawBody:  []byte(rawBody),
 	}
 
@@ -1240,7 +1240,7 @@ func TestCopilotBackend_RefreshOAuthStatus_Success(t *testing.T) {
 		Name:    "copilot",
 		Type:    "copilot",
 		BaseURL: "https://api.githubcopilot.com",
-		Models:  []string{"gpt-4o"},
+		Models: []config.ModelConfig{{ID: "gpt-4o"}},
 	}
 	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
 

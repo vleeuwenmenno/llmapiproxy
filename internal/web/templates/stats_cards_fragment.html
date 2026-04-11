@@ -1,0 +1,36 @@
+<div class="cards">
+    <div class="card">
+        <div class="label">Requests ({{.WindowLabel}})</div>
+        <div class="value accent">{{.WindowStats.TotalRequests}}</div>
+        <div class="sub">{{.Today.TotalRequests}} today &middot; {{.AllTime.TotalRequests}} all time</div>
+    </div>
+    <div class="card">
+        <div class="label">Tokens ({{.WindowLabel}})</div>
+        <div class="value">{{.WindowStats.TotalTokens}}</div>
+        <div class="sub">{{.Today.TotalTokens}} today &middot; {{.AllTime.TotalTokens}} all time</div>
+    </div>
+    <div class="card">
+        <div class="label">Avg Latency ({{.WindowLabel}})</div>
+        <div class="value green">{{formatDuration .WindowStats.AvgLatencyMs}}</div>
+        <div class="sub">{{formatDuration .AllTime.AvgLatencyMs}} all time</div>
+    </div>
+    <div class="card">
+        <div class="label">Errors ({{.WindowLabel}})</div>
+        <div class="value {{if gt .WindowStats.TotalErrors 0}}red{{else}}green{{end}}">{{.WindowStats.TotalErrors}}</div>
+        <div class="sub">{{.Today.TotalErrors}} today &middot; {{.AllTime.TotalErrors}} all time</div>
+    </div>
+    {{if gt .AllTime.TotalCached 0}}
+    <div class="card">
+        <div class="label">Cached Tokens ({{.WindowLabel}})</div>
+        <div class="value" style="color:var(--amber)">{{.WindowStats.TotalCached}}</div>
+        <div class="sub">{{.Today.TotalCached}} today &middot; {{.AllTime.TotalCached}} all time</div>
+    </div>
+    {{end}}
+    {{if gt .AllTime.TotalReasoning 0}}
+    <div class="card">
+        <div class="label">Reasoning Tokens ({{.WindowLabel}})</div>
+        <div class="value" style="color:#a78bfa">{{.WindowStats.TotalReasoning}}</div>
+        <div class="sub">{{.Today.TotalReasoning}} today &middot; {{.AllTime.TotalReasoning}} all time</div>
+    </div>
+    {{end}}
+</div>

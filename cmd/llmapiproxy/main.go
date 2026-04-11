@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -16,8 +17,8 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/menno/llmapiproxy/internal/backend"
+	"github.com/menno/llmapiproxy/internal/chat"
 	"github.com/menno/llmapiproxy/internal/config"
-	"github.com/menno/llmapiproxy/internal/oauth"
 	"github.com/menno/llmapiproxy/internal/proxy"
 	"github.com/menno/llmapiproxy/internal/stats"
 	"github.com/menno/llmapiproxy/internal/web"
@@ -31,8 +32,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
+	defer cfgMgr.Close()
 	cfg := cfgMgr.Get()
 	log.Printf("loaded config from %s with %d backends", *configPath, len(cfg.Backends))
+
+	if err := cfgMgr.WatchFile(); err != nil {
+		log.Printf("warning: config file watching disabled: %v", err)
+	} else {
+		log.Printf("watching config file %s for changes", *configPath)
+	}
 
 	registry := backend.NewRegistry()
 	registry.LoadFromConfig(cfg)
@@ -58,8 +66,14 @@ func main() {
 	}
 
 	proxyHandler := proxy.NewHandler(registry, collector, cfgMgr)
-	ui := web.NewUI(cfgMgr, collector, registry, store)
-	appBaseURL := oauth.DeriveLocalServerBaseURL(cfg.Server.Listen)
+
+	chatStore, err := chat.OpenChatStore(cfg.Server.ChatDBPath)
+	if err != nil {
+		log.Fatalf("failed to open chat database: %v", err)
+	}
+	log.Printf("chat database: %s", cfg.Server.ChatDBPath)
+
+	ui := web.NewUI(cfgMgr, collector, registry, store, chatStore)
 
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.RealIP)
@@ -75,22 +89,48 @@ func main() {
 
 	r.Route("/ui", func(r chi.Router) {
 		r.Get("/", ui.Dashboard)
+		r.Get("/dashboard/data", ui.DashboardData)
 		r.Get("/stats", ui.StatsFragment)
 		r.Get("/models", ui.ModelsPage)
+		r.Get("/backends/{name}/models", ui.BackendModels)
+		r.Post("/backends/{name}/refresh-models", ui.RefreshBackendModels)
 		r.Get("/config", http.RedirectHandler("/ui/settings", http.StatusSeeOther).ServeHTTP)
 		r.Post("/config/save", ui.SaveConfig)
+		r.Post("/settings/model-cache-ttl", ui.UpdateModelCacheTTL)
 		r.Get("/settings", ui.SettingsPage)
 		r.Get("/playground", ui.PlaygroundPage)
 		r.Get("/playground/models", ui.PlaygroundModels)
+
+		// Chat API
+		r.Get("/chat", ui.ChatPage)
+		r.Get("/chat/models", ui.ChatModels)
+		r.Get("/chat/sessions", ui.ChatListSessions)
+		r.Post("/chat/sessions", ui.ChatCreateSession)
+		r.Get("/chat/sessions/{id}", ui.ChatGetSession)
+		r.Put("/chat/sessions/{id}", ui.ChatUpdateSession)
+		r.Delete("/chat/sessions/{id}", ui.ChatDeleteSession)
+		r.Delete("/chat/sessions", ui.ChatDeleteAllSessions)
+		r.Get("/chat/sessions/{id}/messages", ui.ChatListMessages)
+		r.Post("/chat/sessions/{id}/messages", ui.ChatSaveMessage)
+		r.Post("/chat/sessions/{id}/title", ui.ChatGenerateTitle)
+		r.Put("/chat/title-model", ui.ChatSetTitleModel)
+		r.Put("/chat/default-model", ui.ChatSetDefaultModel)
 		r.Post("/settings/clear-stats", ui.ClearStats)
 		r.Post("/settings/toggle-stats", ui.ToggleStats)
 		r.Post("/settings/keys/add", ui.AddAPIKey)
 		r.Post("/settings/keys/delete", ui.DeleteAPIKey)
 		r.Post("/settings/backends/toggle", ui.ToggleBackend)
+		r.Get("/stats/cards", ui.StatsCards)
 		r.Get("/stats/detail", ui.RequestDetail)
-		r.Get("/quota", ui.QuotaFragment)
+		r.Get("/analytics", ui.AnalyticsPage)
+		r.Get("/analytics/data", ui.AnalyticsData)
+		r.Get("/routing", ui.RoutingPage)
+		r.Get("/routing/data", ui.RoutingData)
+		r.Get("/routing/config", ui.RoutingConfigJSON)
+		r.Get("/routing/backend-fallbacks", ui.RoutingBackendFallbacks)
 		r.Post("/settings/clients/add", ui.AddClient)
 		r.Post("/settings/clients/delete", ui.DeleteClient)
+		r.Post("/settings/server", ui.UpdateServerAddr)
 		r.Post("/routing/save", ui.SaveRouting)
 
 		// OAuth management endpoints
@@ -141,11 +181,6 @@ func main() {
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	codexLoopbackSrv := &http.Server{
-		Addr:              codexLoopbackListenAddr,
-		Handler:           newCodexLoopbackHandler(registry, appBaseURL),
-		ReadHeaderTimeout: 10 * time.Second,
-	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -164,17 +199,12 @@ func main() {
 	}()
 
 	go func() {
+		displayURL := fmt.Sprintf("http://localhost:%d", cfg.Server.Port)
 		log.Printf("starting server on %s", cfg.Server.Listen)
-		log.Printf("  API:       http://localhost%s/v1/chat/completions", cfg.Server.Listen)
-		log.Printf("  Dashboard: http://localhost%s/ui/", cfg.Server.Listen)
+		log.Printf("  API:       %s/v1/chat/completions", displayURL)
+		log.Printf("  Dashboard: %s/ui/", displayURL)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server error: %v", err)
-		}
-	}()
-	go func() {
-		log.Printf("starting Codex OAuth loopback callback server on %s", codexLoopbackListenAddr)
-		if err := codexLoopbackSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("codex loopback callback server error: %v", err)
 		}
 	}()
 
@@ -187,11 +217,9 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("shutdown error: %v", err)
 	}
-	if err := codexLoopbackSrv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("codex loopback shutdown error: %v", err)
-	}
 	if store != nil {
 		store.Close()
 	}
+	chatStore.Close()
 	log.Println("server stopped")
 }

@@ -105,6 +105,139 @@
         nav .links a:hover { color: var(--text); background: var(--accent-dim); }
         nav .links a.active { color: var(--accent); background: var(--accent-dim); }
 
+        /* ── Mobile Menu Styles ── */
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--text);
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 6px;
+            transition: background 0.15s;
+        }
+
+        .mobile-menu-btn:hover {
+            background: var(--accent-dim);
+        }
+
+        .mobile-menu-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .nav-links-mobile {
+            display: none;
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 280px;
+            max-width: 80vw;
+            height: 100vh;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            z-index: 1000;
+            flex-direction: column;
+            padding: 1rem;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        }
+
+        .nav-links-mobile.open {
+            transform: translateX(0);
+        }
+
+        .nav-links-mobile .mobile-menu-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 1rem;
+        }
+
+        .nav-links-mobile .mobile-menu-title {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .nav-links-mobile .mobile-menu-close {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 6px;
+            font-size: 1.25rem;
+            line-height: 1;
+            transition: all 0.15s;
+        }
+
+        .nav-links-mobile .mobile-menu-close:hover {
+            color: var(--text);
+            background: var(--accent-dim);
+        }
+
+        .nav-links-mobile a {
+            color: var(--text-dim);
+            text-decoration: none;
+            padding: 0.875rem 1rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .nav-links-mobile a:hover, .nav-links-mobile a.active {
+            color: var(--text);
+            background: var(--accent-dim);
+        }
+
+        .nav-links-mobile a.active {
+            color: var(--accent);
+        }
+
+        .nav-links-mobile .theme-toggle-mobile {
+            margin-top: auto;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            cursor: pointer;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.15s;
+        }
+
+        .nav-links-mobile .theme-toggle-mobile:hover {
+            border-color: var(--accent);
+        }
+
+        .mobile-menu-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .mobile-menu-overlay.open {
+            display: block;
+            opacity: 1;
+        }
+
         main {
             max-width: 1200px;
             margin: 0 auto;
@@ -249,9 +382,9 @@
         .model-item {
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            flex-wrap: wrap;
             padding: 0.45rem 1.1rem;
-            gap: 0.5rem;
+            gap: 0.35rem;
             transition: background 0.1s;
         }
 
@@ -262,7 +395,43 @@
             font-size: 0.72rem;
             color: var(--text);
             word-break: break-all;
+            flex: 1;
+            min-width: 0;
         }
+
+        /* ── Context / output / capability / source badges ── */
+        .ctx-badge, .out-badge, .cap-badge, .src-badge {
+            font-family: var(--mono);
+            font-size: 0.6rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .ctx-badge {
+            background: rgba(34,211,238,0.1);
+            color: var(--accent);
+            border: 1px solid rgba(34,211,238,0.25);
+        }
+        .out-badge {
+            background: rgba(167,139,250,0.1);
+            color: var(--purple);
+            border: 1px solid rgba(167,139,250,0.25);
+        }
+        .cap-badge {
+            background: rgba(251,191,36,0.1);
+            color: var(--amber);
+            border: 1px solid rgba(251,191,36,0.25);
+        }
+        .src-badge {
+            font-size: 0.65rem;
+            padding: 0.1rem 0.3rem;
+            opacity: 0.65;
+            cursor: default;
+        }
+        .src-upstream { background: rgba(52,211,153,0.08); color: var(--green); border: 1px solid rgba(52,211,153,0.2); }
+        .src-config   { background: rgba(251,191,36,0.08);  color: var(--amber); border: 1px solid rgba(251,191,36,0.2); }
+        .src-builtin  { background: rgba(100,116,139,0.12); color: var(--text-dim); border: 1px solid rgba(100,116,139,0.2); }
 
         .copy-btn {
             background: transparent;
@@ -281,6 +450,90 @@
         .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
         .copy-btn.copied { color: var(--green); border-color: var(--green); }
 
+        /* ── ctx/out/cap badges clickable ─────────────────── */
+        .ctx-badge, .out-badge, .cap-badge, .src-badge {
+            cursor: pointer;
+            transition: filter 0.12s, transform 0.12s;
+        }
+        .ctx-badge:hover, .out-badge:hover, .cap-badge:hover, .src-badge:hover {
+            filter: brightness(1.25);
+            transform: scale(1.08);
+        }
+
+        /* ── Legend strip ──────────────────────────────────── */
+        .legend-strip {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+            margin-bottom: 2rem;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+        }
+        .legend-strip .legend-label {
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 600;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            cursor: pointer;
+            padding: 0.2rem 0;
+            position: relative;
+        }
+        .legend-item .legend-arrow {
+            font-size: 0.6rem;
+            opacity: 0.5;
+            transition: opacity 0.15s;
+        }
+        .legend-item:hover .legend-arrow { opacity: 1; }
+
+        /* Popover */
+        .legend-popover {
+            display: none;
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.7rem 0.9rem;
+            font-size: 0.75rem;
+            line-height: 1.55;
+            color: var(--text);
+            width: 260px;
+            z-index: 300;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+            pointer-events: auto;
+        }
+        .legend-popover.open { display: block; }
+        .legend-popover::after {
+            content: '';
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-bottom-color: var(--border);
+        }
+        .legend-popover h4 {
+            font-size: 0.78rem;
+            font-weight: 600;
+            margin-bottom: 0.35rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .legend-popover p {
+            color: var(--text-dim);
+            font-size: 0.7rem;
+            margin: 0;
+        }
+
         .dynamic-badge {
             font-size: 0.65rem;
             background: rgba(167,139,250,0.15);
@@ -293,6 +546,32 @@
             font-family: var(--mono);
         }
 
+        .refresh-models-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            margin-left: 0.4rem;
+            vertical-align: middle;
+            transition: all 0.2s ease;
+        }
+        .refresh-models-btn:hover {
+            color: var(--accent);
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+        .refresh-models-btn.spinning {
+            animation: spin 0.6s linear infinite;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
         .model-count {
             font-size: 0.7rem;
             font-family: var(--mono);
@@ -301,6 +580,54 @@
             padding: 0.15rem 0.5rem;
             border-radius: 10px;
         }
+
+        /* ── Spinner ─────────────────────────────────────────── */
+        .model-loading {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.85rem 1.1rem;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+        }
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(34,211,238,0.15);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Show-more toggle ────────────────────────────────── */
+        .show-more-btn {
+            width: 100%;
+            background: transparent;
+            border: none;
+            border-top: 1px solid var(--border);
+            color: var(--text-dim);
+            font-family: var(--mono);
+            font-size: 0.68rem;
+            padding: 0.55rem 1.1rem;
+            cursor: pointer;
+            text-align: left;
+            transition: color 0.1s, background 0.1s;
+        }
+        .show-more-btn:hover { color: var(--accent); background: var(--accent-dim); }
+
+        /* ── Collapsible card ────────────────────────────────── */
+        .backend-card.collapsed .model-list { display: none; }
+        .collapse-chevron {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            transition: transform 0.2s;
+            margin-left: 0.2rem;
+            flex-shrink: 0;
+        }
+        .backend-card.collapsed .collapse-chevron { transform: rotate(-90deg); }
+        .backend-header { cursor: pointer; user-select: none; }
 
         /* ── Overlap section ─────────────────────────────────── */
         .overlap-list {
@@ -335,6 +662,30 @@
         .overlap-chip .backends {
             color: var(--text-dim);
             font-size: 0.65rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+
+        .overlap-chip .backend-row {
+            display: flex;
+            align-items: baseline;
+            gap: 0.35rem;
+        }
+
+        .overlap-chip .backend-name {
+            color: var(--text-dim);
+            font-size: 0.65rem;
+        }
+
+        .overlap-chip .backend-modelid {
+            font-family: var(--mono);
+            color: var(--accent);
+            font-size: 0.62rem;
+        }
+
+        .overlap-chip .backend-modelid.same {
+            color: var(--text-dim);
         }
 
         .overlap-chip .configure-hint {
@@ -343,6 +694,21 @@
             margin-top: 0.25rem;
             opacity: 0.7;
         }
+
+        .overlap-chip .strat-badge {
+            display: inline-block;
+            font-size: 0.58rem;
+            font-weight: 600;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            margin-bottom: 0.3rem;
+            letter-spacing: 0.03em;
+        }
+        .overlap-chip .strat-priority        { background: rgba(34,211,238,0.12); color: var(--accent); }
+        .overlap-chip .strat-round-robin      { background: rgba(167,139,250,0.15); color: #a78bfa; }
+        .overlap-chip .strat-race             { background: rgba(251,191,36,0.15);  color: var(--amber); }
+        .overlap-chip .strat-staggered-race   { background: rgba(52,211,153,0.15);  color: #34d399; }
+        .overlap-chip .strat-global           { background: rgba(148,163,184,0.10); color: var(--text-dim); border: 1px dashed rgba(148,163,184,0.25); }
 
         /* ── Connect section ─────────────────────────────────── */
         .connect-buttons {
@@ -448,6 +814,78 @@
 
         .modal-body p strong { color: var(--text); }
 
+        /* ── Strategy radio cards ─────────────────────────────── */
+        .strat-cards { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+        .strat-option {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.65rem;
+            padding: 0.65rem 0.85rem;
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+            user-select: none;
+        }
+        .strat-option input[type="radio"] {
+            appearance: none; -webkit-appearance: none;
+            width: 16px; height: 16px;
+            border: 2px solid var(--text-dim);
+            border-radius: 50%;
+            margin-top: 2px;
+            flex-shrink: 0;
+            position: relative;
+            transition: border-color 0.15s;
+        }
+        .strat-option input[type="radio"]:checked::after {
+            content: '';
+            position: absolute;
+            top: 2px; left: 2px;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+        .strat-option input[type="radio"]:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+        .strat-option:hover { background: var(--surface-2); }
+
+        .strat-option .strat-icon { font-size: 1rem; margin-top: 1px; flex-shrink: 0; }
+        .strat-option .strat-text { display: flex; flex-direction: column; gap: 0.1rem; }
+        .strat-option .strat-label { font-size: 0.82rem; font-weight: 600; color: var(--text); }
+        .strat-option .strat-desc { font-size: 0.72rem; color: var(--text-dim); line-height: 1.45; }
+
+        /* ── Strategy-specific colours ────────────────────────── */
+        .strat-option.so-default       { border-left-color: var(--text-dim); }
+        .strat-option.so-priority      { border-left-color: #22d3ee; }
+        .strat-option.so-roundrobin    { border-left-color: #a78bfa; }
+        .strat-option.so-race          { border-left-color: #fbbf24; }
+        .strat-option.so-staggeredrace { border-left-color: #34d399; }
+
+        .strat-option.so-default:has(input:checked)       { border-color: var(--text-dim); border-left-color: var(--text-dim); background: rgba(148,163,184,0.06); }
+        .strat-option.so-priority:has(input:checked)      { border-color: rgba(34,211,238,0.35); border-left-color: #22d3ee; background: rgba(34,211,238,0.06); box-shadow: 0 0 0 1px rgba(34,211,238,0.12); }
+        .strat-option.so-roundrobin:has(input:checked)    { border-color: rgba(167,139,250,0.35); border-left-color: #a78bfa; background: rgba(167,139,250,0.06); box-shadow: 0 0 0 1px rgba(167,139,250,0.12); }
+        .strat-option.so-race:has(input:checked)          { border-color: rgba(251,191,36,0.35); border-left-color: #fbbf24; background: rgba(251,191,36,0.06); box-shadow: 0 0 0 1px rgba(251,191,36,0.12); }
+        .strat-option.so-staggeredrace:has(input:checked) { border-color: rgba(52,211,153,0.35); border-left-color: #34d399; background: rgba(52,211,153,0.06); box-shadow: 0 0 0 1px rgba(52,211,153,0.12); }
+
+        .strat-option.so-priority input:checked      { border-color: #22d3ee; }
+        .strat-option.so-roundrobin input:checked    { border-color: #a78bfa; }
+        .strat-option.so-race input:checked          { border-color: #fbbf24; }
+        .strat-option.so-staggeredrace input:checked { border-color: #34d399; }
+
+        /* Stagger delay inline input */
+        .stagger-delay-row { display: none; align-items: center; gap: 0.5rem; margin-top: 0.5rem; padding: 0.4rem 0.7rem; background: rgba(52,211,153,0.05); border-radius: 6px; border: 1px solid rgba(52,211,153,0.2); }
+        .stagger-delay-row.visible { display: flex; }
+        .stagger-delay-row label { font-size: 0.75rem; color: var(--text-dim); white-space: nowrap; }
+        .stagger-delay-row input[type=number] { width: 5rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 0.25rem 0.45rem; font-size: 0.82rem; font-family: var(--mono); outline: none; transition: border-color .15s; }
+        .stagger-delay-row input[type=number]:focus { border-color: #34d399; }
+        .stagger-delay-row span { font-size: 0.75rem; color: var(--text-dim); }
+
+        /* Fallback :checked style for browsers without :has */
+        .strat-option:has(input:checked) .strat-label { color: var(--text); }
+
         .code-block {
             position: relative;
             background: var(--bg);
@@ -479,6 +917,105 @@
             overflow-x: auto;
             white-space: pre;
         }
+
+        /* ── curl modal selectors ──────────────────────────────── */
+        .curl-config {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+        }
+        .curl-field {
+            flex: 1;
+            min-width: 200px;
+        }
+        .curl-field label {
+            display: block;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 0.35rem;
+        }
+        .curl-combo-wrap {
+            position: relative;
+        }
+        .curl-combo-input {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .curl-combo-input:focus { border-color: var(--accent); }
+        .curl-combo-input::placeholder { color: var(--text-dim); }
+        .curl-combo-chevron {
+            position: absolute;
+            right: 0.6rem;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+            color: var(--text-dim);
+        }
+        .curl-combo-list {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            max-height: 220px;
+            overflow-y: auto;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            z-index: 300;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .curl-combo-list.open { display: block; }
+        .curl-combo-item {
+            padding: 0.4rem 0.75rem;
+            font-family: var(--mono);
+            font-size: 0.78rem;
+            color: var(--text);
+            cursor: pointer;
+            transition: background 0.1s;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .curl-combo-item:hover,
+        .curl-combo-item.active { background: var(--accent-dim); color: var(--accent); }
+        .curl-combo-empty {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.78rem;
+            color: var(--text-dim);
+        }
+        .curl-key-select {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            outline: none;
+            cursor: pointer;
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.6rem center;
+            transition: border-color 0.15s;
+        }
+        .curl-key-select:focus { border-color: var(--accent); }
+        .curl-key-select option { background: var(--surface); color: var(--text); }
 
         .copy-block-btn {
             background: transparent;
@@ -561,10 +1098,49 @@
             from { opacity: 0; transform: translateY(8px); }
             to   { opacity: 1; transform: translateY(0); }
         }
+
+        /* ── Mobile Responsive ── */
+        @media (max-width: 768px) {
+            nav { padding: 0.75rem 1rem; }
+            nav .links { display: none; }
+            .mobile-menu-btn { display: flex; align-items: center; justify-content: center; }
+            .nav-links-mobile { display: flex; }
+            main { padding: 1.25rem; }
+            h1 { font-size: 1.25rem; }
+            .backend-grid { grid-template-columns: 1fr; }
+            .legend-strip { gap: 0.4rem; font-size: 0.65rem; }
+            .connect-buttons { justify-content: center; }
+        }
+
+        @media (max-width: 480px) {
+            main { padding: 1rem; }
+            .overlap-chip { padding: 0.35rem 0.6rem; }
+        }
     </style>
 </head>
 <body>
     <div class="noise"></div>
+
+    <!-- Mobile Menu Overlay -->
+    <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="closeMobileMenu()"></div>
+
+    <!-- Mobile Navigation Drawer -->
+    <div class="nav-links-mobile" id="navLinksMobile">
+        <div class="mobile-menu-header">
+            <span class="mobile-menu-title">Menu</span>
+            <button class="mobile-menu-close" onclick="closeMobileMenu()">&#10005;</button>
+        </div>
+        <a href="/ui/">&#128200; Dashboard</a>
+        <a href="/ui/analytics">&#128202; Analytics</a>
+        <a href="/ui/routing">&#128260; Routing</a>
+        <a href="/ui/models" class="active">&#129302; Models</a>
+        <a href="/ui/chat">&#128172; Chat</a>
+        <a href="/ui/settings">&#9881; Settings</a>
+        <button class="theme-toggle-mobile" onclick="toggleTheme(); closeMobileMenu();" id="themeBtnMobile">
+            <span id="themeIconMobile">&#9728;</span> Toggle Theme
+        </button>
+    </div>
+
     <nav>
         <div class="logo">
             <div class="icon">&#9889;</div>
@@ -572,16 +1148,70 @@
         </div>
         <div class="links">
             <a href="/ui/">Dashboard</a>
+            <a href="/ui/analytics">Analytics</a>
+            <a href="/ui/routing">Routing</a>
             <a href="/ui/models" class="active">Models</a>
-            <a href="/ui/playground">Playground</a>
+            <a href="/ui/chat">Chat</a>
             <a href="/ui/settings">Settings</a>
             <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">&#9728;</button>
         </div>
+        <button class="mobile-menu-btn" onclick="openMobileMenu()" aria-label="Open menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+        </button>
     </nav>
 
     <main>
         <h1>Available Models</h1>
         <p class="subtitle">All models accessible through this proxy. Use the prefixed ID (e.g. <code style="font-family:var(--mono);font-size:0.85em;background:var(--surface-2);padding:0.1rem 0.4rem;border-radius:3px">backend/model-id</code>) when calling the API.</p>
+
+        <div class="legend-strip" id="legend-strip">
+            <span class="legend-label">Legend:</span>
+
+            <span class="legend-item" data-legend="ctx">
+                <span class="ctx-badge">128K ctx</span>
+                <span class="legend-arrow">&#x24D8;</span>
+                <div class="legend-popover" id="popover-ctx">
+                    <h4><span class="ctx-badge">ctx</span> Context Window</h4>
+                    <p>Maximum number of tokens the model can accept as input (prompt + system + history). Larger windows allow longer conversations and bigger documents.</p>
+                </div>
+            </span>
+
+            <span class="legend-item" data-legend="out">
+                <span class="out-badge">16K out</span>
+                <span class="legend-arrow">&#x24D8;</span>
+                <div class="legend-popover" id="popover-out">
+                    <h4><span class="out-badge">out</span> Max Output</h4>
+                    <p>Maximum number of tokens the model can generate in a single response. Higher limits allow longer completions.</p>
+                </div>
+            </span>
+
+            <span class="legend-item" data-legend="cap">
+                <span class="cap-badge">vision</span>
+                <span class="legend-arrow">&#x24D8;</span>
+                <div class="legend-popover" id="popover-cap">
+                    <h4><span class="cap-badge">capability</span> Capabilities</h4>
+                    <p>Extra features supported by the model:
+                    <strong>vision</strong> &mdash; accepts images;
+                    <strong>tools</strong> &mdash; supports function/tool calling.</p>
+                </div>
+            </span>
+
+            <span class="legend-item" data-legend="src">
+                <span class="src-badge src-upstream" style="position:relative">&uarr; src</span>
+                <span class="legend-arrow">&#x24D8;</span>
+                <div class="legend-popover" id="popover-src">
+                    <h4><span class="src-badge src-upstream">source</span> Metadata Source</h4>
+                    <p>Where the model info comes from:<br>
+                    <strong>&uarr; upstream</strong> &mdash; live API response<br>
+                    <strong>&#9881; config</strong> &mdash; your config.yaml<br>
+                    <strong>&#128203; builtin</strong> &mdash; built-in database</p>
+                </div>
+            </span>
+        </div>
 
         {{if .Message}}
         <div style="padding:0.65rem 1rem;border-radius:6px;margin-bottom:1.5rem;font-size:0.875rem;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:var(--green)">{{.Message}}</div>
@@ -589,17 +1219,17 @@
 
         <div class="section-title">Backends</div>
         <div class="backend-grid">
-            {{range .Backends}}
-            <div class="backend-card{{if not .Enabled}} disabled{{end}}">
-                <div class="backend-header">
+        {{range .Backends}}
+            <div class="backend-card{{if not .Enabled}} disabled{{end}}{{if .IsDynamic}} collapsed{{end}}" data-backend="{{.Name}}"{{if not .Enabled}} data-disabled="true"{{end}}>
+                <div class="backend-header" onclick="toggleCard(event, '{{.Name}}')">
                     <div class="backend-name">
                         {{if .IconURL}}<img class="backend-icon" src="{{.IconURL}}" alt="{{.Name}}">{{else}}<div class="dot"></div>{{end}}
                         {{.Name}}
+                        <span class="collapse-chevron">&#x25BE;</span>
                     </div>
-                    <div style="display:flex;align-items:center;gap:0.5rem">
-                    {{if not .IsDynamic}}
-                    <span class="model-count">{{len .Models}} models</span>
-                    {{end}}
+                    <div style="display:flex;align-items:center;gap:0.5rem" onclick="event.stopPropagation()">
+                    <span class="model-count" id="count-{{.Name}}">{{if not .Enabled}}disabled{{else if .StaticCount}}{{.StaticCount}} models{{else}}&hellip;{{end}}</span>
+                    {{if and .IsDynamic .Enabled}}<button class="refresh-models-btn" onclick="refreshBackendModels(event, '{{.Name}}')" title="Refresh model list from upstream">&#x21BB;</button>{{end}}
                     <form method="POST" action="/ui/settings/backends/toggle" style="display:contents">
                         <input type="hidden" name="name" value="{{.Name}}">
                         <input type="hidden" name="enabled" value="{{if .Enabled}}false{{else}}true{{end}}">
@@ -611,15 +1241,16 @@
                     </form>
                     </div>
                 </div>
-                <div class="model-list">
+                <div class="model-list" id="models-{{.Name}}">
                     <div style="padding:0.3rem 1.1rem 0.2rem;font-family:var(--mono);font-size:0.65rem;color:var(--text-dim)">{{.BaseURL}}</div>
                     {{if .IsDynamic}}
-                    <span class="dynamic-badge">&#x221E; dynamic — uses /v1/models from upstream</span>
+                    <span class="dynamic-badge">&#x221E; dynamic &#x2014; uses /v1/models from upstream</span>
+                    {{if .Enabled}}<div class="model-loading"><div class="spinner"></div><span>Loading models&#x2026;</span></div>{{else}}<div style="padding:0.85rem 1.1rem;font-size:0.75rem;color:var(--text-dim);font-family:var(--mono)">Enable this backend to load models.</div>{{end}}
                     {{else}}
                     {{range .Models}}
                     <div class="model-item">
-                        <span class="model-id">{{.}}</span>
-                        <button class="copy-btn" onclick="copyText(this, '{{.}}')">copy</button>
+                        <span class="model-id">{{.BareID}}</span>
+                        <button class="copy-btn" onclick="copyText(this, '{{.FullID}}')" title="Copy full ID: {{.FullID}}">copy</button>
                     </div>
                     {{end}}
                     {{end}}
@@ -628,21 +1259,30 @@
             {{end}}
         </div>
 
-        {{if .Overlaps}}
+        <div id="overlap-section">{{if .Overlaps}}
         <div class="section-title">Overlapping Models</div>
         <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1rem;line-height:1.6">
             These model IDs appear in more than one backend. Click a chip to configure which backend is tried first and what happens on failure.
         </p>
         <div class="overlap-list">
             {{range .Overlaps}}
-            <div class="overlap-chip" onclick="openRoutingModal('{{.ModelID}}', {{json .Backends}})">
+            {{$entry := .}}
+            <div class="overlap-chip" data-model="{{.ModelID}}" data-backends="{{json .Backends}}">
                 <span class="mid">{{.ModelID}}</span>
-                <span class="backends">{{range $i,$b := .Backends}}{{if $i}}, {{end}}{{$b}}{{end}}</span>
-                <span class="configure-hint">⚙ click to configure routing</span>
+                <span class="backends">
+                    {{range .Backends}}
+                    {{$mid := index $entry.BackendModels .}}
+                    <span class="backend-row">
+                        <span class="backend-name">{{.}}</span>
+                        <span class="backend-modelid{{if eq $mid $entry.ModelID}} same{{end}}">{{$mid}}</span>
+                    </span>
+                    {{end}}
+                </span>
+                <span class="configure-hint">&#x2699; click to configure routing</span>
             </div>
             {{end}}
         </div>
-        {{end}}
+        {{end}}</div>
 
         <div class="section-title">Quick Connect</div>
         <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1.25rem;line-height:1.6">
@@ -653,13 +1293,9 @@
                 <img class="connect-icon" src="/ui/static/icons/zed-logo-white.svg" alt="Zed">
                 Zed Editor
             </button>
-            <button class="connect-btn" onclick="openModal('modal-continue')">
-                <img class="connect-icon" src="/ui/static/icons/vscode.svg" alt="VS Code">
-                VS Code Continue
-            </button>
             <button class="connect-btn" onclick="openModal('modal-copilot-ext')">
-                <img class="connect-icon" src="/ui/static/icons/vscode-alt.svg" alt="VS Code">
-                VS Code Copilot
+                <img class="connect-icon" src="/ui/static/icons/vscode.svg" alt="VS Code">
+                VS Code
             </button>
             <button class="connect-btn" onclick="openModal('modal-curl')">
                 <img class="connect-icon" src="/ui/static/icons/terminal.svg" alt="API">
@@ -676,7 +1312,58 @@
                 <button class="modal-close" onclick="closeModal('modal-routing')">&#x2715;</button>
             </div>
             <div class="modal-body">
-                <p>Drag backends to set priority order. The proxy tries the first backend; on failure it falls back down the list.</p>
+                <div style="margin-bottom:1rem">
+                    <label style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim);display:block;margin-bottom:0.5rem">Strategy</label>
+                    <div class="strat-cards">
+                        <label class="strat-option so-default">
+                            <input type="radio" name="routing-strategy" value="">
+                            <span class="strat-icon">&#8226;</span>
+                            <span class="strat-text">
+                                <span class="strat-label">Use global default</span>
+                                <span class="strat-desc">Inherit the strategy configured on the Routing page.</span>
+                            </span>
+                        </label>
+                        <label class="strat-option so-priority">
+                            <input type="radio" name="routing-strategy" value="priority">
+                            <span class="strat-icon">&#8595;</span>
+                            <span class="strat-text">
+                                <span class="strat-label">Priority</span>
+                                <span class="strat-desc">Try backends in order. Fall back on failure.</span>
+                            </span>
+                        </label>
+                        <label class="strat-option so-roundrobin">
+                            <input type="radio" name="routing-strategy" value="round-robin">
+                            <span class="strat-icon">&#8634;</span>
+                            <span class="strat-text">
+                                <span class="strat-label">Round-Robin</span>
+                                <span class="strat-desc">Distribute requests evenly across all backends.</span>
+                            </span>
+                        </label>
+                        <label class="strat-option so-race">
+                            <input type="radio" name="routing-strategy" value="race">
+                            <span class="strat-icon">&#9889;</span>
+                            <span class="strat-text">
+                                <span class="strat-label">Race</span>
+                                <span class="strat-desc">Send to all backends at once, return the first response.</span>
+                                <span class="strat-desc" style="color:var(--amber);margin-top:0.15rem">&#x26A0; All backends process the request — you may be charged by every provider.</span>
+                            </span>
+                        </label>
+                        <label class="strat-option so-staggeredrace">
+                            <input type="radio" name="routing-strategy" value="staggered-race">
+                            <span class="strat-icon">&#9201;</span>
+                            <span class="strat-text">
+                                <span class="strat-label">Staggered Race</span>
+                                <span class="strat-desc">Launch backends in priority order with a delay between each. Reduces cost vs. full Race while still providing fast fallback.</span>
+                            </span>
+                        </label>
+                    </div>
+                    <div class="stagger-delay-row" id="stagger-delay-row">
+                        <label for="stagger-delay-input">Delay between launches:</label>
+                        <input type="number" id="stagger-delay-input" min="0" max="30000" step="50" value="500">
+                        <span>ms</span>
+                    </div>
+                </div>
+                <p>Backend priority order. The proxy tries the first backend; on failure it falls back down the list.</p>
                 <ul id="routing-backend-list" style="list-style:none;margin:1rem 0;display:flex;flex-direction:column;gap:0.4rem"></ul>
                 <p style="font-size:0.78rem;color:var(--text-dim);margin-bottom:1rem">
                     On <strong>network errors</strong> or <strong>5xx</strong> responses the next backend is tried automatically.
@@ -684,8 +1371,8 @@
                 </p>
                 <div id="routing-save-msg" style="font-size:0.82rem;margin-bottom:0.75rem;min-height:1.2em"></div>
                 <div style="display:flex;gap:0.75rem">
-                    <button class="connect-btn" style="background:var(--accent-dim);border-color:rgba(34,211,238,0.3);color:var(--accent)" onclick="saveRouting()">Save priority</button>
-                    <button class="connect-btn" onclick="closeModal('modal-routing')">Cancel</button>
+                    <button class="connect-btn" style="background:var(--accent-dim);border-color:rgba(34,211,238,0.3);color:var(--accent)" onclick="saveRouting()">Save</button>
+                    <button class="connect-btn" onclick="closeModal('modal-routing')">Close</button>
                 </div>
             </div>
         </div>
@@ -699,79 +1386,32 @@
                 <button class="modal-close" onclick="closeModal('modal-zed')">&#x2715;</button>
             </div>
             <div class="modal-body">
-                <p>Zed uses the OpenAI provider for custom endpoints. Add the following to your <strong>~/.config/zed/settings.json</strong>:</p>
+                <p>Zed uses the OpenAI-compatible provider for custom endpoints. Add the following to your <strong>~/.config/zed/settings.json</strong>:</p>
 
                 <div class="step">Step 1 — Add to settings.json</div>
+                <div id="zed-backend-filter" style="display:none;margin-bottom:0.75rem">
+                    <div style="font-size:0.8rem;color:var(--text);margin-bottom:0.5rem">Include backends:</div>
+                    <div id="zed-backend-checkboxes" style="display:flex;flex-wrap:wrap;gap:0.4rem"></div>
+                </div>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>~/.config/zed/settings.json</span>
                         <button class="copy-block-btn" onclick="copyBlock(this, 'zed-config')">copy</button>
                     </div>
-                    <pre id="zed-config">{
-  "language_models": {
-    "openai": {
-      "api_url": "http://{{.DisplayAddr}}/v1",
-      "available_models": [
-        {{- range $i, $b := .Backends}}{{if $b.Enabled}}{{range $j, $m := $b.Models}}{{if or $i $j}},
-        {{end}}{
-          "name": "{{$m}}",
-          "display_name": "{{$m}} (proxy)",
-          "max_tokens": 8192
-        }{{end}}{{end}}{{end}}
-      ]
-    }
-  },
-  "assistant": {
-    "default_model": {
-      "provider": "openai",
-      "model": "{{.SampleModel}}"
-    },
-    "version": "2"
-  }
-}</pre>
+                    <pre id="zed-config">Loading models…</pre>
                 </div>
 
                 <div class="step">Step 2 — Set your API key</div>
-                <p>Zed reads the OpenAI key from <strong>OPENAI_API_KEY</strong>. Set it in your shell profile:</p>
+                <p>Zed reads the key from the environment variable <strong>LLM_API_PROXY_API_KEY</strong>. Set it in your shell profile:</p>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>~/.zshrc or ~/.bashrc</span>
                         <button class="copy-block-btn" onclick="copyBlock(this, 'zed-env')">copy</button>
                     </div>
-                    <pre id="zed-env">export OPENAI_API_KEY="your-proxy-api-key"</pre>
+                    <pre id="zed-env">export LLM_API_PROXY_API_KEY="your-proxy-api-key"</pre>
                 </div>
 
-                <p>Reload Zed after saving. The models will appear in the assistant panel under the OpenAI provider.</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- ── Continue Modal ────────────────────────────────────────── -->
-    <div class="modal-overlay" id="modal-continue" onclick="closeOnBackdrop(event, 'modal-continue')">
-        <div class="modal">
-            <div class="modal-header">
-                <h2><img src="/ui/static/icons/vscode.svg" style="width:18px;height:18px;vertical-align:middle;margin-right:0.4rem">Connect VS Code Continue</h2>
-                <button class="modal-close" onclick="closeModal('modal-continue')">&#x2715;</button>
-            </div>
-            <div class="modal-body">
-                <p>Open the Continue extension settings (<strong>Ctrl+Shift+P → Continue: Open config</strong>) and add the following models to your <strong>~/.continue/config.yaml</strong>:</p>
-
-                <div class="code-block">
-                    <div class="code-block-header">
-                        <span>~/.continue/config.yaml</span>
-                        <button class="copy-block-btn" onclick="copyBlock(this, 'continue-config')">copy</button>
-                    </div>
-                    <pre id="continue-config">models:
-{{- range $i, $b := .Backends}}{{if $b.Enabled}}{{range $b.Models}}
-  - name: "{{.}} (proxy)"
-    provider: openai
-    model: "{{.}}"
-    apiBase: "http://{{$.DisplayAddr}}/v1"
-    apiKey: "your-proxy-api-key"
-{{end}}{{end}}{{end}}</pre>
-                </div>
-
-                <p>Replace <strong>your-proxy-api-key</strong> with one of the keys from your proxy <code style="font-family:var(--mono);font-size:0.85em;background:var(--bg);padding:0.1rem 0.4rem;border-radius:3px">config.yaml</code>. Save the file — Continue reloads automatically.</p>
+                <p>Reload Zed after saving. The models will appear in the Agent Panel under <strong>LLM API Proxy</strong>.</p>
             </div>
         </div>
     </div>
@@ -784,53 +1424,61 @@
                 <button class="modal-close" onclick="closeModal('modal-curl')">&#x2715;</button>
             </div>
             <div class="modal-body">
+                <div class="curl-config">
+                    <div class="curl-field">
+                        <label for="curl-model-input">Model</label>
+                        <div class="curl-combo-wrap" id="curl-model-combo">
+                            <input type="text" class="curl-combo-input" id="curl-model-input" placeholder="Search or select a model…" autocomplete="off">
+                            <svg class="curl-combo-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                            <div class="curl-combo-list" id="curl-model-list"></div>
+                        </div>
+                    </div>
+                    <div class="curl-field">
+                        <label for="curl-key-select">API Key</label>
+                        <select class="curl-key-select" id="curl-key-select">
+                            {{if .ServerAPIKeys}}
+                            {{range .ServerAPIKeys}}
+                            <option value="{{.Full}}">{{.Masked}}</option>
+                            {{end}}
+                            {{else}}
+                            <option value="your-proxy-api-key">No keys configured</option>
+                            {{end}}
+                        </select>
+                    </div>
+                </div>
+
                 <div class="step">List all models</div>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>bash</span>
-                        <button class="copy-block-btn" onclick="copyBlock(this, 'curl-models')">copy</button>
+                        <button class="copy-block-btn" onclick="copyCurlBlock(this, 'curl-models')">copy</button>
                     </div>
-                    <pre id="curl-models">curl http://{{.DisplayAddr}}/v1/models \
-  -H "Authorization: Bearer your-proxy-api-key"</pre>
+                    <pre id="curl-models"></pre>
                 </div>
 
                 <div class="step">Chat completion (non-streaming)</div>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>bash</span>
-                        <button class="copy-block-btn" onclick="copyBlock(this, 'curl-chat')">copy</button>
+                        <button class="copy-block-btn" onclick="copyCurlBlock(this, 'curl-chat')">copy</button>
                     </div>
-                    <pre id="curl-chat">curl http://{{.DisplayAddr}}/v1/chat/completions \
-  -H "Authorization: Bearer your-proxy-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "{{.SampleModel}}",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'</pre>
+                    <pre id="curl-chat"></pre>
                 </div>
 
                 <div class="step">Streaming chat completion</div>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>bash</span>
-                        <button class="copy-block-btn" onclick="copyBlock(this, 'curl-stream')">copy</button>
+                        <button class="copy-block-btn" onclick="copyCurlBlock(this, 'curl-stream')">copy</button>
                     </div>
-                    <pre id="curl-stream">curl http://{{.DisplayAddr}}/v1/chat/completions \
-  -H "Authorization: Bearer your-proxy-api-key" \
-  -H "Content-Type: application/json" \
-  --no-buffer \
-  -d '{
-    "model": "{{.SampleModel}}",
-    "messages": [{"role": "user", "content": "Count to 5"}],
-    "stream": true
-  }'</pre>
+                    <pre id="curl-stream"></pre>
                 </div>
 
                 <div class="step">Health check</div>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>bash</span>
-                        <button class="copy-block-btn" onclick="copyBlock(this, 'curl-health')">copy</button>
+                        <button class="copy-block-btn" onclick="copyCurlBlock(this, 'curl-health')">copy</button>
                     </div>
                     <pre id="curl-health">curl http://{{.DisplayAddr}}/health</pre>
                 </div>
@@ -850,34 +1498,38 @@
                     A companion VS Code extension that discovers models from this proxy dynamically and surfaces them
                     directly in the <strong>GitHub Copilot Chat</strong> model picker — no hardcoding required.
                 </p>
-                <div style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);border-radius:8px;padding:0.65rem 1rem;margin:0.75rem 0 1.25rem;font-size:0.82rem;color:var(--amber)">
-                    🛒 <strong>Marketplace release coming soon.</strong> Install from source for now.
-                </div>
 
-                <div class="step">Step 1 — Build &amp; install from source</div>
+                <div class="step">Step 1 — Install the extension</div>
+                <p>
+                    Install <strong>LLM API Proxy — Copilot Chat</strong> from the VS Code Marketplace:
+                </p>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>bash</span>
                         <button class="copy-block-btn" onclick="copyBlock(this, 'ext-install')">copy</button>
                     </div>
-                    <pre id="ext-install">git clone https://github.com/vleeuwenmenno/llmapiproxy-vscode-extension
-cd llmapiproxy-vscode-extension
-npm install
-npm run package          # produces llmapiproxy-vscode-chat-*.vsix
-code --install-extension llmapiproxy-vscode-chat-*.vsix</pre>
+                    <pre id="ext-install">code --install-extension vleeuwenmenno.llmapiproxy-vscode-chat</pre>
                 </div>
+                <p style="font-size:0.85rem;color:var(--text)">
+                    Or search for <em>"LLM API Proxy"</em> in the Extensions view (<kbd>Ctrl+Shift+X</kbd>).
+                </p>
 
                 <div class="step">Step 2 — Connect to this proxy</div>
                 <p>Open the Command Palette (<kbd>Ctrl+Shift+P</kbd>) and run <strong>LLM API Proxy: Manage Connection</strong>, then:</p>
                 <ul style="font-size:0.85rem;color:var(--text);margin:0.5rem 0 1rem 1.25rem;line-height:1.9">
                     <li>Choose <strong>Set / Update API Key</strong> and enter your proxy API key</li>
-                    <li>Choose <strong>Change Proxy URL</strong> and set it to <code style="font-family:var(--mono);font-size:0.85em;background:var(--bg);padding:0.1rem 0.4rem;border-radius:3px">http://{{.DisplayAddr}}</code></li>
+                    <li>Optionally choose <strong>Change Proxy URL</strong> if your proxy is not at <code style="font-family:var(--mono);font-size:0.85em;background:var(--bg);padding:0.1rem 0.4rem;border-radius:3px">http://localhost:8000</code></li>
                 </ul>
 
                 <div class="step">Step 3 — Use it</div>
                 <p>Open Copilot Chat (<kbd>Ctrl+Alt+I</kbd>), click the model selector, and pick any model prefixed with a backend name. Run <strong>LLM API Proxy: Refresh Available Models</strong> any time to re-sync.</p>
 
                 <p style="margin-top:1rem">
+                    <a href="https://marketplace.visualstudio.com/items?itemName=vleeuwenmenno.llmapiproxy-vscode-chat" target="_blank"
+                       style="color:var(--accent);text-decoration:none;font-size:0.85rem">
+                        ↗ View on Marketplace
+                    </a>
+                    &nbsp;&nbsp;·&nbsp;&nbsp;
                     <a href="https://github.com/vleeuwenmenno/llmapiproxy-vscode-extension" target="_blank"
                        style="color:var(--accent);text-decoration:none;font-size:0.85rem">
                         ↗ View on GitHub
@@ -891,6 +1543,7 @@ code --install-extension llmapiproxy-vscode-chat-*.vsix</pre>
         function openModal(id) {
             document.getElementById(id).classList.add('open');
             document.body.style.overflow = 'hidden';
+            if (id === 'modal-zed' && !zedConfigBuilt) buildZedConfig();
         }
         function closeModal(id) {
             document.getElementById(id).classList.remove('open');
@@ -937,24 +1590,51 @@ code --install-extension llmapiproxy-vscode-chat-*.vsix</pre>
         }
 
         // ── Routing modal ──────────────────────────────────────────────
-        var routingData = {{.RoutingJSON}};  // map of model → [backend, …]
+        var routingData = {{.RoutingJSON}};  // map of model → {backends, strategy}
+        var globalStrategy = {{if .GlobalStrategy}}{{.GlobalStrategy | js}}{{else}}''{{end}};
         var currentRoutingModel = '';
         var currentBackends = [];
 
         function openRoutingModal(modelID, backends) {
             currentRoutingModel = modelID;
             // Use saved order if available, otherwise show detected order
-            var saved = routingData[modelID] || [];
+            var saved = routingData[modelID] || {};
+            var savedBackends = saved.backends || [];
             // Merge: saved first (if still in detected list), then any new ones
-            var ordered = saved.filter(b => backends.includes(b));
+            var ordered = savedBackends.filter(b => backends.includes(b));
             backends.forEach(b => { if (!ordered.includes(b)) ordered.push(b); });
             currentBackends = ordered;
 
             document.getElementById('routing-model-name').textContent = modelID;
             document.getElementById('routing-save-msg').textContent = '';
+            var strategy = saved.strategy || '';
+            var radio = document.querySelector('input[name="routing-strategy"][value="' + strategy + '"]');
+            if (radio) radio.checked = true;
+            else document.querySelector('input[name="routing-strategy"][value=""]').checked = true;
+            // Restore stagger delay
+            var delayInput = document.getElementById('stagger-delay-input');
+            delayInput.value = saved.stagger_delay_ms || 500;
+            updateStaggerDelayVisibility();
             renderBackendList();
             openModal('modal-routing');
         }
+
+        function updateStaggerDelayVisibility() {
+            var checked = document.querySelector('input[name="routing-strategy"]:checked');
+            var row = document.getElementById('stagger-delay-row');
+            if (checked && checked.value === 'staggered-race') {
+                row.classList.add('visible');
+            } else {
+                row.classList.remove('visible');
+            }
+        }
+
+        // Show/hide stagger delay row when strategy changes
+        document.addEventListener('change', function(e) {
+            if (e.target && e.target.name === 'routing-strategy') {
+                updateStaggerDelayVisibility();
+            }
+        });
 
         function renderBackendList() {
             var ul = document.getElementById('routing-backend-list');
@@ -980,33 +1660,652 @@ code --install-extension llmapiproxy-vscode-chat-*.vsix</pre>
         }
 
         function saveRouting() {
-            routingData[currentRoutingModel] = currentBackends.slice();
-            // Build the array format the server expects
-            var models = Object.keys(routingData).map(function(m) {
-                return { model: m, backends: routingData[m] };
-            });
+            var checked = document.querySelector('input[name="routing-strategy"]:checked');
+            var strategy = checked ? checked.value : '';
+            var delayMs = parseInt(document.getElementById('stagger-delay-input').value, 10) || 500;
+            var entry = { backends: currentBackends.slice(), strategy: strategy };
+            if (strategy === 'staggered-race') entry.stagger_delay_ms = delayMs;
+            routingData[currentRoutingModel] = entry;
+            recomputeOverlaps();
             var msg = document.getElementById('routing-save-msg');
             msg.style.color = 'var(--text-dim)';
-            msg.textContent = 'Saving…';
-            fetch('/ui/routing/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ models: models })
-            }).then(function(r) {
-                if (r.ok) {
-                    msg.style.color = 'var(--green)';
-                    msg.textContent = '✓ Saved. Routing updated.';
-                } else {
-                    r.text().then(function(t) {
-                        msg.style.color = 'var(--red)';
-                        msg.textContent = 'Error: ' + t;
+            msg.textContent = 'Saving\u2026';
+            // Fetch current global config first so we preserve the global strategy
+            // and any other per-model entries that may have been set via /ui/routing.
+            fetch('/ui/routing/config')
+                .then(function(r) { return r.ok ? r.json() : Promise.reject('fetch failed'); })
+                .then(function(cfg) {
+                    // Build merged models list from local routingData (authoritative for what
+                    // the user has configured in this page)
+                    var models = Object.keys(routingData).map(function(m) {
+                        var d = routingData[m];
+                        var obj = { model: m, backends: d.backends || [] };
+                        if (d.strategy) obj.strategy = d.strategy;
+                        if (d.stagger_delay_ms) obj.stagger_delay_ms = d.stagger_delay_ms;
+                        return obj;
                     });
+                    return fetch('/ui/routing/save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ strategy: cfg.strategy || '', stagger_delay_ms: cfg.stagger_delay_ms || 0, models: models })
+                    });
+                })
+                .then(function(r) {
+                    if (r.ok) {
+                        msg.style.color = 'var(--green)';
+                        msg.textContent = '\u2713 Saved. Routing updated.';
+                    } else {
+                        r.text().then(function(t) {
+                            msg.style.color = 'var(--red)';
+                            msg.textContent = 'Error: ' + t;
+                        });
+                    }
+                })
+                .catch(function(e) {
+                    msg.style.color = 'var(--red)';
+                    msg.textContent = 'Error: ' + e;
+                });
+        }
+
+        // ── Legend popover logic ────────────────────────────────────────
+        var openPopover = null;
+
+        function togglePopover(key) {
+            var el = document.getElementById('popover-' + key);
+            if (!el) return;
+            if (openPopover && openPopover !== el) openPopover.classList.remove('open');
+            el.classList.toggle('open');
+            openPopover = el.classList.contains('open') ? el : null;
+        }
+
+        document.addEventListener('click', function(e) {
+            // Close popover on outside click
+            if (openPopover) {
+                var item = e.target.closest('.legend-item');
+                var badge = e.target.closest('.ctx-badge, .out-badge, .cap-badge, .src-badge');
+                if (!item && !badge) {
+                    openPopover.classList.remove('open');
+                    openPopover = null;
                 }
-            }).catch(function(e) {
-                msg.style.color = 'var(--red)';
-                msg.textContent = 'Error: ' + e;
+            }
+        });
+
+        // Legend items toggle
+        document.querySelectorAll('.legend-item[data-legend]').forEach(function(item) {
+            item.addEventListener('click', function(e) {
+                e.stopPropagation();
+                togglePopover(item.dataset.legend);
+            });
+        });
+
+        // Model badges are clickable and open the matching legend popover
+        document.addEventListener('click', function(e) {
+            var badge = e.target.closest('.model-item .ctx-badge');
+            if (badge) { e.stopPropagation(); togglePopover('ctx'); return; }
+            badge = e.target.closest('.model-item .out-badge');
+            if (badge) { e.stopPropagation(); togglePopover('out'); return; }
+            badge = e.target.closest('.model-item .cap-badge');
+            if (badge) { e.stopPropagation(); togglePopover('cap'); return; }
+            badge = e.target.closest('.model-item .src-badge');
+            if (badge) { e.stopPropagation(); togglePopover('src'); return; }
+        });
+
+        // ── Lazy-load per-backend model lists ──────────────────────────
+        var PREVIEW_COUNT = 12;
+        var allBackendModels = {}; // backendName → model array (populated as each backend loads)
+        var pendingLoads = 0;      // counts outstanding loadBackendModels calls
+
+        function jsLastPathSegment(s) {
+            var i = s.lastIndexOf('/');
+            return i >= 0 ? s.slice(i + 1) : s;
+        }
+
+        // Recompute overlaps from allBackendModels and re-render #overlap-section.
+        // Called once all pending backend loads (success or error) have completed.
+        function recomputeOverlaps() {
+            var byCanonical = {}; // canonical → {backends: [], backendModels: {}}
+            Object.keys(allBackendModels).forEach(function(backendName) {
+                var seen = {};
+                (allBackendModels[backendName] || []).forEach(function(m) {
+                    var bareID = m.BareID || m.FullID.slice(m.FullID.indexOf('/') + 1);
+                    var canonical = jsLastPathSegment(bareID);
+                    if (seen[canonical]) return; // dedup within one backend
+                    seen[canonical] = true;
+                    if (!byCanonical[canonical]) byCanonical[canonical] = { backends: [], backendModels: {} };
+                    var entry = byCanonical[canonical];
+                    if (entry.backends.indexOf(backendName) === -1) {
+                        entry.backends.push(backendName);
+                        entry.backendModels[backendName] = bareID;
+                    }
+                });
+            });
+
+            var overlaps = Object.keys(byCanonical).filter(function(k) {
+                return byCanonical[k].backends.length >= 2;
+            }).sort();
+
+            var sec = document.getElementById('overlap-section');
+            if (!sec) return;
+
+            if (overlaps.length === 0) {
+                sec.innerHTML = '';
+                return;
+            }
+
+            var html = '<div class="section-title">Overlapping Models</div>'
+                + '<p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1rem;line-height:1.6">'
+                + 'These model IDs appear in more than one backend. Click a chip to configure which backend is tried first and what happens on failure.'
+                + '</p><div class="overlap-list">';
+
+            overlaps.forEach(function(canonicalID) {
+                var entry = byCanonical[canonicalID];
+
+                // Sort backends by saved routing priority, then append any unordered ones.
+                var savedEntry = routingData[canonicalID] || {};
+                var saved = savedEntry.backends || [];
+                var ordered = saved.filter(function(b) { return entry.backends.indexOf(b) !== -1; });
+                entry.backends.forEach(function(b) { if (ordered.indexOf(b) === -1) ordered.push(b); });
+
+                var strategyLabels = { 'priority': '&#8595; Priority', 'round-robin': '&#8634; Round-Robin', 'race': '&#9889; Race', 'staggered-race': '&#9201; Staggered Race' };
+                html += '<div class="overlap-chip" data-model="' + escHtml(canonicalID) + '" data-backends="' + escHtml(JSON.stringify(ordered)) + '">';
+                html += '<span class="mid">' + escHtml(canonicalID) + '</span>';
+                if (savedEntry.strategy && strategyLabels[savedEntry.strategy]) {
+                    html += '<span class="strat-badge strat-' + savedEntry.strategy + '">' + strategyLabels[savedEntry.strategy] + '</span>';
+                } else if (savedEntry.backends && savedEntry.backends.length > 0) {
+                    var gs = globalStrategy || 'priority';
+                    var gsLabel = strategyLabels[gs] || '&#8595; Priority';
+                    html += '<span class="strat-badge strat-global">Global ' + gsLabel + '</span>';
+                }
+                html += '<span class="backends">';
+                ordered.forEach(function(b, i) {
+                    var mid = entry.backendModels[b] || '';
+                    var sameClass = mid === canonicalID ? ' same' : '';
+                    html += '<span class="backend-row">'
+                        + '<span class="backend-name">' + (saved.length > 0 ? '#' + (i+1) + ' ' : '') + escHtml(b) + '</span>'
+                        + '<span class="backend-modelid' + sameClass + '">' + escHtml(mid) + '</span>'
+                        + '</span>';
+                });
+                html += '</span><span class="configure-hint">&#x2699; click to configure routing</span></div>';
+            });
+
+            html += '</div>';
+            sec.innerHTML = html;
+
+            // Attach click handlers via data attributes to avoid inline-onclick quoting issues.
+            sec.querySelectorAll('.overlap-chip[data-model]').forEach(function(chip) {
+                chip.addEventListener('click', function() {
+                    openRoutingModal(chip.dataset.model, JSON.parse(chip.dataset.backends));
+                });
             });
         }
+
+        function toggleCard(ev, name) {
+            var card = document.querySelector('.backend-card[data-backend="' + name + '"]');
+            if (card) card.classList.toggle('collapsed');
+        }
+
+        // ── Zed config builder ──────────────────────────────────────────
+        // Deduplicates by BareID (bare model name without backend prefix) so the
+        // proxy can route to the best matching backend — same flat list as /v1/models
+        // and what the VS Code extension exposes.
+        var zedConfigBuilt = false;
+        var zedSelectedBackends = null; // Set of backend names; null = all selected
+
+        function buildZedConfig() {
+            if (zedConfigBuilt) return;
+            zedConfigBuilt = true;
+
+            // Initialise selection on first build; preserve on subsequent calls
+            // (zedSelectedBackends is reset to null when models are refreshed)
+            if (zedSelectedBackends === null) {
+                zedSelectedBackends = new Set(Object.keys(allBackendModels));
+            } else {
+                // Pick up any backends that appeared after a partial refresh
+                Object.keys(allBackendModels).forEach(function(n) { zedSelectedBackends.add(n); });
+            }
+
+            initZedBackendFilter();
+            rebuildZedConfig();
+        }
+
+        function initZedBackendFilter() {
+            var container = document.getElementById('zed-backend-checkboxes');
+            var wrapper   = document.getElementById('zed-backend-filter');
+            if (!container || !wrapper) return;
+
+            var backends = Object.keys(allBackendModels).filter(function(n) {
+                return (allBackendModels[n] || []).length > 0;
+            });
+
+            if (backends.length <= 1) { wrapper.style.display = 'none'; return; }
+
+            wrapper.style.display = 'block';
+            container.innerHTML = backends.map(function(name) {
+                var checked = zedSelectedBackends.has(name) ? ' checked' : '';
+                var count   = (allBackendModels[name] || []).length;
+                return '<label style="display:inline-flex;align-items:center;gap:0.3rem;font-size:0.8rem;cursor:pointer;padding:0.2rem 0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:4px">'
+                    + '<input type="checkbox"' + checked + ' onchange="toggleZedBackend(\'' + escHtml(name) + '\', this.checked)" style="cursor:pointer">'
+                    + escHtml(name)
+                    + ' <span style="opacity:0.55;font-size:0.75em">(' + count + ')</span>'
+                    + '</label>';
+            }).join('');
+        }
+
+        function toggleZedBackend(name, checked) {
+            if (!zedSelectedBackends) return;
+            if (checked) { zedSelectedBackends.add(name); } else { zedSelectedBackends.delete(name); }
+            rebuildZedConfig();
+        }
+
+        function rebuildZedConfig() {
+            var displayAddr = '{{.DisplayAddr}}';
+            var selected = zedSelectedBackends || new Set(Object.keys(allBackendModels));
+
+            // Deduplicate by BareID across selected backends.
+            // NOTE: allBackendModels entries use PascalCase fields because Go's
+            // json.Encode preserves struct field names when there are no json tags.
+            var seen  = {};  // BareID → { ContextLength, MaxOutputTokens, Capabilities }
+            var order = [];  // preserves first-seen insertion order
+
+            Object.keys(allBackendModels).forEach(function(backendName) {
+                if (!selected.has(backendName)) return;
+                (allBackendModels[backendName] || []).forEach(function(m) {
+                    var bareID = m.BareID;
+                    if (!bareID) return;
+                    if (!seen[bareID]) {
+                        seen[bareID] = { ContextLength: m.ContextLength || 0, MaxOutputTokens: m.MaxOutputTokens || 0, Capabilities: (m.Capabilities || []).slice() };
+                        order.push(bareID);
+                    } else {
+                        var e = seen[bareID];
+                        if (m.ContextLength   && m.ContextLength   > e.ContextLength)   e.ContextLength   = m.ContextLength;
+                        if (m.MaxOutputTokens && m.MaxOutputTokens > e.MaxOutputTokens) e.MaxOutputTokens = m.MaxOutputTokens;
+                        (m.Capabilities || []).forEach(function(c) { if (e.Capabilities.indexOf(c) === -1) e.Capabilities.push(c); });
+                    }
+                });
+            });
+
+            if (order.length === 0) {
+                document.getElementById('zed-config').textContent =
+                    selected.size === 0 ? 'No backends selected.' : 'No models loaded yet. Try refreshing the page.';
+                return;
+            }
+
+            var sampleModel = order[0];
+            var modelLines  = order.map(function(id) {
+                var meta = seen[id];
+                var ctxTokens = meta.ContextLength || 128000;
+                var hasVision = meta.Capabilities.indexOf('vision') !== -1;
+                var capLines = [
+                    '              "tools": true',
+                    '              "images": ' + hasVision,
+                    '              "parallel_tool_calls": true',
+                    '              "prompt_cache_key": false'
+                ];
+                var parts = [
+                    '          "name": "' + escHtml(id) + '"',
+                    '          "max_tokens": ' + ctxTokens
+                ];
+                if (meta.MaxOutputTokens) {
+                    parts.push('          "max_output_tokens": ' + meta.MaxOutputTokens);
+                }
+                parts.push('          "capabilities": {\n' + capLines.join(',\n') + '\n          }');
+                return '        {\n' + parts.join(',\n') + '\n        }';
+            });
+
+            var config = '{\n'
+                + '  "language_models": {\n'
+                + '    "openai_compatible": {\n'
+                + '      "LLM API Proxy": {\n'
+                + '        "api_url": "http://' + escHtml(displayAddr) + '/v1",\n'
+                + '        "available_models": [\n'
+                + modelLines.join(',\n') + '\n'
+                + '        ]\n'
+                + '      }\n'
+                + '    }\n'
+                + '  },\n'
+                + '  "agent": {\n'
+                + '    "default_model": {\n'
+                + '      "provider": "openai_compatible",\n'
+                + '      "model": "' + escHtml(sampleModel) + '"\n'
+                + '    }\n'
+                + '  }\n'
+                + '}';
+
+            document.getElementById('zed-config').textContent = config;
+        }
+
+        function fmtN(n) {
+            if (!n) return '';
+            if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+            if (n >= 1000) return Math.round(n / 1000) + 'K';
+            return String(n);
+        }
+
+        function escHtml(s) {
+            return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function renderModelItem(m) {
+            var srcSym = { upstream: '\u2191', config: '\u2699', builtin: '\uD83D\uDCCB' };
+            var displayId = m.BareID || m.FullID;
+            return '<div class="model-item">'
+                + '<span class="model-id">' + escHtml(displayId) + '</span>'
+                + (m.ContextLength ? '<span class="ctx-badge" title="Context window">' + fmtN(m.ContextLength) + 'ctx</span>' : '')
+                + (m.MaxOutputTokens ? '<span class="out-badge" title="Max output tokens">' + fmtN(m.MaxOutputTokens) + 'out</span>' : '')
+                + (m.Capabilities || []).map(function(c) { return '<span class="cap-badge">' + escHtml(c) + '</span>'; }).join('')
+                + (m.DataSource ? '<span class="src-badge src-' + escHtml(m.DataSource) + '" title="Metadata source: ' + escHtml(m.DataSource) + '">' + (srcSym[m.DataSource] || '') + '</span>' : '')
+                + '<button class="copy-btn" data-copy="' + escHtml(m.FullID) + '" title="Copy full ID: ' + escHtml(m.FullID) + '" onclick="copyText(this,this.dataset.copy)">copy</button>'
+                + '</div>';
+        }
+
+        function toggleMore(name, totalRest) {
+            var rest = document.getElementById('rest-' + name);
+            var btn = document.getElementById('showmore-' + name);
+            if (!rest || !btn) return;
+            if (rest.style.display === 'none' || rest.style.display === '') {
+                rest.style.display = 'block';
+                btn.innerHTML = '\u25B4 Show less';
+            } else {
+                rest.style.display = 'none';
+                btn.innerHTML = '\u25BE Show ' + totalRest + ' more models';
+            }
+        }
+
+        function refreshBackendModels(e, name) {
+            e.stopPropagation();
+            var btn = e.currentTarget;
+            if (btn.classList.contains('spinning')) return;
+            btn.classList.add('spinning');
+            // Show loading spinner in the model list while fetching.
+            var listEl = document.getElementById('models-' + name);
+            var baseUrlEl = listEl ? listEl.querySelector(':scope > div:first-child') : null;
+            var dynBadgeEl = listEl ? listEl.querySelector('.dynamic-badge') : null;
+            var baseUrlHtml = baseUrlEl ? baseUrlEl.outerHTML : '';
+            var dynHtml = dynBadgeEl ? dynBadgeEl.outerHTML : '';
+            if (listEl) {
+                listEl.innerHTML = baseUrlHtml + dynHtml
+                    + '<div class="model-loading"><div class="spinner"></div><span>Loading models&#x2026;</span></div>';
+            }
+            fetch('/ui/backends/' + encodeURIComponent(name) + '/refresh-models', { method: 'POST' })
+                .then(function(res) {
+                    if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+                    return res.json();
+                })
+                .then(function(models) {
+                    models = models || [];
+                    // Normalize to PascalCase ModelEntry shape so recomputeOverlaps works.
+                    var normalized = models.map(function(m) {
+                        return { FullID: m.id, BareID: m.id ? m.id.split('/').pop() : '', ContextLength: m.context_length, MaxOutputTokens: m.max_output_tokens, Capabilities: m.capabilities || [] };
+                    });
+                    allBackendModels[name] = normalized;
+                    zedConfigBuilt = false;
+                    zedSelectedBackends = null; // reset so new backend list is picked up on rebuild
+                    recomputeOverlaps();
+                    buildZedConfig();
+                    var countEl = document.getElementById('count-' + name);
+                    if (countEl) countEl.textContent = models.length + ' model' + (models.length !== 1 ? 's' : '');
+                    if (!listEl) return;
+                    var preview = normalized.slice(0, PREVIEW_COUNT);
+                    var rest = normalized.slice(PREVIEW_COUNT);
+                    var html = baseUrlHtml + dynHtml;
+                    html += preview.map(renderModelItem).join('');
+                    if (rest.length > 0) {
+                        html += '<div class="model-rest" id="rest-' + name + '" style="display:none">'
+                            + rest.map(renderModelItem).join('') + '</div>';
+                        html += '<button class="show-more-btn" id="showmore-' + name + '" onclick="toggleMore(\'' + name + '\',' + rest.length + ')">\u25BE Show ' + rest.length + ' more models</button>';
+                    }
+                    listEl.innerHTML = html;
+                })
+                .catch(function(err) {
+                    if (listEl) {
+                        listEl.innerHTML = baseUrlHtml + dynHtml
+                            + '<div style="padding:0.75rem 1.1rem;font-size:0.75rem;color:var(--red);font-family:var(--mono)">&#x2717; Refresh failed: ' + escHtml(err.message) + '</div>';
+                    }
+                })
+                .finally(function() {
+                    btn.classList.remove('spinning');
+                });
+        }
+
+        function loadBackendModels(name) {
+            var listEl = document.getElementById('models-' + name);
+            var countEl = document.getElementById('count-' + name);
+            if (!listEl) return;
+
+            // Preserve the base-url line and dynamic badge if present.
+            var baseUrlEl = listEl.querySelector(':scope > div:first-child');
+            var dynBadgeEl = listEl.querySelector('.dynamic-badge');
+            var baseUrlHtml = baseUrlEl ? baseUrlEl.outerHTML : '';
+            var dynHtml = dynBadgeEl ? dynBadgeEl.outerHTML : '';
+
+            // Auto-expand collapsed cards so the loading spinner is visible.
+            var card = listEl.closest('.backend-card');
+            if (card && card.classList.contains('collapsed')) {
+                card.classList.remove('collapsed');
+            }
+
+            // Replace content with spinner (keep header elements).
+            listEl.innerHTML = baseUrlHtml + dynHtml
+                + '<div class="model-loading"><div class="spinner"></div><span>Loading models\u2026</span></div>';
+
+            fetch('/ui/backends/' + encodeURIComponent(name) + '/models')
+                .then(function(res) {
+                    if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+                    return res.json();
+                })
+                .then(function(models) {
+                    models = models || [];
+
+                    // Track for client-side overlap recomputation.
+                    allBackendModels[name] = models;
+                    pendingLoads--;
+                    if (pendingLoads <= 0) { recomputeOverlaps(); buildZedConfig(); }
+
+                    if (countEl) countEl.textContent = models.length + ' model' + (models.length !== 1 ? 's' : '');
+
+                    var preview = models.slice(0, PREVIEW_COUNT);
+                    var rest = models.slice(PREVIEW_COUNT);
+                    var html = baseUrlHtml + dynHtml;
+                    html += preview.map(renderModelItem).join('');
+                    if (rest.length > 0) {
+                        html += '<div class="model-rest" id="rest-' + name + '" style="display:none">'
+                            + rest.map(renderModelItem).join('') + '</div>';
+                        html += '<button class="show-more-btn" id="showmore-' + name + '" onclick="toggleMore(\'' + name + '\',' + rest.length + ')">'
+                            + '\u25BE Show ' + rest.length + ' more models</button>';
+                    }
+                    listEl.innerHTML = html;
+                })
+                .catch(function(e) {
+                    allBackendModels[name] = []; // treat as empty so pending count still completes
+                    pendingLoads--;
+                    if (pendingLoads <= 0) { recomputeOverlaps(); buildZedConfig(); }
+
+                    listEl.innerHTML = baseUrlHtml + dynHtml
+                        + '<div style="padding:0.75rem 1.1rem;font-size:0.75rem;color:var(--red);font-family:var(--mono)">\u2717 ' + escHtml(e.message) + '</div>';
+                    if (countEl) countEl.textContent = 'error';
+                });
+        }
+
+        // ── curl modal: dynamic model & key selectors ──────────────────
+        var curlAllModels = {{json .CurlModels}};
+        var curlDisplayAddr = "{{.DisplayAddr}}";
+        var curlActiveIdx = -1;
+
+        function curlGetKey() {
+            var sel = document.getElementById('curl-key-select');
+            return sel ? sel.value : 'your-proxy-api-key';
+        }
+        function curlGetMaskedKey() {
+            var sel = document.getElementById('curl-key-select');
+            if (!sel || sel.selectedIndex < 0) return 'your-proxy-api-key';
+            return sel.options[sel.selectedIndex].text;
+        }
+        function curlGetModel() {
+            var inp = document.getElementById('curl-model-input');
+            return inp && inp.value.trim() ? inp.value.trim() : '{{.SampleModel}}';
+        }
+
+        function curlFilteredModels(q) {
+            if (!q) return curlAllModels;
+            var lq = q.toLowerCase();
+            return curlAllModels.filter(function(m) { return m.toLowerCase().indexOf(lq) !== -1; });
+        }
+
+        function curlRenderList(items) {
+            var list = document.getElementById('curl-model-list');
+            list.innerHTML = '';
+            curlActiveIdx = -1;
+            if (items.length === 0) {
+                var e = document.createElement('div');
+                e.className = 'curl-combo-empty';
+                e.textContent = 'No matches — your input will be used as-is';
+                list.appendChild(e);
+            } else {
+                items.forEach(function(m) {
+                    var el = document.createElement('div');
+                    el.className = 'curl-combo-item';
+                    el.textContent = m;
+                    el.addEventListener('mousedown', function(ev) {
+                        ev.preventDefault();
+                        document.getElementById('curl-model-input').value = m;
+                        curlCloseList();
+                        updateCurlExamples();
+                    });
+                    list.appendChild(el);
+                });
+            }
+        }
+
+        function curlOpenList(items) {
+            curlRenderList(items);
+            document.getElementById('curl-model-list').classList.add('open');
+        }
+        function curlCloseList() {
+            document.getElementById('curl-model-list').classList.remove('open');
+            curlActiveIdx = -1;
+        }
+
+        (function() {
+            var input = document.getElementById('curl-model-input');
+            var list  = document.getElementById('curl-model-list');
+
+            input.addEventListener('focus', function() { curlOpenList(curlFilteredModels(input.value)); });
+            input.addEventListener('input', function() { curlOpenList(curlFilteredModels(input.value)); });
+            input.addEventListener('blur', function() { setTimeout(curlCloseList, 150); });
+            input.addEventListener('keydown', function(e) {
+                var items = list.querySelectorAll('.curl-combo-item');
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    curlActiveIdx = Math.min(curlActiveIdx + 1, items.length - 1);
+                    items.forEach(function(el, i) { el.classList.toggle('active', i === curlActiveIdx); });
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    curlActiveIdx = Math.max(curlActiveIdx - 1, 0);
+                    items.forEach(function(el, i) { el.classList.toggle('active', i === curlActiveIdx); });
+                } else if (e.key === 'Enter' && curlActiveIdx >= 0) {
+                    e.preventDefault();
+                    input.value = items[curlActiveIdx].textContent;
+                    curlCloseList();
+                    updateCurlExamples();
+                } else if (e.key === 'Escape') {
+                    curlCloseList();
+                }
+            });
+        })();
+
+        document.getElementById('curl-key-select').addEventListener('change', updateCurlExamples);
+
+        function updateCurlExamples() {
+            var key     = curlGetKey();
+            var masked  = curlGetMaskedKey();
+            var model   = curlGetModel();
+            var addr    = curlDisplayAddr;
+
+            function set(id, display, copy) {
+                var el = document.getElementById(id);
+                el.textContent = display;
+                el.dataset.copyText = copy;
+            }
+
+            set('curl-models',
+                'curl http://' + addr + '/v1/models \\\n' +
+                '  -H "Authorization: Bearer ' + masked + '"',
+                'curl http://' + addr + '/v1/models \\\n' +
+                '  -H "Authorization: Bearer ' + key + '"'
+            );
+
+            set('curl-chat',
+                'curl http://' + addr + '/v1/chat/completions \\\n' +
+                '  -H "Authorization: Bearer ' + masked + '" \\\n' +
+                '  -H "Content-Type: application/json" \\\n' +
+                "  -d '{\n" +
+                '    "model": "' + model + '",\n' +
+                '    "messages": [{"role": "user", "content": "Hello!"}]\n' +
+                "  }'",
+                'curl http://' + addr + '/v1/chat/completions \\\n' +
+                '  -H "Authorization: Bearer ' + key + '" \\\n' +
+                '  -H "Content-Type: application/json" \\\n' +
+                "  -d '{\n" +
+                '    "model": "' + model + '",\n' +
+                '    "messages": [{"role": "user", "content": "Hello!"}]\n' +
+                "  }'"
+            );
+
+            set('curl-stream',
+                'curl http://' + addr + '/v1/chat/completions \\\n' +
+                '  -H "Authorization: Bearer ' + masked + '" \\\n' +
+                '  -H "Content-Type: application/json" \\\n' +
+                '  --no-buffer \\\n' +
+                "  -d '{\n" +
+                '    "model": "' + model + '",\n' +
+                '    "messages": [{"role": "user", "content": "Count to 5"}],\n' +
+                '    "stream": true\n' +
+                "  }'",
+                'curl http://' + addr + '/v1/chat/completions \\\n' +
+                '  -H "Authorization: Bearer ' + key + '" \\\n' +
+                '  -H "Content-Type: application/json" \\\n' +
+                '  --no-buffer \\\n' +
+                "  -d '{\n" +
+                '    "model": "' + model + '",\n' +
+                '    "messages": [{"role": "user", "content": "Count to 5"}],\n' +
+                '    "stream": true\n' +
+                "  }'"
+            );
+        }
+
+        function copyCurlBlock(btn, id) {
+            var el   = document.getElementById(id);
+            var text = el.dataset.copyText || el.textContent;
+            navigator.clipboard.writeText(text).then(function() {
+                btn.textContent = 'copied!';
+                btn.classList.add('copied');
+                setTimeout(function() { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
+            });
+        }
+
+        // Initialise curl examples with default values
+        updateCurlExamples();
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Wire up click handlers for any server-rendered overlap chips.
+            var sec = document.getElementById('overlap-section');
+            if (sec) {
+                sec.querySelectorAll('.overlap-chip[data-model]').forEach(function(chip) {
+                    chip.addEventListener('click', function() {
+                        openRoutingModal(chip.dataset.model, JSON.parse(chip.dataset.backends));
+                    });
+                });
+            }
+
+            var allCards = document.querySelectorAll('.backend-card[data-backend]');
+            var cards = [];
+            allCards.forEach(function(c) { if (!c.dataset.disabled) cards.push(c); });
+            pendingLoads = cards.length;
+            if (pendingLoads === 0) { recomputeOverlaps(); buildZedConfig(); return; }
+            cards.forEach(function(card) {
+                loadBackendModels(card.dataset.backend);
+            });
+        });
     </script>
 </body>
 </html>

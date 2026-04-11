@@ -61,7 +61,7 @@ func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHan
 	return &CodexBackend{
 		name:              cfg.Name,
 		baseURL:           baseURL,
-		models:            cfg.Models,
+		models:            cfg.ModelIDs(),
 		client:            &http.Client{Timeout: codexHTTPTimeout},
 		oauthHandler:      oauthHandler,
 		deviceCodeHandler: deviceCodeHandler,
@@ -92,6 +92,9 @@ func (b *CodexBackend) SupportsModel(modelID string) bool {
 	}
 	return false
 }
+
+// ClearModelCache is a no-op for Codex backends (no model caching).
+func (b *CodexBackend) ClearModelCache() {}
 
 // --- ChatCompletion ↔ Responses API format translation ---
 
@@ -211,12 +214,14 @@ func translateToCodexRequest(req *ChatCompletionRequest) (*codexRequest, error) 
 	for _, msg := range req.Messages {
 		if msg.Role == "system" || msg.Role == "developer" {
 			// Use the last system/developer message as instructions.
-			instructions = msg.Content
+			var contentStr string
+			_ = json.Unmarshal(msg.Content, &contentStr)
+			instructions = contentStr
 			continue
 		}
 		conversationMessages = append(conversationMessages, codexInputMessage{
 			Role:    msg.Role,
-			Content: msg.Content,
+			Content: func() string { var s string; _ = json.Unmarshal(msg.Content, &s); return s }(),
 			Type:    "message",
 		})
 	}
@@ -311,11 +316,12 @@ func translateFromCodexResponse(codexResp *codexResponse) (*ChatCompletionRespon
 				finishReason = "length"
 			}
 
+			contentBytes, _ := json.Marshal(content)
 			chatResp.Choices = append(chatResp.Choices, Choice{
 				Index: 0,
 				Message: &Message{
 					Role:    "assistant",
-					Content: content,
+					Content: contentBytes,
 				},
 				FinishReason: &finishReason,
 			})
@@ -329,7 +335,7 @@ func translateFromCodexResponse(codexResp *codexResponse) (*ChatCompletionRespon
 			Index: 0,
 			Message: &Message{
 				Role:    "assistant",
-				Content: "",
+				Content: json.RawMessage(`""`),
 			},
 			FinishReason: &stop,
 		})
@@ -770,7 +776,7 @@ func (r *codexStreamReader) handleTextDelta(data string) {
 			{
 				Index: 0,
 				Delta: &Message{
-					Content: event.Delta,
+					Content: func() json.RawMessage { b, _ := json.Marshal(event.Delta); return b }(),
 				},
 				FinishReason: nil,
 			},

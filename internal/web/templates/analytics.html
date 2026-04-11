@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM API Proxy — Analytics</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --bg: #0a0e17;
+            --surface: #111827;
+            --surface-2: #1a2332;
+            --border: #1e2d3d;
+            --text: #e2e8f0;
+            --text-dim: #64748b;
+            --accent: #22d3ee;
+            --accent-dim: rgba(34, 211, 238, 0.1);
+            --green: #34d399;
+            --red: #f87171;
+            --amber: #fbbf24;
+            --mono: 'JetBrains Mono', monospace;
+            --sans: 'Outfit', sans-serif;
+        }
+
+        body.light {
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --surface-2: #f1f5f9;
+            --border: #e2e8f0;
+            --text: #0f172a;
+            --text-dim: #64748b;
+            --accent: #0891b2;
+            --accent-dim: rgba(8, 145, 178, 0.1);
+            --green: #059669;
+            --red: #dc2626;
+            --amber: #d97706;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .noise {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+            pointer-events: none; z-index: 100;
+        }
+
+        nav {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 1rem 2rem; border-bottom: 1px solid var(--border);
+            background: var(--surface); position: sticky; top: 0; z-index: 50;
+            backdrop-filter: blur(12px);
+        }
+        nav .logo { display: flex; align-items: center; gap: 0.75rem; font-weight: 700; font-size: 1.1rem; letter-spacing: -0.02em; }
+        nav .logo .icon { width: 28px; height: 28px; background: linear-gradient(135deg, var(--accent), #818cf8); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; }
+        nav .links { display: flex; gap: 0.25rem; }
+        nav .links a { color: var(--text-dim); text-decoration: none; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.875rem; font-weight: 500; transition: all 0.15s; }
+        nav .links a:hover, nav .links a.active { color: var(--text); background: var(--accent-dim); }
+        nav .links a.active { color: var(--accent); }
+        .theme-toggle { background: none; border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; padding: 0.4rem 0.6rem; border-radius: 6px; font-size: 1rem; line-height: 1; transition: all 0.15s; margin-left: 0.5rem; }
+        .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* ── Mobile Menu Styles ── */
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--text);
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 6px;
+            transition: background 0.15s;
+        }
+
+        .mobile-menu-btn:hover {
+            background: var(--accent-dim);
+        }
+
+        .mobile-menu-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .nav-links-mobile {
+            display: none;
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 280px;
+            max-width: 80vw;
+            height: 100vh;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            z-index: 1000;
+            flex-direction: column;
+            padding: 1rem;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        }
+
+        .nav-links-mobile.open {
+            transform: translateX(0);
+        }
+
+        .nav-links-mobile .mobile-menu-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 1rem;
+        }
+
+        .nav-links-mobile .mobile-menu-title {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .nav-links-mobile .mobile-menu-close {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 6px;
+            font-size: 1.25rem;
+            line-height: 1;
+            transition: all 0.15s;
+        }
+
+        .nav-links-mobile .mobile-menu-close:hover {
+            color: var(--text);
+            background: var(--accent-dim);
+        }
+
+        .nav-links-mobile a {
+            color: var(--text-dim);
+            text-decoration: none;
+            padding: 0.875rem 1rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .nav-links-mobile a:hover, .nav-links-mobile a.active {
+            color: var(--text);
+            background: var(--accent-dim);
+        }
+
+        .nav-links-mobile a.active {
+            color: var(--accent);
+        }
+
+        .nav-links-mobile .theme-toggle-mobile {
+            margin-top: auto;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            cursor: pointer;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.15s;
+        }
+
+        .nav-links-mobile .theme-toggle-mobile:hover {
+            border-color: var(--accent);
+        }
+
+        .mobile-menu-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .mobile-menu-overlay.open {
+            display: block;
+            opacity: 1;
+        }
+
+        main { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+
+        /* ── Filter bar ── */
+        .filter-bar {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .filter-group { display: flex; flex-direction: column; gap: 0.2rem; }
+        .filter-group label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); font-weight: 600; }
+
+        .filter-select, .filter-input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.3rem 0.6rem;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            font-family: var(--mono);
+            cursor: pointer;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .filter-select:focus, .filter-input:focus { border-color: var(--accent); }
+
+        .window-pills { display: flex; gap: 0.25rem; }
+        .pill {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-family: var(--mono);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .pill:hover { border-color: var(--accent); color: var(--accent); }
+        .pill.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
+        .filter-toggle {
+            display: flex; align-items: center; gap: 0.4rem;
+            font-size: 0.8rem; color: var(--text-dim); cursor: pointer;
+            user-select: none; margin-left: auto;
+        }
+        .filter-toggle input[type=checkbox] { accent-color: var(--accent); }
+
+        .filter-sep { width: 1px; height: 28px; background: var(--border); margin: 0 0.25rem; }
+
+        /* ── Summary cards ── */
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; transition: border-color 0.2s; }
+        .card:hover { border-color: rgba(34,211,238,0.3); }
+        .card .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); margin-bottom: 0.4rem; font-weight: 600; }
+        .card .value { font-family: var(--mono); font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+        .card .sub { font-size: 0.7rem; color: var(--text-dim); margin-top: 0.2rem; font-family: var(--mono); }
+        .accent { color: var(--accent); }
+        .green  { color: var(--green); }
+        .red    { color: var(--red); }
+        .amber  { color: var(--amber); }
+
+        /* ── Charts ── */
+        .charts-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        @media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
+
+        .chart-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+        .chart-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-dim);
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+        canvas { display: block; width: 100%; }
+
+        /* ── Section titles ── */
+        .section-title {
+            font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.1em;
+            color: var(--text-dim); margin-bottom: 1rem; font-weight: 600;
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+        .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+        /* ── Tabs ── */
+        .tabs { display: flex; gap: 0; margin-bottom: 1rem; border-bottom: 1px solid var(--border); }
+        .tab {
+            background: none; border: none; color: var(--text-dim);
+            padding: 0.5rem 1rem; font-size: 0.8rem; font-family: var(--sans);
+            font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent;
+            margin-bottom: -1px; transition: color 0.15s, border-color 0.15s;
+        }
+        .tab:hover { color: var(--text); }
+        .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+        /* ── Rank table ── */
+        .rank-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
+        .rank-table th {
+            text-align: left; padding: 0.6rem 0.75rem;
+            font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em;
+            color: var(--text-dim); background: var(--surface-2); font-weight: 600;
+            border-bottom: 1px solid var(--border); cursor: pointer; user-select: none;
+        }
+        .rank-table th:hover { color: var(--text); }
+        .rank-table th.sort-asc::after { content: ' ↑'; color: var(--accent); }
+        .rank-table th.sort-desc::after { content: ' ↓'; color: var(--accent); }
+        .rank-table td {
+            padding: 0.45rem 0.75rem; font-size: 0.75rem;
+            font-family: var(--mono); border-bottom: 1px solid var(--border);
+        }
+        .rank-table tr:last-child td { border-bottom: none; }
+        .rank-table tr:hover td { background: var(--accent-dim); }
+        .err-bar { display: inline-block; height: 6px; border-radius: 3px; background: var(--red); opacity: 0.7; margin-right: 4px; vertical-align: middle; }
+
+        /* ── Request log ── */
+        table.log-table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); margin-bottom: 1rem; }
+        .log-table th { text-align: left; padding: 0.7rem 1rem; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); background: var(--surface-2); font-weight: 600; border-bottom: 1px solid var(--border); }
+        .log-table td { padding: 0.55rem 1rem; font-family: var(--mono); font-size: 0.72rem; border-bottom: 1px solid var(--border); }
+        .log-table tr:last-child td { border-bottom: none; }
+        .log-table tr:hover td { background: var(--accent-dim); cursor: pointer; }
+        .status-ok { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+        .status-err { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+        .pagination { display: flex; align-items: center; justify-content: center; gap: 1rem; padding: 0.75rem 0 2rem; }
+        .page-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 0.35rem 0.8rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-family: var(--sans); transition: all 0.15s; }
+        .page-btn:hover:not([disabled]) { border-color: var(--accent); color: var(--accent); }
+        .page-btn[disabled] { opacity: 0.35; cursor: default; }
+        .page-info { font-size: 0.8rem; color: var(--text-dim); font-family: var(--mono); }
+
+        .empty { text-align: center; padding: 3rem; color: var(--text-dim); font-size: 0.875rem; }
+
+        .spinner {
+            display: inline-block; width: 18px; height: 18px;
+            border: 2px solid var(--border); border-top-color: var(--accent);
+            border-radius: 50%; animation: spin 0.7s linear infinite;
+            vertical-align: middle; margin-left: 0.5rem;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #loading-indicator { display: none; }
+        #loading-indicator.visible { display: inline-block; }
+
+        .rank-container { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; overflow-x: auto; }
+
+        /* ── Mobile Responsive ── */
+        @media (max-width: 768px) {
+            nav { padding: 0.75rem 1rem; }
+            nav .links { display: none; }
+            .mobile-menu-btn { display: flex; align-items: center; justify-content: center; }
+            .nav-links-mobile { display: flex; }
+            main { padding: 1rem; }
+            h1 { font-size: 1.25rem; }
+            .cards { grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+            .card { padding: 1rem; }
+            .card .value { font-size: 1.25rem; }
+            .charts-row { grid-template-columns: 1fr; }
+            .filter-bar { flex-direction: column; align-items: stretch; }
+            .filter-sep { display: none; }
+            .filter-toggle { margin-left: 0; margin-top: 0.5rem; }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+        }
+
+        @media (max-width: 480px) {
+            .cards { grid-template-columns: 1fr; }
+            .pill { padding: 0.25rem 0.4rem; font-size: 0.7rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="noise"></div>
+
+<!-- Mobile Menu Overlay -->
+<div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="closeMobileMenu()"></div>
+
+<!-- Mobile Navigation Drawer -->
+<div class="nav-links-mobile" id="navLinksMobile">
+    <div class="mobile-menu-header">
+        <span class="mobile-menu-title">Menu</span>
+        <button class="mobile-menu-close" onclick="closeMobileMenu()">&#10005;</button>
+    </div>
+    <a href="/ui/">&#128200; Dashboard</a>
+    <a href="/ui/analytics" class="active">&#128202; Analytics</a>
+    <a href="/ui/routing">&#128260; Routing</a>
+    <a href="/ui/models">&#129302; Models</a>
+    <a href="/ui/chat">&#128172; Chat</a>
+    <a href="/ui/settings">&#9881; Settings</a>
+    <button class="theme-toggle-mobile" onclick="toggleTheme(); closeMobileMenu();" id="themeBtnMobile">
+        <span id="themeIconMobile">&#9728;</span> Toggle Theme
+    </button>
+</div>
+
+<nav>
+    <div class="logo">
+        <div class="icon">&#9889;</div>
+        LLM API Proxy
+    </div>
+    <div class="links">
+        <a href="/ui/">Dashboard</a>
+        <a href="/ui/analytics" class="active">Analytics</a>
+        <a href="/ui/routing">Routing</a>
+        <a href="/ui/models">Models</a>
+        <a href="/ui/chat">Chat</a>
+        <a href="/ui/settings">Settings</a>
+        <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">&#9728;</button>
+    </div>
+    <button class="mobile-menu-btn" onclick="openMobileMenu()" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+    </button>
+</nav>
+<main>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+        <h1 style="font-size:1.5rem;font-weight:600;letter-spacing:-0.03em">Analytics</h1>
+        <span id="loading-indicator"><span class="spinner"></span></span>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+        <div class="filter-group">
+            <label>Time Window</label>
+            <div class="window-pills">
+                <button class="pill" data-window="1h">1h</button>
+                <button class="pill" data-window="6h">6h</button>
+                <button class="pill active" data-window="24h">24h</button>
+                <button class="pill" data-window="7d">7d</button>
+                <button class="pill" data-window="30d">30d</button>
+                <button class="pill" data-window="">All</button>
+            </div>
+        </div>
+
+        <div class="filter-sep"></div>
+
+        <div class="filter-group">
+            <label>Backend</label>
+            <select class="filter-select" id="filter-backend">
+                <option value="">All backends</option>
+                {{range .Backends}}<option value="{{.}}">{{.}}</option>{{end}}
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label>Model</label>
+            <select class="filter-select" id="filter-model">
+                <option value="">All models</option>
+                {{range .Models}}<option value="{{.}}">{{.}}</option>{{end}}
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label>Client</label>
+            <select class="filter-select" id="filter-client">
+                <option value="">All clients</option>
+                {{range .Clients}}<option value="{{.}}">{{.}}</option>{{end}}
+            </select>
+        </div>
+
+        <label class="filter-toggle">
+            <input type="checkbox" id="filter-errors"> Errors only
+        </label>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="cards" id="summary-cards">
+        <div class="card"><div class="label">Requests</div><div class="value accent" id="c-requests">—</div></div>
+        <div class="card"><div class="label">Tokens</div><div class="value" id="c-tokens">—</div></div>
+        <div class="card"><div class="label">Errors</div><div class="value" id="c-errors">—</div></div>
+        <div class="card"><div class="label">Avg Latency</div><div class="value green" id="c-avg-lat">—</div></div>
+        <div class="card"><div class="label">P50 Latency</div><div class="value" id="c-p50">—</div></div>
+        <div class="card"><div class="label">P90 Latency</div><div class="value amber" id="c-p90">—</div></div>
+        <div class="card"><div class="label">P99 Latency</div><div class="value red" id="c-p99">—</div></div>
+        <div class="card" id="c-cached-card" style="display:none"><div class="label">Cached Tokens</div><div class="value" id="c-cached" style="color:var(--amber)">—</div></div>
+        <div class="card" id="c-reason-card" style="display:none"><div class="label">Reasoning Tokens</div><div class="value" id="c-reason" style="color:#a78bfa">—</div></div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-row">
+        <div class="chart-card">
+            <div class="chart-title">Requests over time</div>
+            <canvas id="chart-requests" height="140"></canvas>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">Avg latency over time (ms)</div>
+            <canvas id="chart-latency" height="140"></canvas>
+        </div>
+    </div>
+
+    <!-- Top-N tables -->
+    <div class="section-title">Rankings</div>
+    <div class="tabs">
+        <button class="tab active" onclick="showTab('models')">Models</button>
+        <button class="tab" onclick="showTab('backends')">Backends</button>
+        <button class="tab" onclick="showTab('clients')">Clients</button>
+    </div>
+    <div class="rank-container">
+        <div id="tab-models"><table class="rank-table" id="table-models"><thead><tr>
+            <th onclick="sortRank('models','name')" title="The model name requested by the client">Name</th>
+            <th onclick="sortRank('models','req')" title="Total number of requests for this model">Requests</th>
+            <th onclick="sortRank('models','tok')" title="Total tokens consumed (prompt + completion)">Tokens</th>
+            <th onclick="sortRank('models','err')" title="Number of requests that returned an error">Errors</th>
+            <th onclick="sortRank('models','lat')" title="Average time from request start to first byte">Avg Latency</th>
+            <th onclick="sortRank('models','err_pct')" title="Percentage of requests that resulted in an error">Error %</th>
+        </tr></thead><tbody id="tbody-models"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody></table></div>
+        <div id="tab-backends" style="display:none"><table class="rank-table" id="table-backends"><thead><tr>
+            <th onclick="sortRank('backends','name')" title="Backend provider name">Name</th>
+            <th onclick="sortRank('backends','req')" title="Total requests handled by this backend">Requests</th>
+            <th onclick="sortRank('backends','tok')" title="Total tokens consumed via this backend">Tokens</th>
+            <th onclick="sortRank('backends','err')" title="Number of failed requests returned by this backend">Errors</th>
+            <th onclick="sortRank('backends','lat')" title="Average response time for this backend">Avg Latency</th>
+            <th onclick="sortRank('backends','err_pct')" title="Percentage of requests that failed on this backend">Error %</th>
+        </tr></thead><tbody id="tbody-backends"></tbody></table></div>
+        <div id="tab-clients" style="display:none"><table class="rank-table" id="table-clients"><thead><tr>
+            <th onclick="sortRank('clients','name')" title="Client API key name">Name</th>
+            <th onclick="sortRank('clients','req')" title="Total requests made by this client">Requests</th>
+            <th onclick="sortRank('clients','tok')" title="Total tokens consumed by this client">Tokens</th>
+            <th onclick="sortRank('clients','err')" title="Number of failed requests from this client">Errors</th>
+            <th onclick="sortRank('clients','lat')" title="Average response latency for this client">Avg Latency</th>
+            <th onclick="sortRank('clients','err_pct')" title="Percentage of this client's requests that resulted in an error">Error %</th>
+        </tr></thead><tbody id="tbody-clients"></tbody></table></div>
+    </div>
+
+    <!-- Request log -->
+    <div class="section-title">Request Log</div>
+    <table class="log-table">
+        <thead><tr>
+            <th title="Request status: green dot = success, red dot = error"></th>
+            <th title="When the request was received">Time</th>
+            <th title="Backend that served the request">Backend</th>
+            <th title="Model name as requested by client">Model</th>
+            <th title="Tokens in the prompt / system message">Prompt</th>
+            <th title="Tokens generated in the response">Completion</th>
+            <th title="Total tokens used (prompt + completion). ⚡ = cached tokens, 🧠 = reasoning tokens">Total</th>
+            <th title="Time from request start to complete response">Latency</th>
+            <th title="SSE = server-sent events streaming, — = buffered">Stream</th>
+            <th title="Routing strategy used and fallback indicator (↩ = primary backend failed, request fell back to another)">Route</th>
+            <th title="Client key that made the request (anonymous if none)">Client</th>
+        </tr></thead>
+        <tbody id="log-tbody"><tr><td colspan="11" class="empty">Loading…</td></tr></tbody>
+    </table>
+    <div class="pagination" id="log-pagination"></div>
+</main>
+
+<!-- Detail modal (reused from dashboard) -->
+<div id="detail-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:200;overflow-y:auto" onclick="if(event.target===this)this.style.display='none'">
+    <div id="detail-content" style="max-width:700px;margin:4rem auto;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem"></div>
+</div>
+
+<script>
+// ── Theme ──────────────────────────────────────────────────────────────────
+(function() {
+    var saved = localStorage.getItem('theme') || 'dark';
+    if (saved === 'light') document.body.classList.add('light');
+    document.getElementById('themeBtn').textContent = document.body.classList.contains('light') ? '🌙' : '☀';
+})();
+function toggleTheme() {
+    var isLight = document.body.classList.toggle('light');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    var icon = isLight ? '🌙' : '☀';
+    document.getElementById('themeBtn').textContent = icon;
+    var themeIconMobile = document.getElementById('themeIconMobile');
+    if (themeIconMobile) themeIconMobile.textContent = icon;
+}
+
+// ── Mobile Menu ───────────────────────────────────────────────────────────
+function openMobileMenu() {
+    document.getElementById('navLinksMobile').classList.add('open');
+    document.getElementById('mobileMenuOverlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeMobileMenu() {
+    document.getElementById('navLinksMobile').classList.remove('open');
+    document.getElementById('mobileMenuOverlay').classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeMobileMenu();
+});
+
+// ── State ──────────────────────────────────────────────────────────────────
+var state = {
+    window: localStorage.getItem('analyticsWindow') || '24h',
+    backend: '', model: '', client: '', errors: false,
+    page: 0
+};
+var rankData = { models: [], backends: [], clients: [] };
+var sortState = { models: {col:'req',asc:false}, backends: {col:'req',asc:false}, clients: {col:'req',asc:false} };
+var fetchTimer = null;
+
+// ── Init ───────────────────────────────────────────────────────────────────
+(function() {
+    // Restore pill active state
+    document.querySelectorAll('.pill').forEach(function(p) {
+        p.classList.toggle('active', p.dataset.window === state.window);
+        p.addEventListener('click', function() {
+            state.window = p.dataset.window;
+            state.page = 0;
+            localStorage.setItem('analyticsWindow', state.window);
+            document.querySelectorAll('.pill').forEach(function(x) { x.classList.remove('active'); });
+            p.classList.add('active');
+            scheduleFetch(0);
+        });
+    });
+
+    document.getElementById('filter-backend').addEventListener('change', function() {
+        state.backend = this.value; state.page = 0; scheduleFetch(200);
+    });
+    document.getElementById('filter-model').addEventListener('change', function() {
+        state.model = this.value; state.page = 0; scheduleFetch(200);
+    });
+    document.getElementById('filter-client').addEventListener('change', function() {
+        state.client = this.value; state.page = 0; scheduleFetch(200);
+    });
+    document.getElementById('filter-errors').addEventListener('change', function() {
+        state.errors = this.checked; state.page = 0; scheduleFetch(200);
+    });
+
+    fetchData();
+})();
+
+function scheduleFetch(delay) {
+    clearTimeout(fetchTimer);
+    fetchTimer = setTimeout(fetchData, delay);
+}
+
+function buildURL(extraPage) {
+    var p = new URLSearchParams();
+    if (state.window) p.set('window', state.window);
+    if (state.backend) p.set('backend', state.backend);
+    if (state.model)   p.set('model',   state.model);
+    if (state.client)  p.set('client',  state.client);
+    if (state.errors)  p.set('errors', '1');
+    p.set('page', extraPage !== undefined ? extraPage : state.page);
+    return '/ui/analytics/data?' + p.toString();
+}
+
+function fetchData(p) {
+    if (p !== undefined) state.page = p;
+    var url = buildURL();
+    // Update browser URL (deep-link)
+    var params = new URLSearchParams();
+    if (state.window)  params.set('window', state.window);
+    if (state.backend) params.set('backend', state.backend);
+    if (state.model)   params.set('model',   state.model);
+    if (state.client)  params.set('client',  state.client);
+    if (state.errors)  params.set('errors',  '1');
+    if (state.page > 0) params.set('page', state.page);
+    history.replaceState(null, '', '/ui/analytics?' + params.toString());
+
+    document.getElementById('loading-indicator').classList.add('visible');
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            document.getElementById('loading-indicator').classList.remove('visible');
+            renderSummary(d.summary, d.percentiles);
+            renderCharts(d.time_series);
+            rankData.models   = d.top_models   || [];
+            rankData.backends = d.top_backends || [];
+            rankData.clients  = d.top_clients  || [];
+            renderCurrentRank();
+            renderLog(d.records);
+        })
+        .catch(function() {
+            document.getElementById('loading-indicator').classList.remove('visible');
+        });
+}
+
+// ── Formatting helpers ─────────────────────────────────────────────────────
+function fmtDur(ms) {
+    if (!ms) return '0ms';
+    if (ms < 1000) return ms + 'ms';
+    return (ms / 1000).toFixed(2) + 's';
+}
+function fmtNum(n) {
+    if (n === undefined || n === null) return '—';
+    if (n >= 1e9) return (n/1e9).toFixed(1) + 'B';
+    if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n/1e3).toFixed(1) + 'k';
+    return n.toString();
+}
+function fmtTime(iso) {
+    var d = new Date(iso);
+    return d.toLocaleTimeString();
+}
+function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Summary cards ─────────────────────────────────────────────────────────
+function renderSummary(s, p) {
+    document.getElementById('c-requests').textContent = fmtNum(s.total_requests);
+    document.getElementById('c-tokens').textContent   = fmtNum(s.total_tokens);
+    var errEl = document.getElementById('c-errors');
+    errEl.textContent = fmtNum(s.total_errors);
+    errEl.className = 'value ' + (s.total_errors > 0 ? 'red' : 'green');
+    document.getElementById('c-avg-lat').textContent = fmtDur(s.avg_latency_ms);
+    document.getElementById('c-p50').textContent = fmtDur(p.p50);
+    document.getElementById('c-p90').textContent = fmtDur(p.p90);
+    document.getElementById('c-p99').textContent = fmtDur(p.p99);
+
+    // Cached tokens card
+    var cachedCard = document.getElementById('c-cached-card');
+    if (s.total_cached > 0) {
+        cachedCard.style.display = '';
+        document.getElementById('c-cached').textContent = fmtNum(s.total_cached);
+    } else {
+        cachedCard.style.display = 'none';
+    }
+    // Reasoning tokens card
+    var reasonCard = document.getElementById('c-reason-card');
+    if (s.total_reasoning > 0) {
+        reasonCard.style.display = '';
+        document.getElementById('c-reason').textContent = fmtNum(s.total_reasoning);
+    } else {
+        reasonCard.style.display = 'none';
+    }
+}
+
+// ── Charts ─────────────────────────────────────────────────────────────────
+function renderCharts(series) {
+    if (!series || series.length === 0) {
+        clearCanvas('chart-requests', 'No data');
+        clearCanvas('chart-latency', 'No data');
+        return;
+    }
+    var labels = series.map(function(p) {
+        var d = new Date(p.t);
+        return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    });
+    drawBarChart('chart-requests', labels, series.map(function(p) { return p.req; }), getAccentColor(), series.map(function(p){ return p.err; }));
+    drawLineChart('chart-latency', labels, series.map(function(p) { return p.lat; }), '#34d399');
+}
+
+function getAccentColor() { return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#22d3ee'; }
+function getTextDimColor() { return getComputedStyle(document.documentElement).getPropertyValue('--text-dim').trim() || '#64748b'; }
+function getBorderColor()  { return getComputedStyle(document.documentElement).getPropertyValue('--border').trim()  || '#1e2d3d'; }
+
+function clearCanvas(id, msg) {
+    var cv = document.getElementById(id);
+    var ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = getTextDimColor();
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(msg || '', cv.width/2, cv.height/2);
+}
+
+function setupCanvas(id) {
+    var cv = document.getElementById(id);
+    var dpr = window.devicePixelRatio || 1;
+    var rect = cv.parentElement.getBoundingClientRect();
+    cv.width  = rect.width  * dpr;
+    cv.height = parseInt(cv.getAttribute('height') || 140) * dpr;
+    cv.style.height = (cv.height / dpr) + 'px';
+    var ctx = cv.getContext('2d');
+    ctx.scale(dpr, dpr);
+    return { cv: cv, ctx: ctx, w: rect.width, h: parseInt(cv.getAttribute('height') || 140) };
+}
+
+function drawBarChart(id, labels, values, color, errValues) {
+    var s = setupCanvas(id);
+    var ctx = s.ctx, W = s.w, H = s.h;
+    var padL=32, padR=8, padT=10, padB=28;
+    var chartW = W - padL - padR;
+    var chartH = H - padT - padB;
+    ctx.clearRect(0, 0, W, H);
+
+    var max = Math.max.apply(null, values) || 1;
+    var n   = values.length;
+    var gap = 2;
+    var bw  = Math.max(1, (chartW - gap*(n-1)) / n);
+
+    // Y-axis labels
+    ctx.fillStyle = getTextDimColor();
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'right';
+    [0, 0.5, 1].forEach(function(f) {
+        var y = padT + chartH * (1 - f);
+        ctx.fillText(Math.round(max*f), padL - 4, y + 3);
+        ctx.strokeStyle = getBorderColor();
+        ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+    });
+
+    values.forEach(function(v, i) {
+        var x = padL + i*(bw+gap);
+        var h = (v/max) * chartH;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.85;
+        ctx.fillRect(x, padT + chartH - h, bw, h);
+        // Error overlay
+        if (errValues && errValues[i] > 0) {
+            ctx.fillStyle = '#f87171';
+            ctx.globalAlpha = 0.9;
+            var eh = (errValues[i]/max) * chartH;
+            ctx.fillRect(x, padT + chartH - eh, bw, eh);
+        }
+        ctx.globalAlpha = 1;
+    });
+
+    // X-axis labels (every ~N ticks)
+    ctx.fillStyle = getTextDimColor();
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    var step = Math.max(1, Math.floor(n / 8));
+    for (var i = 0; i < n; i += step) {
+        var x = padL + i*(bw+gap) + bw/2;
+        ctx.fillText(labels[i], x, H - 4);
+    }
+}
+
+function drawLineChart(id, labels, values, color) {
+    var s = setupCanvas(id);
+    var ctx = s.ctx, W = s.w, H = s.h;
+    var padL=40, padR=8, padT=10, padB=28;
+    var chartW = W - padL - padR;
+    var chartH = H - padT - padB;
+    ctx.clearRect(0, 0, W, H);
+
+    var max = Math.max.apply(null, values) || 1;
+    var n   = values.length;
+    if (n < 2) { clearCanvas(id, 'Not enough data'); return; }
+
+    [0, 0.5, 1].forEach(function(f) {
+        var y = padT + chartH * (1 - f);
+        ctx.fillStyle = getTextDimColor();
+        ctx.font = '9px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(fmtDur(Math.round(max*f)), padL - 4, y + 3);
+        ctx.strokeStyle = getBorderColor();
+        ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+    });
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    values.forEach(function(v, i) {
+        var x = padL + (i/(n-1)) * chartW;
+        var y = padT + chartH * (1 - v/max);
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Fill
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = color;
+    ctx.lineTo(padL + chartW, padT + chartH);
+    ctx.lineTo(padL, padT + chartH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Dots at each point
+    ctx.fillStyle = color;
+    values.forEach(function(v, i) {
+        var x = padL + (i/(n-1)) * chartW;
+        var y = padT + chartH * (1 - v/max);
+        ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI*2); ctx.fill();
+    });
+
+    // X labels
+    ctx.fillStyle = getTextDimColor();
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    var step = Math.max(1, Math.floor(n / 8));
+    for (var i = 0; i < n; i += step) {
+        var x = padL + (i/(n-1)) * chartW;
+        ctx.fillText(labels[i], x, H - 4);
+    }
+}
+
+// ── Rankings ───────────────────────────────────────────────────────────────
+var activeTab = 'models';
+function showTab(name) {
+    ['models','backends','clients'].forEach(function(t) {
+        document.getElementById('tab-'+t).style.display = t===name ? '' : 'none';
+        document.querySelectorAll('.tab').forEach(function(btn) {
+            if (btn.textContent.toLowerCase()===name) btn.classList.add('active');
+            else btn.classList.remove('active');
+        });
+    });
+    activeTab = name;
+    renderRank(name);
+}
+
+function sortRank(tab, col) {
+    var ss = sortState[tab];
+    ss.asc = ss.col === col ? !ss.asc : false;
+    ss.col = col;
+    renderRank(tab);
+}
+
+function renderCurrentRank() { renderRank(activeTab); }
+
+function renderRank(tab) {
+    var rows = (rankData[tab] || []).slice();
+    var ss = sortState[tab];
+    rows.sort(function(a, b) {
+        var av = a[ss.col], bv = b[ss.col];
+        if (typeof av === 'string') return ss.asc ? av.localeCompare(bv) : bv.localeCompare(av);
+        return ss.asc ? av - bv : bv - av;
+    });
+
+    var maxErr = Math.max.apply(null, rows.map(function(r){ return r.err_pct; })) || 1;
+    var html = rows.map(function(r) {
+        var barW = Math.round((r.err_pct / maxErr) * 60);
+        return '<tr onclick="showDetail(' + esc(r.req) + ')" style="cursor:default">' +
+            '<td>' + esc(r.name || '(anonymous)') + '</td>' +
+            '<td>' + fmtNum(r.req) + '</td>' +
+            '<td>' + fmtNum(r.tok) + '</td>' +
+            '<td>' + fmtNum(r.err) + '</td>' +
+            '<td>' + fmtDur(r.lat) + '</td>' +
+            '<td><span class="err-bar" style="width:' + barW + 'px"></span>' + r.err_pct.toFixed(1) + '%</td>' +
+            '</tr>';
+    }).join('');
+    document.getElementById('tbody-'+tab).innerHTML = html || '<tr><td colspan="6" class="empty">No data</td></tr>';
+
+    // Update sort indicator on headers
+    var table = document.getElementById('table-'+tab);
+    if (table) {
+        table.querySelectorAll('th').forEach(function(th) {
+            th.classList.remove('sort-asc', 'sort-desc');
+            var onclick = th.getAttribute('onclick') || '';
+            var m = onclick.match(/'([^']+)'\)/);
+            if (m && m[1] === ss.col) th.classList.add(ss.asc ? 'sort-asc' : 'sort-desc');
+        });
+    }
+}
+
+// ── Request log ────────────────────────────────────────────────────────────
+function renderLog(rec) {
+    var tbody = document.getElementById('log-tbody');
+    if (!rec || !rec.items || rec.items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" class="empty">No requests match the current filters.</td></tr>';
+        document.getElementById('log-pagination').innerHTML = '';
+        return;
+    }
+    tbody.innerHTML = rec.items.map(function(r) {
+        var tokExtra = '';
+        if (r.cached_tokens > 0) tokExtra += ' <span title="Cached" style="color:var(--amber);font-size:0.7rem">⚡' + fmtNum(r.cached_tokens) + '</span>';
+        if (r.reasoning_tokens > 0) tokExtra += ' <span title="Reasoning" style="color:#a78bfa;font-size:0.7rem">🧠' + fmtNum(r.reasoning_tokens) + '</span>';
+        // Route cell: strategy badge + fallback indicator
+        var routeCell = '—';
+        if (r.strategy) {
+            var stratAbbr = {priority:'P','round-robin':'RR',race:'R','staggered-race':'SR'}[r.strategy] || r.strategy;
+            var titleText = r.attempted_backends || r.backend;
+            routeCell = '<span title="' + esc(titleText) + '" style="font-family:monospace;font-size:0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:3px;padding:0.1rem 0.3rem">' + stratAbbr + '</span>';
+            if (r.fallback) routeCell += ' <span title="Fell back from primary backend" style="color:var(--amber);font-size:0.75rem">↩</span>';
+        }
+        return '<tr onclick="showDetail(' + r.id + ')" style="cursor:pointer">' +
+            '<td>' + (r.error ? '<span class="status-err" title="'+esc(r.error)+'"></span>' : '<span class="status-ok"></span>') + '</td>' +
+            '<td>' + fmtTime(r.timestamp) + '</td>' +
+            '<td>' + esc(r.backend) + '</td>' +
+            '<td>' + esc(r.model) + '</td>' +
+            '<td>' + fmtNum(r.prompt_tokens) + '</td>' +
+            '<td>' + fmtNum(r.completion_tokens) + '</td>' +
+            '<td>' + fmtNum(r.total_tokens) + tokExtra + '</td>' +
+            '<td>' + fmtDur(r.latency_ms) + '</td>' +
+            '<td>' + (r.stream ? 'SSE' : '—') + '</td>' +
+            '<td>' + routeCell + '</td>' +
+            '<td>' + esc(r.client) + '</td>' +
+            '</tr>';
+    }).join('');
+
+    // Pagination
+    var pag = document.getElementById('log-pagination');
+    if (rec.total_pages <= 1) { pag.innerHTML = ''; return; }
+    var html = '';
+    if (rec.page > 0) {
+        html += '<button class="page-btn" onclick="fetchData('+( rec.page-1)+')">&#8592; Prev</button>';
+    } else {
+        html += '<button class="page-btn" disabled>&#8592; Prev</button>';
+    }
+    html += '<span class="page-info">Page '+(rec.page+1)+' / '+rec.total_pages+'</span>';
+    if (rec.page + 1 < rec.total_pages) {
+        html += '<button class="page-btn" onclick="fetchData('+(rec.page+1)+')">Next &#8594;</button>';
+    } else {
+        html += '<button class="page-btn" disabled>Next &#8594;</button>';
+    }
+    pag.innerHTML = html;
+}
+
+// ── Detail modal ───────────────────────────────────────────────────────────
+function showDetail(id) {
+    var modal = document.getElementById('detail-modal');
+    var content = document.getElementById('detail-content');
+    modal.style.display = 'block';
+    content.innerHTML = '<p style="color:var(--text-dim)">Loading...</p>';
+    fetch('/ui/stats/detail?id=' + id)
+        .then(function(r) { return r.text(); })
+        .then(function(html) { content.innerHTML = html; });
+}
+
+// Re-render charts on resize
+var resizeTimer;
+window.addEventListener('resize', function() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function() { fetchData(); }, 200);
+});
+</script>
+</body>
+</html>

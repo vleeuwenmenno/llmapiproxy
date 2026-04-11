@@ -2,8 +2,17 @@
 # Copy this file to config.yaml and fill in your API keys.
 
 server:
-  # Address to listen on (host:port)
-  listen: ":8000"
+  # Host to bind to. Empty string = all interfaces (0.0.0.0).
+  # Use "localhost" or "127.0.0.1" to restrict to local access only.
+  # host: ""
+
+  # Port to listen on. Defaults to 8080 if not set.
+  port: 8000
+
+  # Legacy: combined host:port (e.g. ":8000", "localhost:8080").
+  # If set, it is used as a fallback when host/port are not specified.
+  # The host and port fields above take precedence.
+  # listen: ":8000"
 
   # API keys that clients must use to authenticate with this proxy.
   # Clients send: Authorization: Bearer <one-of-these-keys>
@@ -17,6 +26,20 @@ server:
   # Path to the SQLite database used to persist request statistics.
   # Defaults to stats.db in the current working directory.
   # stats_path: "stats.db"
+
+  # Path to the SQLite database used for persistent chat sessions.
+  # Defaults to chat.db in the current working directory.
+  # chat_db_path: "chat.db"
+
+  # Model used to auto-generate chat session titles.
+  # Must match a model ID available through one of your backends.
+  # If not set, titles default to a truncated version of the first message.
+  # title_model: "glm-5-turbo"
+
+  # How long to cache dynamically fetched model lists from upstream providers.
+  # Accepts Go duration strings (e.g. "5m", "30s", "1h"). Default: "5m".
+  # Set to "0s" to disable caching (every ListModels call hits upstream).
+  # model_cache_ttl: "5m"
 
 backends:
   # ── OpenRouter ─────────────────────────────────────────────
@@ -41,10 +64,15 @@ backends:
     base_url: https://api.z.ai/api/paas/v4
     api_key: "your-zai-api-key"
     models:
-      - glm-5.1
+      # Simple string form — context window is auto-fetched from upstream or looked up from the built-in database.
       - glm-5-turbo
       - glm-4.7
       - glm-4.5-air
+      # Object form — use this to pin explicit context/output limits that override upstream data.
+      # Useful when the provider doesn't expose this info or you want to restrict it.
+      - id: glm-5.1
+        context_length: 131072
+        max_output_tokens: 8192
 
   # ── Z.ai Coding Plan ──────────────────────────────────────
   # Dedicated coding endpoint (uses Coding Plan subscription quota).
@@ -128,3 +156,59 @@ backends:
   #     auth_url: "https://auth.openai.com/oauth/authorize"
   #     token_url: "https://auth.openai.com/oauth/token"
   #   # api_key is NOT needed — authentication uses OAuth.
+
+# ── Clients ──────────────────────────────────────────────────
+# Named clients each get their own API key. The name shows up in
+# request analytics so you can see which app made which call.
+#
+# There is one special client called "playground" — the built-in
+# Playground web UI authenticates with this key automatically. It
+# is hidden from the Settings → API Keys page to prevent accidental
+# deletion. Simply add it alongside your other clients:
+#
+#   - name: playground
+#     api_key: "sk-proxy-internal-playground-<random>"
+#
+clients:
+  # # ── Playground (built-in web UI) ─────────────────────────
+  # # This internal client is used by the Playground page.
+  # # It is automatically excluded from the Settings → API Keys list.
+  # # Generate a random key and paste it below.
+  # - name: playground
+  #   api_key: "sk-proxy-internal-playground-YOUR-KEY-HERE"
+
+  # # ── Your apps ────────────────────────────────────────────
+  # - name: vscode
+  #   api_key: "sk-proxy-your-vscode-key"
+
+# ── Routing ──────────────────────────────────────────────────
+# When the same model ID is served by multiple backends, the
+# routing section controls how requests are distributed.
+#
+# Strategies:
+#   priority    — Always prefer the first backend; fall through to
+#                 the next only on error. (default)
+#   round-robin — Rotate requests evenly across all listed backends.
+#                 State is in-memory and resets on restart.
+#   race        — Send the request to all backends simultaneously;
+#                 the first successful response wins. Streaming is
+#                 supported (first backend to deliver ~4 KB wins).
+#
+# The global strategy applies to every model that doesn't have its
+# own per-model override.
+#
+# routing:
+#   strategy: priority   # global default: priority | round-robin | race
+#   models:
+#     - model: glm-5.1
+#       # Optional per-model strategy override (omit to use global).
+#       strategy: round-robin
+#       backends:
+#         - zai-coding
+#         - zen
+#         - go
+#     - model: kimi-k2.5
+#       strategy: race
+#       backends:
+#         - zen
+#         - go

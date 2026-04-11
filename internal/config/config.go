@@ -3,10 +3,17 @@ package config
 import (
 	"crypto/subtle"
 	"fmt"
+	"log"
+	"net"
 	"net/url"
 	"os"
+	"path/filepath"
+	"strconv"
 	"sync"
+	"sync/atomic"
+	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"gopkg.in/yaml.v3"
 )
 
@@ -23,21 +30,52 @@ type ClientConfig struct {
 	BackendKeys map[string]string `yaml:"backend_keys,omitempty"`
 }
 
+// Valid routing strategy values.
+const (
+	StrategyPriority      = "priority"
+	StrategyRoundRobin    = "round-robin"
+	StrategyRace          = "race"
+	StrategyStaggeredRace = "staggered-race"
+)
+
 type ModelRoutingConfig struct {
 	Model    string   `yaml:"model"`
 	Backends []string `yaml:"backends"`
+	// Strategy overrides the global routing strategy for this model.
+	// Valid values: "priority", "round-robin", "race", "staggered-race". Empty = use global default.
+	Strategy string `yaml:"strategy,omitempty"`
+	// StaggerDelayMs is the delay between backend launches for the staggered-race strategy.
+	// Defaults to 500ms when 0.
+	StaggerDelayMs int `yaml:"stagger_delay_ms,omitempty" json:"stagger_delay_ms,omitempty"`
 }
 
 type RoutingConfig struct {
 	Models []ModelRoutingConfig `yaml:"models,omitempty"`
+	// Strategy sets the default routing strategy when a model has multiple backends.
+	// Valid values: "priority" (default), "round-robin", "race", "staggered-race".
+	Strategy string `yaml:"strategy,omitempty"`
+	// StaggerDelayMs is the default delay between backend launches for the staggered-race strategy.
+	// Defaults to 500ms when 0.
+	StaggerDelayMs int `yaml:"stagger_delay_ms,omitempty" json:"stagger_delay_ms,omitempty"`
 }
 
 type ServerConfig struct {
-	Listen       string   `yaml:"listen"`
-	APIKeys      []string `yaml:"api_keys"`
-	AdminKey     string   `yaml:"admin_key"`
-	StatsPath    string   `yaml:"stats_path"`
-	DisableStats bool     `yaml:"disable_stats"`
+	Host          string        `yaml:"host,omitempty"`
+	Port          int           `yaml:"port,omitempty"`
+	Listen        string        `yaml:"listen,omitempty"` // Legacy: host:port. New host/port fields take precedence.
+	APIKeys       []string      `yaml:"api_keys"`
+	AdminKey      string        `yaml:"admin_key"`
+	StatsPath     string        `yaml:"stats_path"`
+	DisableStats  bool          `yaml:"disable_stats"`
+	ChatDBPath    string        `yaml:"chat_db_path"`
+	TitleModel    string        `yaml:"title_model"`
+	DefaultModel  string        `yaml:"default_model,omitempty"`
+	ModelCacheTTL time.Duration `yaml:"-"` // Set via custom YAML unmarshal; use ModelCacheTTLSec for JSON.
+
+	// modelCacheTTLSet tracks whether model_cache_ttl was explicitly provided.
+	// When false (field absent), ModelCacheTTL defaults to DefaultModelCacheTTL in Validate().
+	// When true and ModelCacheTTL == 0, caching is disabled.
+	modelCacheTTLSet bool
 }
 
 // OAuthConfig holds OAuth-related configuration for backends that use
@@ -51,15 +89,211 @@ type OAuthConfig struct {
 	TokenURL  string   `yaml:"token_url,omitempty"`
 }
 
+// ModelConfig specifies a single model with optional metadata overrides.
+// It supports both shorthand string form ("gpt-4o") and object form:
+//
+//   - id: gpt-4o
+//     context_length: 128000
+//     max_output_tokens: 16384
+type ModelConfig struct {
+	ID              string `yaml:"id"`
+	ContextLength   *int64 `yaml:"context_length,omitempty"`
+	MaxOutputTokens *int64 `yaml:"max_output_tokens,omitempty"`
+}
+
+// BackendConfig holds the configuration for a single backend provider.
 type BackendConfig struct {
 	Name         string            `yaml:"name"`
 	Type         string            `yaml:"type"`
 	BaseURL      string            `yaml:"base_url"`
 	APIKey       string            `yaml:"api_key"`
 	ExtraHeaders map[string]string `yaml:"extra_headers,omitempty"`
-	Models       []string          `yaml:"models,omitempty"`
+	Models       []ModelConfig     `yaml:"models,omitempty"`
 	Enabled      *bool             `yaml:"enabled,omitempty"`
 	OAuth        *OAuthConfig      `yaml:"oauth,omitempty"`
+}
+
+// ModelIDs returns the list of model IDs as plain strings (backward compat).
+func (b *BackendConfig) ModelIDs() []string {
+	ids := make([]string, len(b.Models))
+	for i, m := range b.Models {
+		ids[i] = m.ID
+	}
+	return ids
+}
+
+// DefaultModelCacheTTL is the default time-to-live for cached model lists.
+// When model_cache_ttl is not set or is 0, this default is used.
+const DefaultModelCacheTTL = 5 * time.Minute
+
+// UnmarshalYAML implements custom YAML unmarshaling for ServerConfig
+// to parse model_cache_ttl as a duration string (e.g. "5m", "300s").
+func (sc *ServerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// Use a shadow type to avoid infinite recursion.
+	type raw struct {
+		Host          string      `yaml:"host,omitempty"`
+		Port          int         `yaml:"port,omitempty"`
+		Listen        string      `yaml:"listen,omitempty"`
+		APIKeys       []string    `yaml:"api_keys"`
+		AdminKey      string      `yaml:"admin_key"`
+		StatsPath     string      `yaml:"stats_path"`
+		DisableStats  bool        `yaml:"disable_stats"`
+		ChatDBPath    string      `yaml:"chat_db_path"`
+		TitleModel    string      `yaml:"title_model"`
+		DefaultModel  string      `yaml:"default_model,omitempty"`
+		ModelCacheTTL interface{} `yaml:"model_cache_ttl,omitempty"`
+	}
+	var r raw
+	if err := unmarshal(&r); err != nil {
+		return err
+	}
+	sc.Host = r.Host
+	sc.Port = r.Port
+	sc.Listen = r.Listen
+	sc.APIKeys = r.APIKeys
+	sc.AdminKey = r.AdminKey
+	sc.StatsPath = r.StatsPath
+	sc.DisableStats = r.DisableStats
+	sc.ChatDBPath = r.ChatDBPath
+	sc.TitleModel = r.TitleModel
+	sc.DefaultModel = r.DefaultModel
+
+	switch v := r.ModelCacheTTL.(type) {
+	case string:
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("server.model_cache_ttl: invalid duration %q: %w", v, err)
+		}
+		if d < 0 {
+			return fmt.Errorf("server.model_cache_ttl: must not be negative, got %s", d)
+		}
+		sc.ModelCacheTTL = d
+		sc.modelCacheTTLSet = true
+	case int:
+		sc.ModelCacheTTL = time.Duration(v)
+		sc.modelCacheTTLSet = true
+	case float64:
+		sc.ModelCacheTTL = time.Duration(int64(v))
+		sc.modelCacheTTLSet = true
+	case nil:
+		// Not specified — will use default in Validate().
+		sc.ModelCacheTTL = 0
+		sc.modelCacheTTLSet = false
+	default:
+		return fmt.Errorf("server.model_cache_ttl: unsupported type %T", v)
+	}
+
+	return nil
+}
+
+// MarshalYAML implements custom YAML marshaling for ServerConfig
+// to serialize model_cache_ttl as a human-readable duration string.
+func (sc *ServerConfig) MarshalYAML() (interface{}, error) {
+	type raw struct {
+		Host          string   `yaml:"host,omitempty"`
+		Port          int      `yaml:"port,omitempty"`
+		Listen        string   `yaml:"listen,omitempty"`
+		APIKeys       []string `yaml:"api_keys"`
+		AdminKey      string   `yaml:"admin_key"`
+		StatsPath     string   `yaml:"stats_path"`
+		DisableStats  bool     `yaml:"disable_stats"`
+		ChatDBPath    string   `yaml:"chat_db_path"`
+		TitleModel    string   `yaml:"title_model"`
+		DefaultModel  string   `yaml:"default_model,omitempty"`
+		ModelCacheTTL string   `yaml:"model_cache_ttl,omitempty"`
+	}
+
+	var ttlStr string
+	if sc.modelCacheTTLSet {
+		ttlStr = sc.ModelCacheTTL.String()
+	}
+
+	return raw{
+		Host:          sc.Host,
+		Port:          sc.Port,
+		Listen:        sc.Listen,
+		APIKeys:       sc.APIKeys,
+		AdminKey:      sc.AdminKey,
+		StatsPath:     sc.StatsPath,
+		DisableStats:  sc.DisableStats,
+		ChatDBPath:    sc.ChatDBPath,
+		TitleModel:    sc.TitleModel,
+		DefaultModel:  sc.DefaultModel,
+		ModelCacheTTL: ttlStr,
+	}, nil
+}
+
+// UnmarshalYAML implements custom YAML unmarshaling for BackendConfig
+// to support both "- model-name" (string) and "- id: model-name" (object)
+// in the models list.
+func (bc *BackendConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// Use a shadow type to avoid infinite recursion.
+	type raw struct {
+		Name         string            `yaml:"name"`
+		Type         string            `yaml:"type"`
+		BaseURL      string            `yaml:"base_url"`
+		APIKey       string            `yaml:"api_key"`
+		ExtraHeaders map[string]string `yaml:"extra_headers,omitempty"`
+		ModelsRaw    interface{}       `yaml:"models,omitempty"`
+		Enabled      *bool             `yaml:"enabled,omitempty"`
+		OAuth        *OAuthConfig      `yaml:"oauth,omitempty"`
+	}
+	var r raw
+	if err := unmarshal(&r); err != nil {
+		return err
+	}
+	bc.Name = r.Name
+	bc.Type = r.Type
+	bc.BaseURL = r.BaseURL
+	bc.APIKey = r.APIKey
+	bc.ExtraHeaders = r.ExtraHeaders
+	bc.Enabled = r.Enabled
+	bc.OAuth = r.OAuth
+
+	if r.ModelsRaw != nil {
+		models, err := parseModelsField(r.ModelsRaw)
+		if err != nil {
+			return fmt.Errorf("backends[%s].models: %w", r.Name, err)
+		}
+		bc.Models = models
+	}
+	return nil
+}
+
+// parseModelsField handles both string and object entries in the models list.
+func parseModelsField(raw interface{}) ([]ModelConfig, error) {
+	// YAML unmarshals a list of strings as []interface{} containing strings,
+	// and a list of maps as []interface{} containing map[string]interface{}.
+	list, ok := raw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("expected a list")
+	}
+	result := make([]ModelConfig, 0, len(list))
+	for i, item := range list {
+		switch v := item.(type) {
+		case string:
+			result = append(result, ModelConfig{ID: v})
+		case map[string]interface{}:
+			mc := ModelConfig{}
+			if id, ok := v["id"].(string); ok {
+				mc.ID = id
+			} else {
+				return nil, fmt.Errorf("entry %d: missing or non-string 'id' field", i)
+			}
+			if cl, ok := v["context_length"].(int); ok {
+				val := int64(cl)
+				mc.ContextLength = &val
+			}
+			if mot, ok := v["max_output_tokens"].(int); ok {
+				val := int64(mot)
+				mc.MaxOutputTokens = &val
+			}
+			result = append(result, mc)
+		default:
+			return nil, fmt.Errorf("entry %d: expected string or map, got %T", i, item)
+		}
+	}
+	return result, nil
 }
 
 // IsEnabled returns true unless the backend is explicitly disabled.
@@ -80,11 +314,41 @@ func (b *BackendConfig) IsOAuthBackend() bool {
 }
 
 func (c *Config) Validate() error {
-	if c.Server.Listen == "" {
+	// Resolve listen address from host/port or legacy listen field.
+	// Priority: explicit host/port > legacy listen > defaults.
+	if c.Server.Host != "" || c.Server.Port != 0 {
+		// New fields take precedence.
+		host := c.Server.Host
+		port := c.Server.Port
+		if port == 0 {
+			port = 8080
+		}
+		c.Server.Listen = net.JoinHostPort(host, strconv.Itoa(port))
+	} else if c.Server.Listen != "" {
+		// Legacy listen field: parse to extract host/port.
+		host, portStr, err := net.SplitHostPort(c.Server.Listen)
+		if err == nil {
+			c.Server.Host = host
+			if p, err := strconv.Atoi(portStr); err == nil {
+				c.Server.Port = p
+			}
+		}
+	} else {
+		// Defaults: bind all interfaces, port 8080.
+		c.Server.Host = ""
+		c.Server.Port = 8080
 		c.Server.Listen = ":8080"
 	}
 	if c.Server.StatsPath == "" {
 		c.Server.StatsPath = "stats.db"
+	}
+	if c.Server.ChatDBPath == "" {
+		c.Server.ChatDBPath = "chat.db"
+	}
+	// Default model cache TTL: 5 minutes when not explicitly set.
+	// Setting model_cache_ttl to "0s" or "0" explicitly disables caching.
+	if !c.Server.modelCacheTTLSet {
+		c.Server.ModelCacheTTL = DefaultModelCacheTTL
 	}
 	if len(c.Server.APIKeys) == 0 && len(c.Clients) == 0 {
 		return fmt.Errorf("server.api_keys: at least one API key is required")
@@ -119,6 +383,27 @@ func (c *Config) Validate() error {
 		// They authenticate via local token discovery or OAuth flows.
 		if !c.Backends[i].IsOAuthBackend() && b.APIKey == "" {
 			return fmt.Errorf("backends[%d].api_key: must not be empty for enabled backend", i)
+		}
+	}
+	if err := c.Routing.validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *RoutingConfig) validate() error {
+	validStrategies := map[string]bool{
+		"":                 true,
+		StrategyPriority:   true,
+		StrategyRoundRobin: true,
+		StrategyRace:       true,
+	}
+	if !validStrategies[r.Strategy] {
+		return fmt.Errorf("routing.strategy: invalid value %q (must be one of: priority, round-robin, race)", r.Strategy)
+	}
+	for i, m := range r.Models {
+		if !validStrategies[m.Strategy] {
+			return fmt.Errorf("routing.models[%d] (%s): invalid strategy %q (must be one of: priority, round-robin, race)", i, m.Model, m.Strategy)
 		}
 	}
 	return nil
@@ -168,10 +453,13 @@ func Parse(data []byte) (*Config, error) {
 
 // Manager holds the current config and supports atomic reload.
 type Manager struct {
-	mu       sync.RWMutex
-	path     string
-	current  *Config
-	onChange []func(*Config)
+	mu          sync.RWMutex
+	path        string
+	current     *Config
+	onChange    []func(*Config)
+	selfWriteAt atomic.Int64 // unix-ms timestamp of last programmatic write
+	watcher     *fsnotify.Watcher
+	done        chan struct{}
 }
 
 func NewManager(path string) (*Manager, error) {
@@ -214,11 +502,97 @@ func (m *Manager) Path() string {
 	return m.path
 }
 
+// markSelfWrite records the current time as the last programmatic write.
+// The file watcher uses this to skip reloads triggered by our own writes.
+func (m *Manager) markSelfWrite() {
+	m.selfWriteAt.Store(time.Now().UnixMilli())
+}
+
+// WatchFile starts watching the config file for external changes and auto-reloads.
+// It watches the parent directory to handle editors that save via rename (e.g. vim).
+// Reloads triggered by the Manager's own write methods are suppressed.
+func (m *Manager) WatchFile() error {
+	w, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("creating file watcher: %w", err)
+	}
+
+	dir := filepath.Dir(m.path)
+	if err := w.Add(dir); err != nil {
+		w.Close()
+		return fmt.Errorf("watching directory %s: %w", dir, err)
+	}
+
+	m.watcher = w
+	m.done = make(chan struct{})
+
+	baseName := filepath.Base(m.path)
+
+	go func() {
+		const debounce = 500 * time.Millisecond
+		var timer *time.Timer
+
+		for {
+			select {
+			case <-m.done:
+				if timer != nil {
+					timer.Stop()
+				}
+				return
+			case event, ok := <-w.Events:
+				if !ok {
+					return
+				}
+				if filepath.Base(event.Name) != baseName {
+					continue
+				}
+				if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
+					continue
+				}
+				if timer != nil {
+					timer.Reset(debounce)
+				} else {
+					timer = time.AfterFunc(debounce, func() {
+						// Skip if we wrote the file ourselves recently.
+						if elapsed := time.Since(time.UnixMilli(m.selfWriteAt.Load())); elapsed < time.Second {
+							return
+						}
+						log.Printf("config file changed externally, reloading...")
+						if err := m.Reload(); err != nil {
+							log.Printf("config reload failed: %v", err)
+						} else {
+							log.Printf("config reloaded successfully")
+						}
+					})
+				}
+			case err, ok := <-w.Errors:
+				if !ok {
+					return
+				}
+				log.Printf("config file watcher error: %v", err)
+			}
+		}
+	}()
+
+	return nil
+}
+
+// Close stops the file watcher if running. Safe to call when not watching.
+func (m *Manager) Close() {
+	if m.done != nil {
+		close(m.done)
+	}
+	if m.watcher != nil {
+		m.watcher.Close()
+	}
+}
+
 // SaveRaw writes raw YAML bytes to the config file after validating them.
 func (m *Manager) SaveRaw(data []byte) error {
 	if _, err := Parse(data); err != nil {
 		return err
 	}
+	m.markSelfWrite()
 	if err := os.WriteFile(m.path, data, 0600); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
@@ -236,6 +610,7 @@ func (m *Manager) UpdateAPIKeys(keys []string) error {
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
+	m.markSelfWrite()
 	if err := os.WriteFile(m.path, data, 0600); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
@@ -264,6 +639,7 @@ func (m *Manager) ToggleBackend(name string, enabled bool) error {
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
+	m.markSelfWrite()
 	if err := os.WriteFile(m.path, data, 0600); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
@@ -280,6 +656,7 @@ func (m *Manager) UpdateClients(clients []ClientConfig) error {
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
+	m.markSelfWrite()
 	if err := os.WriteFile(m.path, data, 0600); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
@@ -296,6 +673,86 @@ func (m *Manager) SaveRouting(routing RoutingConfig) error {
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+// UpdateTitleModel sets the server.title_model field, persists the file, and reloads.
+func (m *Manager) UpdateTitleModel(titleModel string) error {
+	m.mu.Lock()
+	m.current.Server.TitleModel = titleModel
+	cfg := m.current
+	m.mu.Unlock()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+// UpdateDefaultModel sets the server.default_model field, persists the file, and reloads.
+func (m *Manager) UpdateDefaultModel(defaultModel string) error {
+	m.mu.Lock()
+	m.current.Server.DefaultModel = defaultModel
+	cfg := m.current
+	m.mu.Unlock()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+// UpdateModelCacheTTL updates the model cache TTL, persists the config, and
+// reloads. A TTL of 0 disables caching. Backends are recreated on reload so
+// the new TTL takes effect immediately.
+func (m *Manager) UpdateModelCacheTTL(ttl time.Duration) error {
+	m.mu.Lock()
+	m.current.Server.ModelCacheTTL = ttl
+	m.current.Server.modelCacheTTLSet = true
+	cfg := m.current
+	m.mu.Unlock()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+// UpdateServerAddr updates the host and port fields, clears the legacy listen
+// field, persists the file, and reloads. The caller should note that a server
+// restart is required for the new address to take effect.
+func (m *Manager) UpdateServerAddr(host string, port int) error {
+	m.mu.Lock()
+	m.current.Server.Host = host
+	m.current.Server.Port = port
+	m.current.Server.Listen = "" // clear legacy field — host/port take precedence
+	cfg := m.current
+	m.mu.Unlock()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
 	if err := os.WriteFile(m.path, data, 0600); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
