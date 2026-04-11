@@ -196,3 +196,14 @@ type OAuthDeviceCodeLoginHandler interface {
 	// it returns a JSON-encoded DeviceCodeLoginInfo as the authURL.
 	InitiateDeviceCodeLogin() (authURL string, state string, err error)
 }
+
+// OAuthStatusRefresher is an optional interface for backends that support
+// proactively refreshing their OAuth token status. When implemented, the
+// web UI's "Check Status" button will trigger this method to attempt a
+// fresh token exchange or validation before returning status.
+type OAuthStatusRefresher interface {
+	// RefreshOAuthStatus attempts to obtain a fresh token (re-exchange if
+	// expired, re-validate if cached). Returns an error if the refresh fails
+	// (e.g., no GitHub token available, network error).
+	RefreshOAuthStatus(ctx context.Context) error
+}

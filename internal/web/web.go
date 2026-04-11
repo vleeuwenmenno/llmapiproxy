@@ -735,6 +735,44 @@ func (u *UI) OAuthStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// OAuthCheckStatus proactively checks and refreshes the OAuth status for a
+// specific backend. Unlike OAuthStatus which only reads cached state, this
+// handler triggers a token refresh/re-exchange for backends that implement
+// OAuthStatusRefresher (e.g., Copilot). Returns an HTMX fragment with the
+// updated status for all backends.
+func (u *UI) OAuthCheckStatus(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	if backendName == "" {
+		http.Error(w, "backend parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	b := u.registry.Get(backendName)
+	if b == nil {
+		http.Error(w, fmt.Sprintf("backend %q not found", backendName), http.StatusNotFound)
+		return
+	}
+
+	// If the backend supports proactive refresh, trigger it.
+	if refresher, ok := b.(backend.OAuthStatusRefresher); ok {
+		if err := refresher.RefreshOAuthStatus(r.Context()); err != nil {
+			log.Printf("oauth check status: refresh failed for %s: %v", backendName, err)
+			// Don't return an error — still render the current status.
+			// The status card will show the error state.
+		} else {
+			log.Printf("oauth check status: refresh succeeded for %s", backendName)
+		}
+	}
+
+	// Return the full OAuth status fragment (HTMX will swap it in).
+	statuses := u.registry.OAuthStatuses()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.ExecuteTemplate(w, "oauth_status.html", statuses); err != nil {
+		log.Printf("template error: %v", err)
+		http.Error(w, "template error", http.StatusInternalServerError)
+	}
+}
+
 // OAuthLogin initiates the OAuth login flow for the specified backend.
 // For Copilot, this initiates a device code flow and renders a page showing
 // the user code and verification URL. For Codex, the user is redirected

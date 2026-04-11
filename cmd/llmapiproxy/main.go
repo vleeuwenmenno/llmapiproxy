@@ -97,6 +97,7 @@ func main() {
 		r.Get("/oauth/device-login/{backend}", ui.OAuthDeviceLogin)
 		r.Get("/oauth/callback/{backend}", ui.OAuthCallback)
 		r.Post("/oauth/disconnect/{backend}", ui.OAuthDisconnect)
+		r.Post("/oauth/check-status/{backend}", ui.OAuthCheckStatus)
 
 		staticSub, err := fs.Sub(web.StaticFS(), "static")
 		if err != nil {

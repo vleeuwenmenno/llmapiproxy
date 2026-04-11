@@ -50,7 +50,7 @@
         {{end}}
       {{else if eq .BackendType "copilot"}}
         <button type="button" class="btn btn-oauth-secondary"
-                hx-get="/ui/oauth/status" hx-target="#oauth-status-container" hx-swap="innerHTML">
+                hx-post="/ui/oauth/check-status/{{.BackendName}}" hx-target="#oauth-status-container" hx-swap="innerHTML">
           Check Status
         </button>
         {{if .Authenticated}}

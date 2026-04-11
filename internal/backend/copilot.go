@@ -407,3 +407,17 @@ func (b *CopilotBackend) GetTokenStore() *oauth.TokenStore {
 func (b *CopilotBackend) GetDeviceCodeHandler() *oauth.DeviceCodeHandler {
 	return b.deviceCodeHandler
 }
+
+// --- OAuthStatusRefresher interface ---
+
+// RefreshOAuthStatus proactively attempts to validate or refresh the Copilot
+// token. It calls GetCopilotToken which will re-exchange the stored GitHub
+// token if the Copilot token is expired or missing. This is triggered by
+// the "Check Status" button in the web UI.
+func (b *CopilotBackend) RefreshOAuthStatus(ctx context.Context) error {
+	_, err := b.getCopilotToken(ctx)
+	if err != nil {
+		return fmt.Errorf("copilot backend %s: token refresh failed: %w", b.name, err)
+	}
+	return nil
+}

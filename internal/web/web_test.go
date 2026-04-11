@@ -760,9 +760,9 @@ func TestOAuthStatus_CheckStatusButtonUsesHTMX(t *testing.T) {
 
 	body := w.Body.String()
 
-	// The Check Status button should have hx-get for HTMX-driven refresh
-	if !strings.Contains(body, `hx-get="/ui/oauth/status"`) {
-		t.Error("expected hx-get attribute on Check Status button for HTMX auto-refresh")
+	// The Check Status button should use hx-post to trigger a proactive token check
+	if !strings.Contains(body, `hx-post="/ui/oauth/check-status/copilot"`) {
+		t.Error("expected hx-post attribute on Check Status button pointing to check-status endpoint")
 	}
 	if !strings.Contains(body, `hx-target="#oauth-status-container"`) {
 		t.Error("expected hx-target attribute pointing to oauth-status-container")
@@ -949,5 +949,157 @@ func TestOAuthCallback_FullFlow(t *testing.T) {
 	}
 	if !strings.Contains(receivedRedirectURI, "/ui/oauth/callback/codex") {
 		t.Errorf("code exchange redirect_uri = %q, should contain /ui/oauth/callback/codex", receivedRedirectURI)
+	}
+}
+
+func TestOAuthCheckStatus_TriggersTokenRefreshForCopilot(t *testing.T) {
+	ui, cleanup := createTestUI(t)
+	defer cleanup()
+
+	// Create a mock GitHub API server that handles the Copilot token exchange
+	mockGitHub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/copilot_internal/v2/token" {
+			// Return a fresh Copilot token
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"token":       "fresh-copilot-token",
+				"expires_at":  time.Now().Add(30 * time.Minute).Unix(),
+				"refresh_in":  1500,
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer mockGitHub.Close()
+
+	// Create a mock store with an expired token + GitHub token
+	tokenDir := filepath.Join(t.TempDir(), "tokens")
+	os.MkdirAll(tokenDir, 0700)
+	mockStore, _ := oauth.NewTokenStore(filepath.Join(tokenDir, "copilot-token.json"))
+	mockStore.Save(&oauth.TokenData{
+		AccessToken:  "expired-copilot-token",
+		TokenType:    "Bearer",
+		ExpiresAt:    time.Now().Add(-1 * time.Hour),
+		ObtainedAt:   time.Now().Add(-2 * time.Hour),
+		Source:       "device_code_flow",
+		GitHubToken:  "test-github-token",
+	})
+
+	// Build a Copilot backend with the mock exchanger URL
+	deviceCodeHandler := oauth.NewDeviceCodeHandler(mockStore,
+		oauth.WithCopilotExchangerURL(mockGitHub.URL),
+	)
+	cfg := config.BackendConfig{
+		Name:    "copilot",
+		Type:    "copilot",
+		BaseURL: "https://api.githubcopilot.com",
+		Models:  []string{"gpt-4o"},
+	}
+	mockBackend := backend.NewCopilotBackend(cfg, deviceCodeHandler, mockStore)
+	ui.registry.RegisterBackend("copilot", mockBackend)
+
+	// Route through chi so URL params work
+	r := chi.NewRouter()
+	r.Post("/ui/oauth/check-status/{backend}", ui.OAuthCheckStatus)
+	server := httptest.NewServer(r)
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/ui/oauth/check-status/copilot", "", nil)
+	if err != nil {
+		t.Fatalf("making request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status 200, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	body := string(bodyBytes)
+
+	// The response should show Connected status with the fresh token
+	if !strings.Contains(body, "Connected") {
+		t.Errorf("expected 'Connected' in response body, got: %s", body)
+	}
+
+	// Verify the token store now has the fresh token
+	newToken := mockStore.Get()
+	if newToken == nil {
+		t.Fatal("expected token to be stored after check status")
+	}
+	if newToken.AccessToken != "fresh-copilot-token" {
+		t.Errorf("access token = %q, want %q", newToken.AccessToken, "fresh-copilot-token")
+	}
+}
+
+func TestOAuthCheckStatus_Returns404ForUnknownBackend(t *testing.T) {
+	ui, cleanup := createTestUI(t)
+	defer cleanup()
+
+	r := chi.NewRouter()
+	r.Post("/ui/oauth/check-status/{backend}", ui.OAuthCheckStatus)
+	server := httptest.NewServer(r)
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/ui/oauth/check-status/nonexistent", "", nil)
+	if err != nil {
+		t.Fatalf("making request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestOAuthCheckStatus_ReturnsStatusEvenOnRefreshFailure(t *testing.T) {
+	ui, cleanup := createTestUI(t)
+	defer cleanup()
+
+	// Store an expired token with no GitHub token (refresh will fail)
+	b := ui.registry.Get("copilot")
+	if b == nil {
+		t.Fatal("copilot backend not found")
+	}
+	copilotBackend := b.(*backend.CopilotBackend)
+	ts := copilotBackend.GetTokenStore()
+
+	ts.Save(&oauth.TokenData{
+		AccessToken: "expired-token",
+		TokenType:   "Bearer",
+		ExpiresAt:   time.Now().Add(-1 * time.Hour),
+		ObtainedAt:  time.Now().Add(-2 * time.Hour),
+		Source:      "device_code_flow",
+		// No GitHubToken — re-exchange will fail
+	})
+
+	// Route through chi so URL params work
+	r := chi.NewRouter()
+	r.Post("/ui/oauth/check-status/{backend}", ui.OAuthCheckStatus)
+	server := httptest.NewServer(r)
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/ui/oauth/check-status/copilot", "", nil)
+	if err != nil {
+		t.Fatalf("making request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Should still return 200 with the status fragment (showing error state)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status 200 (graceful degradation), got %d: %s", resp.StatusCode, string(body))
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	body := string(bodyBytes)
+	// Should still render the status card
+	if !strings.Contains(body, "copilot") {
+		t.Error("expected copilot backend card in response even on refresh failure")
+	}
+	// Should show not connected or expired state
+	if !strings.Contains(body, "Expired") && !strings.Contains(body, "Not connected") {
+		t.Error("expected error status indicator in response")
 	}
 }

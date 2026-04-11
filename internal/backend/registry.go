@@ -300,3 +300,11 @@ func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]R
 
 	return nil, fmt.Errorf("no backend found for model %q", model)
 }
+
+// RegisterBackend registers a backend by name, replacing any existing backend
+// with the same name. This is primarily used for testing with mock backends.
+func (r *Registry) RegisterBackend(name string, b Backend) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.backends[name] = b
+}

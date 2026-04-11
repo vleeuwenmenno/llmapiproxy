@@ -1200,3 +1200,99 @@ func TestCopilotBackend_OAuthStatus_ExpiredTokenNoGitHubToken(t *testing.T) {
 }
 
 // Helper for creating bool pointer.
+
+func TestCopilotBackend_RefreshOAuthStatus_Success(t *testing.T) {
+	// Create a mock GitHub API server that handles the Copilot token exchange
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/copilot_internal/v2/token" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"token":      "refreshed-copilot-token",
+				"expires_at": time.Now().Add(30 * time.Minute).Unix(),
+				"refresh_in": 1500,
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer mockServer.Close()
+
+	tokenDir := t.TempDir()
+	ts, err := oauth.NewTokenStore(filepath.Join(tokenDir, "copilot-token.json"))
+	if err != nil {
+		t.Fatalf("creating token store: %v", err)
+	}
+
+	// Store an expired token with a GitHub token (so re-exchange is possible)
+	ts.Save(&oauth.TokenData{
+		AccessToken:  "expired-copilot-token",
+		ExpiresAt:    time.Now().Add(-1 * time.Hour),
+		ObtainedAt:   time.Now().Add(-2 * time.Hour),
+		Source:       "device_code_flow",
+		GitHubToken:  "test-github-token",
+	})
+
+	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts,
+		oauth.WithCopilotExchangerURL(mockServer.URL),
+	)
+
+	cfg := config.BackendConfig{
+		Name:    "copilot",
+		Type:    "copilot",
+		BaseURL: "https://api.githubcopilot.com",
+		Models:  []string{"gpt-4o"},
+	}
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
+
+	// RefreshOAuthStatus should succeed by re-exchanging the GitHub token
+	err = b.RefreshOAuthStatus(context.Background())
+	if err != nil {
+		t.Fatalf("RefreshOAuthStatus returned error: %v", err)
+	}
+
+	// Verify the token store now has the fresh token
+	newToken := ts.Get()
+	if newToken == nil {
+		t.Fatal("expected token to be stored after refresh")
+	}
+	if newToken.AccessToken != "refreshed-copilot-token" {
+		t.Errorf("AccessToken = %q, want %q", newToken.AccessToken, "refreshed-copilot-token")
+	}
+
+	// Verify OAuthStatus reflects the new state
+	status := b.OAuthStatus()
+	if !status.Authenticated {
+		t.Error("expected Authenticated = true after successful refresh")
+	}
+	if status.TokenState != "valid" {
+		t.Errorf("TokenState = %q, want %q", status.TokenState, "valid")
+	}
+}
+
+func TestCopilotBackend_RefreshOAuthStatus_NoToken(t *testing.T) {
+	b, _ := newTestCopilotBackend(t)
+	// No token stored at all
+
+	err := b.RefreshOAuthStatus(context.Background())
+	if err == nil {
+		t.Error("expected error when no token is stored, got nil")
+	}
+}
+
+func TestCopilotBackend_RefreshOAuthStatus_NoGitHubToken(t *testing.T) {
+	b, _ := newTestCopilotBackend(t)
+
+	// Store an expired token with no GitHub token
+	b.tokenStore.Save(&oauth.TokenData{
+		AccessToken: "expired-token",
+		ExpiresAt:   time.Now().Add(-1 * time.Hour),
+		ObtainedAt:  time.Now().Add(-2 * time.Hour),
+		Source:      "device_code_flow",
+		// No GitHubToken
+	})
+
+	err := b.RefreshOAuthStatus(context.Background())
+	if err == nil {
+		t.Error("expected error when no GitHub token for re-exchange, got nil")
+	}
+}
