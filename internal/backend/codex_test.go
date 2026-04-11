@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -55,9 +56,19 @@ func codexTestHelper(t *testing.T) (*CodexBackend, *httptest.Server, func()) {
 	oauthHandler := oauth.NewCodexOAuthHandler(ts, oauthCfg)
 
 	// Create mock Codex upstream (Responses API).
+	// Responds with SSE events since ChatCompletion now forces stream=true
+	// internally for prompt caching consistency.
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		// Check if this is a streaming request.
+		var reqBody map[string]json.RawMessage
+		raw, _ := io.ReadAll(r.Body)
+		json.Unmarshal(raw, &reqBody)
+		isStream := false
+		if streamRaw, ok := reqBody["stream"]; ok {
+			json.Unmarshal(streamRaw, &isStream)
+		}
+
+		resp := map[string]any{
 			"id":         "resp-test-123",
 			"object":     "response",
 			"created_at": time.Now().Unix(),
@@ -82,7 +93,14 @@ func codexTestHelper(t *testing.T) (*CodexBackend, *httptest.Server, func()) {
 				"output_tokens": 8,
 				"total_tokens":  23,
 			},
-		})
+		}
+
+		if isStream {
+			codexStreamResponse(w, resp)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+		}
 	}))
 
 	cfg := config.BackendConfig{
@@ -111,6 +129,71 @@ func codexTestHelper(t *testing.T) (*CodexBackend, *httptest.Server, func()) {
 	}
 
 	return b, upstream, fullCleanup
+}
+
+// codexStreamResponse wraps a non-streaming JSON response as an SSE stream.
+// This is used in tests now that ChatCompletion forces stream=true internally.
+func codexStreamResponse(w http.ResponseWriter, response map[string]any) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	// Extract text from the response for delta events.
+	text := ""
+	if output, ok := response["output"].([]map[string]any); ok && len(output) > 0 {
+		if content, ok := output[0]["content"].([]map[string]any); ok && len(content) > 0 {
+			text, _ = content[0]["text"].(string)
+		}
+	}
+
+	// Send text delta events.
+	if text != "" {
+		deltaEvent := map[string]any{
+			"type":           "response.output_text.delta",
+			"delta":          text,
+			"item_id":        "msg-test",
+			"output_index":   0,
+			"content_index":  0,
+		}
+		deltaJSON, _ := json.Marshal(deltaEvent)
+		fmt.Fprintf(w, "data: %s\n\n", deltaJSON)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	// Send response.completed event with the full response.
+	completedEvent := map[string]any{
+		"type":     "response.completed",
+		"response": response,
+	}
+	completedJSON, _ := json.Marshal(completedEvent)
+	fmt.Fprintf(w, "data: %s\n\n", completedJSON)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+
+// codexRespondWithJSON sends a response as SSE if the request has stream=true,
+// or as plain JSON otherwise. Used for test handlers that need to support both modes.
+func codexRespondWithJSON(w http.ResponseWriter, r *http.Request, response map[string]any) {
+	// Detect if the request has stream=true.
+	var reqBody map[string]json.RawMessage
+	raw, _ := io.ReadAll(r.Body)
+	json.Unmarshal(raw, &reqBody)
+	isStream := false
+	if streamRaw, ok := reqBody["stream"]; ok {
+		json.Unmarshal(streamRaw, &isStream)
+	}
+	// Re-read the body since we consumed it.
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+
+	if isStream {
+		codexStreamResponse(w, response)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
 }
 
 // --- VAL-CODEX-001: Non-streaming chat completion routes to Codex backend ---
@@ -241,8 +324,7 @@ func TestCodexBackend_FinishReason_Length(t *testing.T) {
 
 	// Return incomplete response (simulates max_tokens truncation).
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		codexRespondWithJSON(w, r, map[string]any{
 			"id":         "resp-test-truncated",
 			"object":     "response",
 			"created_at": time.Now().Unix(),
@@ -295,9 +377,10 @@ func TestCodexBackend_MultiTurn(t *testing.T) {
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
 		json.Unmarshal(raw, &receivedBody)
+		// Restore body for codexRespondWithJSON to read stream flag.
+		r.Body = io.NopCloser(bytes.NewReader(raw))
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		codexRespondWithJSON(w, r, map[string]any{
 			"id":         "resp-test-multi",
 			"object":     "response",
 			"created_at": time.Now().Unix(),
@@ -373,9 +456,10 @@ func TestCodexBackend_TemperatureAndMaxTokens(t *testing.T) {
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
 		json.Unmarshal(raw, &receivedBody)
+		// Restore body for codexRespondWithJSON to read stream flag.
+		r.Body = io.NopCloser(bytes.NewReader(raw))
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		codexRespondWithJSON(w, r, map[string]any{
 			"id":         "resp-test-params",
 			"object":     "response",
 			"created_at": time.Now().Unix(),
@@ -692,6 +776,286 @@ func TestCodexBackend_SupportsModel(t *testing.T) {
 	}
 }
 
+// --- Force Streaming Tests ---
+
+// TestCodexBackend_ForceStreaming_NonStreamingSendsStreamTrue verifies that ChatCompletion
+// forces stream=true in the request to Codex for prompt caching consistency.
+func TestCodexBackend_ForceStreaming_NonStreamingSendsStreamTrue(t *testing.T) {
+	b, upstream, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	var receivedStream bool
+	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check that the request has stream=true.
+		var reqBody map[string]json.RawMessage
+		raw, _ := io.ReadAll(r.Body)
+		json.Unmarshal(raw, &reqBody)
+		if streamRaw, ok := reqBody["stream"]; ok {
+			json.Unmarshal(streamRaw, &receivedStream)
+		}
+		// Restore body for codexRespondWithJSON.
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+
+		codexRespondWithJSON(w, r, map[string]any{
+			"id":         "resp-test-force-stream",
+			"object":     "response",
+			"created_at": time.Now().Unix(),
+			"status":     "completed",
+			"model":      "o4-mini",
+			"output": []map[string]any{
+				{
+					"type":   "message",
+					"id":     "msg-test-force-stream",
+					"role":   "assistant",
+					"status": "completed",
+					"content": []map[string]any{
+						{"type": "output_text", "text": "Force streaming response"},
+					},
+				},
+			},
+			"usage": map[string]any{
+				"input_tokens":  10,
+				"output_tokens": 5,
+				"total_tokens":  15,
+			},
+		})
+	})
+
+	req := &ChatCompletionRequest{
+		Model:    "o4-mini",
+		Messages: []Message{{Role: "user", Content: "test"}},
+		// Note: Stream is NOT set (client requests non-streaming).
+	}
+
+	resp, err := b.ChatCompletion(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ChatCompletion: %v", err)
+	}
+
+	// Verify the upstream received stream=true.
+	if !receivedStream {
+		t.Error("expected stream=true to be sent to upstream Codex even for non-streaming ChatCompletion requests")
+	}
+
+	// Verify the client received a normal non-streaming response.
+	if resp.Object != "chat.completion" {
+		t.Errorf("object = %q, want %q", resp.Object, "chat.completion")
+	}
+	if len(resp.Choices) == 0 {
+		t.Fatal("expected at least one choice")
+	}
+	if resp.Choices[0].Message.Content != "Force streaming response" {
+		t.Errorf("content = %q, want %q", resp.Choices[0].Message.Content, "Force streaming response")
+	}
+}
+
+// TestCodexBackend_ForceStreaming_ResponseFromCompletedEvent verifies that the
+// response is correctly built from the response.completed SSE event, including
+// usage stats and finish_reason.
+func TestCodexBackend_ForceStreaming_ResponseFromCompletedEvent(t *testing.T) {
+	b, upstream, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+
+		// Send text delta events (as Codex would).
+		events := []string{
+			`{"type":"response.output_text.delta","delta":"Hello ","item_id":"msg-1","output_index":0,"content_index":0}`,
+			`{"type":"response.output_text.delta","delta":"World!","item_id":"msg-1","output_index":0,"content_index":0}`,
+		}
+		for _, event := range events {
+			fmt.Fprintf(w, "data: %s\n\n", event)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+
+		// Send response.completed with full response data.
+		completedEvent := map[string]any{
+			"type": "response.completed",
+			"response": map[string]any{
+				"id":         "resp-stream-to-nonstream",
+				"object":     "response",
+				"created_at": time.Now().Unix(),
+				"status":     "completed",
+				"model":      "o4-mini",
+				"output": []map[string]any{
+					{
+						"type":   "message",
+						"id":     "msg-1",
+						"role":   "assistant",
+						"status": "completed",
+						"content": []map[string]any{
+							{"type": "output_text", "text": "Hello World!"},
+						},
+					},
+				},
+				"usage": map[string]any{
+					"input_tokens":  12,
+					"output_tokens": 4,
+					"total_tokens":  16,
+				},
+			},
+		}
+		completedJSON, _ := json.Marshal(completedEvent)
+		fmt.Fprintf(w, "data: %s\n\n", completedJSON)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+
+	req := &ChatCompletionRequest{
+		Model:    "o4-mini",
+		Messages: []Message{{Role: "user", Content: "test"}},
+	}
+
+	resp, err := b.ChatCompletion(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ChatCompletion: %v", err)
+	}
+
+	// Verify the response was built from the completed event.
+	if resp.ID != "resp-stream-to-nonstream" {
+		t.Errorf("id = %q, want %q", resp.ID, "resp-stream-to-nonstream")
+	}
+	if resp.Choices[0].Message.Content != "Hello World!" {
+		t.Errorf("content = %q, want %q", resp.Choices[0].Message.Content, "Hello World!")
+	}
+	if resp.Usage == nil {
+		t.Fatal("usage should be populated from completed event")
+	}
+	if resp.Usage.PromptTokens != 12 {
+		t.Errorf("prompt_tokens = %d, want 12", resp.Usage.PromptTokens)
+	}
+	if resp.Usage.CompletionTokens != 4 {
+		t.Errorf("completion_tokens = %d, want 4", resp.Usage.CompletionTokens)
+	}
+	if resp.Choices[0].FinishReason == nil || *resp.Choices[0].FinishReason != "stop" {
+		t.Errorf("finish_reason = %v, want %q", resp.Choices[0].FinishReason, "stop")
+	}
+}
+
+// TestCodexBackend_ForceStreaming_StreamingUnchanged verifies that streaming
+// ChatCompletion requests are NOT affected by the force-streaming change.
+func TestCodexBackend_ForceStreaming_StreamingUnchanged(t *testing.T) {
+	b, upstream, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify stream=true was sent.
+		var reqBody map[string]json.RawMessage
+		raw, _ := io.ReadAll(r.Body)
+		json.Unmarshal(raw, &reqBody)
+		var stream bool
+		if streamRaw, ok := reqBody["stream"]; ok {
+			json.Unmarshal(streamRaw, &stream)
+		}
+		if !stream {
+			t.Error("streaming request should have stream=true")
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		events := []string{
+			`{"type":"response.output_text.delta","delta":"Stream response","item_id":"msg-1","output_index":0,"content_index":0}`,
+			`{"type":"response.completed","response":{"id":"resp-stream-unchanged","status":"completed","model":"o4-mini","output":[{"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Stream response"}]}],"usage":{"input_tokens":5,"output_tokens":3,"total_tokens":8}}}`,
+		}
+		for _, event := range events {
+			fmt.Fprintf(w, "data: %s\n\n", event)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	})
+
+	req := &ChatCompletionRequest{
+		Model:    "o4-mini",
+		Messages: []Message{{Role: "user", Content: "test"}},
+	}
+
+	stream, err := b.ChatCompletionStream(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ChatCompletionStream: %v", err)
+	}
+	defer stream.Close()
+
+	body, err := io.ReadAll(stream)
+	if err != nil {
+		t.Fatalf("reading stream: %v", err)
+	}
+
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "data: ") {
+		t.Error("expected SSE data lines in stream")
+	}
+	if !strings.Contains(bodyStr, "[DONE]") {
+		t.Error("expected [DONE] sentinel")
+	}
+	if !strings.Contains(bodyStr, "Stream response") {
+		t.Error("expected 'Stream response' content in stream")
+	}
+}
+
+// TestCodexBackend_ForceStreaming_IncompleteStatusFromSSE verifies that
+// incomplete status from the response.completed SSE event translates to
+// finish_reason "length" in the non-streaming response.
+func TestCodexBackend_ForceStreaming_IncompleteStatusFromSSE(t *testing.T) {
+	b, upstream, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+
+		completedEvent := map[string]any{
+			"type": "response.completed",
+			"response": map[string]any{
+				"id":         "resp-incomplete-sse",
+				"object":     "response",
+				"created_at": time.Now().Unix(),
+				"status":     "incomplete",
+				"model":      "o4-mini",
+				"output": []map[string]any{
+					{
+						"type":   "message",
+						"id":     "msg-1",
+						"role":   "assistant",
+						"status": "completed",
+						"content": []map[string]any{
+							{"type": "output_text", "text": "Truncated..."},
+						},
+					},
+				},
+				"usage": map[string]any{
+					"input_tokens":  15,
+					"output_tokens": 5,
+					"total_tokens":  20,
+				},
+			},
+		}
+		completedJSON, _ := json.Marshal(completedEvent)
+		fmt.Fprintf(w, "data: %s\n\n", completedJSON)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+
+	req := &ChatCompletionRequest{
+		Model:    "o4-mini",
+		Messages: []Message{{Role: "user", Content: "test"}},
+	}
+
+	resp, err := b.ChatCompletion(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ChatCompletion: %v", err)
+	}
+
+	if resp.Choices[0].FinishReason == nil || *resp.Choices[0].FinishReason != "length" {
+		t.Errorf("finish_reason = %v, want %q", resp.Choices[0].FinishReason, "length")
+	}
+}
+
 // --- VAL-CODEX-018: Error when tokens are unavailable ---
 
 func TestCodexBackend_NoTokens(t *testing.T) {
@@ -888,8 +1252,7 @@ func TestCodexBackend_ToolCalling(t *testing.T) {
 	// The backend should forward the request (tools are preserved in extra fields).
 	// The upstream may or may not support tools — the backend should not crash.
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		codexRespondWithJSON(w, r, map[string]any{
 			"id":         "resp-test-tools",
 			"object":     "response",
 			"created_at": time.Now().Unix(),
@@ -939,9 +1302,10 @@ func TestCodexBackend_ExtraFields(t *testing.T) {
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
 		json.Unmarshal(raw, &receivedBody)
+		// Restore body for codexRespondWithJSON to read stream flag.
+		r.Body = io.NopCloser(bytes.NewReader(raw))
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		codexRespondWithJSON(w, r, map[string]any{
 			"id":         "resp-test-extra",
 			"object":     "response",
 			"created_at": time.Now().Unix(),
@@ -1000,8 +1364,7 @@ func TestCodexBackend_ConcurrentRequests(t *testing.T) {
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&requestCount, 1)
 		time.Sleep(10 * time.Millisecond) // Simulate latency.
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		codexRespondWithJSON(w, r, map[string]any{
 			"id":         "resp-test-concurrent",
 			"object":     "response",
 			"created_at": time.Now().Unix(),
@@ -1297,9 +1660,10 @@ func TestCodexBackend_Unicode(t *testing.T) {
 		var body map[string]json.RawMessage
 		json.Unmarshal(raw, &body)
 		receivedInput = body["input"]
+		// Restore body for codexRespondWithJSON to read stream flag.
+		r.Body = io.NopCloser(bytes.NewReader(raw))
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		codexRespondWithJSON(w, r, map[string]any{
 			"id":         "resp-test-unicode",
 			"object":     "response",
 			"created_at": time.Now().Unix(),
@@ -1365,8 +1729,7 @@ func TestCodexBackend_LargeRequestBody(t *testing.T) {
 	defer cleanup()
 
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		codexRespondWithJSON(w, r, map[string]any{
 			"id":         "resp-test-large",
 			"object":     "response",
 			"created_at": time.Now().Unix(),
@@ -1433,8 +1796,7 @@ func TestCodexBackend_Upstream401_Retry(t *testing.T) {
 			})
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		codexRespondWithJSON(w, r, map[string]any{
 			"id":         "resp-test-retry",
 			"object":     "response",
 			"created_at": time.Now().Unix(),
@@ -1564,8 +1926,7 @@ func TestCodexBackend_EndpointURL(t *testing.T) {
 	var requestURL string
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestURL = r.URL.Path
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		codexRespondWithJSON(w, r, map[string]any{
 			"id":         "resp-test-url",
 			"object":     "response",
 			"created_at": time.Now().Unix(),

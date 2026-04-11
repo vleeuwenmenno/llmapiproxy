@@ -347,6 +347,104 @@ func translateFromCodexResponse(codexResp *codexResponse) (*ChatCompletionRespon
 	return chatResp, nil
 }
 
+// readCodexSSEToCompletion reads the full Codex SSE stream, collecting text delta
+// events and extracting the response.completed event to build a codexResponse.
+// This is used when we force streaming internally for prompt caching consistency.
+func readCodexSSEToCompletion(reader io.Reader) (*codexResponse, error) {
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	var textParts []string
+	var completedResp *codexResponse
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := line[6:]
+		if data == "[DONE]" {
+			break
+		}
+
+		// Parse the event type.
+		var event struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+
+		switch event.Type {
+		case "response.output_text.delta":
+			var delta struct {
+				Delta string `json:"delta"`
+			}
+			if err := json.Unmarshal([]byte(data), &delta); err == nil && delta.Delta != "" {
+				textParts = append(textParts, delta.Delta)
+			}
+
+		case "response.completed":
+			var completed struct {
+				Response *codexResponse `json:"response"`
+			}
+			if err := json.Unmarshal([]byte(data), &completed); err == nil && completed.Response != nil {
+				completedResp = completed.Response
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("reading SSE stream: %w", err)
+	}
+
+	// If we got a response.completed event, use it as the base response.
+	if completedResp != nil {
+		// If there's no output but we collected text, build the output.
+		if len(completedResp.Output) == 0 && len(textParts) > 0 {
+			completedResp.Output = []codexOutputItem{
+				{
+					Type:   "message",
+					Role:   "assistant",
+					Status: "completed",
+					Content: []codexOutputContent{
+						{
+							Type: "output_text",
+							Text: strings.Join(textParts, ""),
+						},
+					},
+				},
+			}
+		}
+		return completedResp, nil
+	}
+
+	// No response.completed event — synthesize from collected deltas.
+	if len(textParts) == 0 {
+		return nil, fmt.Errorf("no response data received from Codex SSE stream")
+	}
+
+	fullText := strings.Join(textParts, "")
+	return &codexResponse{
+		Object:  "response",
+		Status:  "completed",
+		Output: []codexOutputItem{
+			{
+				Type:   "message",
+				Role:   "assistant",
+				Status: "completed",
+				Content: []codexOutputContent{
+					{
+						Type: "output_text",
+						Text: fullText,
+					},
+				},
+			},
+		},
+	}, nil
+}
+
 // --- Backend interface implementation ---
 
 // ChatCompletion sends a non-streaming chat completion request via the Codex Responses API.
@@ -375,7 +473,11 @@ func (b *CodexBackend) doChatCompletion(ctx context.Context, req *ChatCompletion
 	if err != nil {
 		return nil, fmt.Errorf("codex backend %s: translating request: %w", b.name, err)
 	}
-	codexReq.Stream = false
+	// Force streaming mode internally for prompt caching consistency.
+	// Codex servers cache prompts more effectively when stream=true is used,
+	// matching the CLIProxyAPIPlus pattern. The client still receives a
+	// non-streaming response.
+	codexReq.Stream = true
 
 	body, err := json.Marshal(codexReq)
 	if err != nil {
@@ -383,13 +485,15 @@ func (b *CodexBackend) doChatCompletion(ctx context.Context, req *ChatCompletion
 	}
 
 	endpoint := b.baseURL + codexResponsesPath
+	// Use a client without timeout for streaming (same as ChatCompletionStream).
+	client := &http.Client{}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("codex backend %s: creating request: %w", b.name, err)
 	}
 	b.setHeaders(httpReq, token)
 
-	resp, err := b.client.Do(httpReq)
+	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("codex backend %s: sending request: %w", b.name, err)
 	}
@@ -413,14 +517,16 @@ func (b *CodexBackend) doChatCompletion(ctx context.Context, req *ChatCompletion
 		}
 	}
 
-	// Decode the Codex Responses API response.
-	var codexResp codexResponse
-	if err := json.NewDecoder(resp.Body).Decode(&codexResp); err != nil {
-		return nil, fmt.Errorf("codex backend %s: decoding response: %w", b.name, err)
+	// Read the full SSE stream and extract the response.completed event.
+	// We collect all text deltas and the final completed event to build
+	// a non-streaming ChatCompletionResponse.
+	codexResp, err := readCodexSSEToCompletion(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("codex backend %s: reading streaming response: %w", b.name, err)
 	}
 
 	// Translate back to ChatCompletion format.
-	return translateFromCodexResponse(&codexResp)
+	return translateFromCodexResponse(codexResp)
 }
 
 // ChatCompletionStream sends a streaming chat completion request via the Codex Responses API.
