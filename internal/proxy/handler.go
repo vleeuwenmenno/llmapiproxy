@@ -143,8 +143,8 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 			var be *backend.BackendError
 			if errors.As(err, &be) {
 				lastBE = be
-				// 4xx errors (except 429 rate-limit) are client errors — don't retry.
-				if be.StatusCode >= 400 && be.StatusCode < 500 && be.StatusCode != http.StatusTooManyRequests {
+				// 4xx errors (except 400 bad-request and 429 rate-limit) are client errors — don't retry.
+				if be.StatusCode >= 400 && be.StatusCode < 500 && be.StatusCode != http.StatusBadRequest && be.StatusCode != http.StatusTooManyRequests {
 					break
 				}
 			}
@@ -238,8 +238,8 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 			var be *backend.BackendError
 			if errors.As(err, &be) {
 				lastBE = be
-				// 4xx errors (except 429 rate-limit) are client errors — don't retry.
-				if be.StatusCode >= 400 && be.StatusCode < 500 && be.StatusCode != http.StatusTooManyRequests {
+				// 4xx errors (except 400 bad-request and 429 rate-limit) are client errors — don't retry.
+				if be.StatusCode >= 400 && be.StatusCode < 500 && be.StatusCode != http.StatusBadRequest && be.StatusCode != http.StatusTooManyRequests {
 					break
 				}
 			}

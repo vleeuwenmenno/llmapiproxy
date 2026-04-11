@@ -48,7 +48,17 @@ func (b *OpenAIBackend) Name() string { return b.name }
 
 func (b *OpenAIBackend) SupportsModel(modelID string) bool {
 	if len(b.models) == 0 {
-		return true
+		// No static model list configured — verify against actual upstream catalog.
+		models := b.getCachedOrFetchModels()
+		if models == nil {
+			return true // can't verify; assume supported
+		}
+		for _, m := range models {
+			if m.ID == modelID {
+				return true
+			}
+		}
+		return false
 	}
 	for _, m := range b.models {
 		if m.ID == modelID {
@@ -62,6 +72,34 @@ func (b *OpenAIBackend) SupportsModel(modelID string) bool {
 		}
 	}
 	return false
+}
+
+// getCachedOrFetchModels returns the cached upstream model list, fetching it
+// from the upstream API if the cache is empty. Returns nil on fetch error.
+func (b *OpenAIBackend) getCachedOrFetchModels() []Model {
+	b.cacheMu.RLock()
+	if b.cachedModels != nil {
+		models := b.cachedModels
+		b.cacheMu.RUnlock()
+		return models
+	}
+	b.cacheMu.RUnlock()
+
+	// Cache miss — fetch from upstream.
+	models, err := b.buildModelList(context.Background())
+	if err != nil {
+		return nil
+	}
+
+	b.cacheMu.Lock()
+	if b.cachedModels == nil {
+		b.cachedModels = models
+		if b.modelCacheTTL > 0 {
+			b.cacheExpiry = time.Now().Add(b.modelCacheTTL)
+		}
+	}
+	b.cacheMu.Unlock()
+	return models
 }
 
 func (b *OpenAIBackend) ChatCompletion(ctx context.Context, req *ChatCompletionRequest) (*ChatCompletionResponse, error) {
