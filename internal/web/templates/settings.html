@@ -675,6 +675,20 @@
             {{end}}
         </div>
 
+
+        <!-- OAuth Connections Section -->
+        <div class=section>
+            <div class=section-header>
+                <div class=section-title>OAuth Connections</div>
+            </div>
+            <p class=section-desc>
+                Authentication status for OAuth-based backends (Copilot, Codex).
+                Tokens are automatically refreshed. Use <strong>Connect</strong> to initiate OAuth for Codex,
+                or <strong>Disconnect</strong> to clear stored tokens.
+            </p>
+            {{template "oauth_status.html" .OAuthStatuses}}
+        </div>
+
         <!-- Anonymous API Keys Section -->
         <div class="section">
             <div class="section-header">

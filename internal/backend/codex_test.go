@@ -1658,8 +1658,13 @@ func TestCodexBackend_OAuthStatus_NoToken(t *testing.T) {
 	if status.Authenticated {
 		t.Error("should not be authenticated without token")
 	}
-	if !status.NeedsReauth {
-		t.Error("should need re-auth without token")
+	// NeedsReauth is false when no token exists at all (it's 'not connected', not 'needs re-auth').
+	// NeedsReauth is true only when a token exists but is expired and can't be refreshed.
+	if status.NeedsReauth {
+		t.Error("should NOT need re-auth when never connected; just not authenticated")
+	}
+	if status.TokenState != "missing" {
+		t.Errorf("TokenState = %q, want %q", status.TokenState, "missing")
 	}
 }
 

@@ -840,18 +840,33 @@ func (b *CodexBackend) OAuthStatus() OAuthStatus {
 	status := OAuthStatus{
 		BackendName: b.name,
 		BackendType: "codex",
+		TokenState:  "missing",
 	}
 
 	token := b.tokenStore.Get()
 	if token != nil {
 		status.Authenticated = !token.IsExpired()
 		status.TokenSource = token.Source
+		status.ExpiresAt = token.ExpiresAt
+		status.ObtainedAt = token.ObtainedAt
 		if !token.ExpiresAt.IsZero() {
 			status.TokenExpiry = token.ExpiresAt.Format(time.RFC3339)
 		}
+		if !token.ObtainedAt.IsZero() {
+			status.LastRefresh = token.ObtainedAt.Format(time.RFC3339)
+		}
 		status.NeedsReauth = token.IsExpired() && token.RefreshToken == ""
+		// Compute visual indicator state.
+		if token.IsExpired() {
+			status.TokenState = "expired"
+		} else if token.ExpiresAt.Sub(time.Now()) < 5*time.Minute {
+			status.TokenState = "expiring"
+		} else {
+			status.TokenState = "valid"
+		}
 	} else {
-		status.NeedsReauth = true
+		// No token stored at all — not "needs re-auth", just not connected.
+		// NeedsReauth is only true when a token exists but is expired and can't be refreshed.
 	}
 
 	return status

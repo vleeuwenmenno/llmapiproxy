@@ -301,14 +301,28 @@ func (b *CopilotBackend) OAuthStatus() OAuthStatus {
 	status := OAuthStatus{
 		BackendName: b.name,
 		BackendType: "copilot",
+		TokenState:  "missing",
 	}
 
 	token := b.tokenStore.Get()
 	if token != nil {
 		status.Authenticated = !token.IsExpired()
 		status.TokenSource = token.Source
+		status.ExpiresAt = token.ExpiresAt
+		status.ObtainedAt = token.ObtainedAt
 		if !token.ExpiresAt.IsZero() {
 			status.TokenExpiry = token.ExpiresAt.Format(time.RFC3339)
+		}
+		if !token.ObtainedAt.IsZero() {
+			status.LastRefresh = token.ObtainedAt.Format(time.RFC3339)
+		}
+		// Compute visual indicator state.
+		if token.IsExpired() {
+			status.TokenState = "expired"
+		} else if token.ExpiresAt.Sub(time.Now()) < 5*time.Minute {
+			status.TokenState = "expiring"
+		} else {
+			status.TokenState = "valid"
 		}
 	}
 

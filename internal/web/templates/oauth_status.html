@@ -1,59 +1,75 @@
 {{/* HTMX fragment showing OAuth status for all backends */}}
-{{range .}}
-<div class="oauth-backend-status" id="oauth-status-{{.BackendName}}" 
+<div id="oauth-status-container"
      hx-get="/ui/oauth/status" 
      hx-trigger="every 30s" 
-     hx-swap="outerHTML"
-     style="margin-bottom: 12px; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
-  <div style="display: flex; align-items: center; justify-content: space-between;">
-    <div>
-      <strong>{{.BackendName}}</strong>
-      <span class="badge" style="margin-left: 8px; padding: 2px 8px; border-radius: 4px; font-size: 0.85em;
-        {{if .Authenticated}}background-color: #d4edda; color: #155724;
-        {{else}}background-color: #f8d7da; color: #721c24;{{end}}">
-        {{if .Authenticated}}✓ Authenticated{{else}}✗ Not authenticated{{end}}
-      </span>
-      <span style="margin-left: 8px; color: #666; font-size: 0.85em;">({{.BackendType}})</span>
+     hx-swap="innerHTML">
+{{range .}}
+<div class="oauth-backend-card" id="oauth-status-{{.BackendName}}">
+  <div class="oauth-backend-header">
+    <div class="oauth-backend-info">
+      <div class="oauth-backend-name-row">
+        <span class="oauth-status-dot oauth-status-dot-{{.TokenState}}"></span>
+        <strong class="oauth-backend-name">{{.BackendName}}</strong>
+        <span class="oauth-backend-type-badge">{{.BackendType}}</span>
+      </div>
+      <div class="oauth-backend-details">
+        {{if .Authenticated}}
+          <span class="oauth-detail-label">Status:</span>
+          <span class="oauth-detail-value oauth-text-{{.TokenState}}">
+            {{if eq .TokenState "valid"}}Connected{{else if eq .TokenState "expiring"}}Expiring soon{{else}}Expired{{end}}
+          </span>
+        {{else}}
+          <span class="oauth-detail-label">Status:</span>
+          <span class="oauth-detail-value oauth-text-missing">Not connected</span>
+        {{end}}
+      </div>
     </div>
-    <div>
+    <div class="oauth-backend-actions">
       {{if eq .BackendType "codex"}}
         {{if .NeedsReauth}}
-          <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-primary" 
-             style="padding: 4px 12px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-size: 0.85em;">
+          <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-oauth-primary">
             Re-authenticate
           </a>
         {{else if .Authenticated}}
           <form method="POST" action="/ui/oauth/disconnect/{{.BackendName}}" style="display: inline;">
-            <button type="submit" class="btn btn-outline" 
-                    style="padding: 4px 12px; border: 1px solid #dc3545; color: #dc3545; background: white; border-radius: 4px; font-size: 0.85em; cursor: pointer;">
+            <button type="submit" class="btn btn-oauth-danger" 
+                    onclick="return confirm('Disconnect {{.BackendName}}? This will clear stored tokens.')">
               Disconnect
             </button>
           </form>
         {{else}}
-          <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-primary"
-             style="padding: 4px 12px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-size: 0.85em;">
+          <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-oauth-primary">
             Connect
           </a>
         {{end}}
       {{else if eq .BackendType "copilot"}}
         {{if .Authenticated}}
           <form method="POST" action="/ui/oauth/disconnect/{{.BackendName}}" style="display: inline;">
-            <button type="submit" class="btn btn-outline"
-                    style="padding: 4px 12px; border: 1px solid #dc3545; color: #dc3545; background: white; border-radius: 4px; font-size: 0.85em; cursor: pointer;">
-              Clear Token
+            <button type="submit" class="btn btn-oauth-danger"
+                    onclick="return confirm('Clear stored token for {{.BackendName}}?')">
+              Disconnect
             </button>
           </form>
         {{end}}
       {{end}}
     </div>
   </div>
-  {{if .TokenSource}}<div style="margin-top: 4px; font-size: 0.8em; color: #666;">Source: {{.TokenSource}}</div>{{end}}
-  {{if .TokenExpiry}}<div style="font-size: 0.8em; color: #666;">Token expires: {{.TokenExpiry}}</div>{{end}}
-  {{if .NeedsReauth}}<div style="font-size: 0.8em; color: #dc3545;">Token expired or missing — re-authentication required</div>{{end}}
+  {{if .Authenticated}}
+  <div class="oauth-backend-meta">
+    {{if .TokenSource}}<div class="oauth-meta-item"><span class="oauth-meta-label">Source:</span> <span class="oauth-meta-value">{{.TokenSource}}</span></div>{{end}}
+    {{if .TokenExpiry}}<div class="oauth-meta-item"><span class="oauth-meta-label">Expires:</span> <span class="oauth-meta-value oauth-expiry-{{.TokenState}}">{{.TokenExpiry}}</span></div>{{end}}
+    {{if .LastRefresh}}<div class="oauth-meta-item"><span class="oauth-meta-label">Last refreshed:</span> <span class="oauth-meta-value">{{.LastRefresh}}</span></div>{{end}}
+  </div>
+  {{else if .NeedsReauth}}
+  <div class="oauth-backend-meta">
+    <div class="oauth-meta-item oauth-meta-warning">Token expired or missing — re-authentication required</div>
+  </div>
+  {{end}}
 </div>
 {{end}}
 {{if not .}}
-<div style="padding: 10px; color: #666; font-style: italic;">
-  No OAuth backends configured.
+<div class="oauth-empty">
+  No OAuth backends configured. Add a <code>copilot</code> or <code>codex</code> backend to the config to enable OAuth management.
 </div>
 {{end}}
+</div>

@@ -599,8 +599,9 @@ func TestRegistry_OAuthStatuses_Codex(t *testing.T) {
 	if s.Authenticated {
 		t.Error("should not be authenticated without a token")
 	}
-	if !s.NeedsReauth {
-		t.Error("should need re-auth without a token")
+	// NeedsReauth is false when no token exists (it's 'not connected', not 'needs re-auth').
+	if s.NeedsReauth {
+		t.Error("should NOT need re-auth when never connected")
 	}
 }
 

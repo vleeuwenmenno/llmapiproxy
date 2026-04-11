@@ -453,15 +453,16 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
-		"LegacyKeys":   keys, // server.api_keys entries (unnamed, for migration notice only)
-		"Backends":     backends,
-		"StatsCount":   u.collector.TotalCount(),
-		"Message":      msg,
-		"IsError":      strings.HasPrefix(msg, "Error"),
-		"DisableStats": cfg.Server.DisableStats,
-		"ConfigText":   configText,
-		"Clients":      cfg.Clients,
-		"ClientsJSON":  template.JS(func() []byte { b, _ := json.Marshal(cfg.Clients); return b }()),
+		"LegacyKeys":    keys, // server.api_keys entries (unnamed, for migration notice only)
+		"Backends":      backends,
+		"StatsCount":    u.collector.TotalCount(),
+		"Message":       msg,
+		"IsError":       strings.HasPrefix(msg, "Error"),
+		"DisableStats":  cfg.Server.DisableStats,
+		"ConfigText":    configText,
+		"Clients":       cfg.Clients,
+		"ClientsJSON":   template.JS(func() []byte { b, _ := json.Marshal(cfg.Clients); return b }()),
+		"OAuthStatuses": u.registry.OAuthStatuses(),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "settings.html", data); err != nil {

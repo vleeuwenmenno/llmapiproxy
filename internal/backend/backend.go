@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"time"
 )
 
 // ChatCompletionRequest is the OpenAI-compatible chat completion request.
@@ -142,8 +143,16 @@ type OAuthStatus struct {
 	Authenticated bool `json:"authenticated"`
 	// TokenExpiry is the time the current token expires, if available.
 	TokenExpiry string `json:"token_expiry,omitempty"`
+	// ExpiresAt is the parsed expiry time for computing relative display.
+	ExpiresAt time.Time `json:"-"`
+	// LastRefresh is when the token was last obtained or refreshed.
+	LastRefresh string `json:"last_refresh,omitempty"`
+	// ObtainedAt is the parsed time the token was obtained.
+	ObtainedAt time.Time `json:"-"`
 	// TokenSource is where the token came from (e.g., "env:GH_TOKEN", "codex_oauth").
 	TokenSource string `json:"token_source,omitempty"`
+	// TokenState is the visual indicator state: "valid", "expiring", "expired", or "missing".
+	TokenState string `json:"token_state"`
 	// NeedsReauth is true if the token is expired and cannot be refreshed.
 	NeedsReauth bool `json:"needs_reauth,omitempty"`
 	// ReauthURL is the URL to initiate re-authentication (if needed).
