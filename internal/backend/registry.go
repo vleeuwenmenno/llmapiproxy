@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -241,7 +242,8 @@ func (r *Registry) Names() []string {
 }
 
 // OAuthStatuses returns the OAuth authentication status for all backends
-// that implement OAuthStatusProvider.
+// that implement OAuthStatusProvider. The result is sorted alphabetically
+// by BackendName for deterministic ordering.
 func (r *Registry) OAuthStatuses() []OAuthStatus {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -252,6 +254,9 @@ func (r *Registry) OAuthStatuses() []OAuthStatus {
 			statuses = append(statuses, sp.OAuthStatus())
 		}
 	}
+	sort.Slice(statuses, func(i, j int) bool {
+		return statuses[i].BackendName < statuses[j].BackendName
+	})
 	return statuses
 }
 

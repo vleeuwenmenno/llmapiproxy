@@ -819,7 +819,6 @@ func TestRegistry_HotReload_RemovesCodexAtRuntime(t *testing.T) {
 	}
 }
 
-
 // --- Redirect URI derivation tests ---
 
 func TestRegistry_CodexBackend_DerivedRedirectURI(t *testing.T) {
@@ -999,5 +998,91 @@ func TestRegistry_CodexBackend_WildcardListenAddr(t *testing.T) {
 	expected := "http://localhost:8080/ui/oauth/callback/codex"
 	if redirectURI != expected {
 		t.Errorf("redirect_uri = %q, want %q", redirectURI, expected)
+	}
+}
+
+// --- OAuthStatuses ordering test ---
+
+func TestOAuthStatuses_OrderingDeterministic(t *testing.T) {
+	r := NewRegistry()
+
+	// Configure multiple OAuth backends with names that are likely to
+	// be in different hash-map positions (so non-deterministic iteration
+	// would shuffle them on some runs).
+	cfg := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "zebra-copilot",
+				Type:    "copilot",
+				BaseURL: "https://api.githubcopilot.com",
+			},
+			{
+				Name:    "alpha-codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+			},
+			{
+				Name:    "mid-backend",
+				Type:    "copilot",
+				BaseURL: "https://api.githubcopilot.com",
+			},
+		},
+	}
+	r.LoadFromConfig(cfg)
+
+	statuses := r.OAuthStatuses()
+	if len(statuses) != 3 {
+		t.Fatalf("expected 3 statuses, got %d", len(statuses))
+	}
+
+	// Verify statuses are sorted alphabetically by BackendName.
+	for i := 1; i < len(statuses); i++ {
+		if statuses[i].BackendName < statuses[i-1].BackendName {
+			names := make([]string, len(statuses))
+			for j, s := range statuses {
+				names[j] = s.BackendName
+			}
+			t.Errorf("statuses not sorted: %v (status %d (%q) < status %d (%q))",
+				names, i, statuses[i].BackendName, i-1, statuses[i-1].BackendName)
+		}
+	}
+
+	// Specifically verify the expected order.
+	expected := []string{"alpha-codex", "mid-backend", "zebra-copilot"}
+	for i, s := range statuses {
+		if s.BackendName != expected[i] {
+			t.Errorf("status[%d].BackendName = %q, want %q", i, s.BackendName, expected[i])
+		}
+	}
+}
+
+func TestOAuthStatuses_SingleBackend(t *testing.T) {
+	r := NewRegistry()
+
+	cfg := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "copilot",
+				Type:    "copilot",
+				BaseURL: "https://api.githubcopilot.com",
+			},
+		},
+	}
+	r.LoadFromConfig(cfg)
+
+	statuses := r.OAuthStatuses()
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d", len(statuses))
+	}
+	if statuses[0].BackendName != "copilot" {
+		t.Errorf("BackendName = %q, want %q", statuses[0].BackendName, "copilot")
+	}
+}
+
+func TestOAuthStatuses_Empty(t *testing.T) {
+	r := NewRegistry()
+	statuses := r.OAuthStatuses()
+	if len(statuses) != 0 {
+		t.Errorf("expected 0 statuses, got %d", len(statuses))
 	}
 }
