@@ -121,10 +121,19 @@ func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]R
 		}
 	}
 
+	// Collect all backends that support this model for automatic fallback.
+	var entries []RouteEntry
 	for _, b := range r.backends {
 		if b.SupportsModel(model) {
-			return []RouteEntry{{Backend: b, ModelID: model}}, config.StrategyPriority, 0, nil
+			entries = append(entries, RouteEntry{Backend: b, ModelID: model})
 		}
+	}
+	if len(entries) > 0 {
+		strategy := routing.Strategy
+		if strategy == "" {
+			strategy = config.StrategyPriority
+		}
+		return entries, strategy, routing.StaggerDelayMs, nil
 	}
 
 	return nil, "", 0, fmt.Errorf("no backend found for model %q", model)

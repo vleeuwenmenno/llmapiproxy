@@ -324,7 +324,7 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 		flusher.Flush()
 	}
 
-	if err := scanner.Err(); err != nil {
+	if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
 		log.Printf("stream scan error: %v", err)
 		rec.Error = err.Error()
 	}
@@ -594,7 +594,7 @@ func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, e
 		flusher.Flush()
 	}
 
-	if err := scanner.Err(); err != nil {
+	if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
 		log.Printf("race stream scan error: %v", err)
 		rec.Error = err.Error()
 	}
@@ -867,7 +867,7 @@ func (h *Handler) handleStaggeredRaceStream(ctx context.Context, w http.Response
 		flusher.Flush()
 	}
 
-	if err := scanner.Err(); err != nil {
+	if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
 		log.Printf("staggered-race stream scan error: %v", err)
 		rec.Error = err.Error()
 	}
