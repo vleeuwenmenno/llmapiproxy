@@ -1,7 +1,7 @@
 <div style="font-family:var(--sans,sans-serif);color:var(--text,#e2e8f0)">
   <h2 style="font-size:1rem;font-weight:600;margin-bottom:1rem;color:var(--accent,#22d3ee)">Request #{{.ID}}</h2>
   <table style="width:100%;border-collapse:collapse;font-size:0.8rem">
-    <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem;width:140px">Time</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.Timestamp}}</td></tr>
+    <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem;width:140px">Time</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{formatTime .Timestamp}}</td></tr>
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Backend</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.Backend}}</td></tr>
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Model</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.Model}}</td></tr>
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Client</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{if .Client}}{{.Client}}{{else}}(anonymous){{end}}</td></tr>

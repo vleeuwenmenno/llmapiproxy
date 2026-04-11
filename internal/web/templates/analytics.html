@@ -708,7 +708,11 @@ function fmtNum(n) {
 }
 function fmtTime(iso) {
     var d = new Date(iso);
-    return d.toLocaleTimeString();
+    var now = new Date();
+    if (d.toDateString() === now.toDateString()) {
+        return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    }
+    return d.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit'});
 }
 function esc(s) {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -753,7 +757,11 @@ function renderCharts(series) {
     }
     var labels = series.map(function(p) {
         var d = new Date(p.t);
-        return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        var now = new Date();
+        if (d.toDateString() === now.toDateString()) {
+            return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        }
+        return d.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
     });
     drawBarChart('chart-requests', labels, series.map(function(p) { return p.req; }), getAccentColor(), series.map(function(p){ return p.err; }));
     drawLineChart('chart-latency', labels, series.map(function(p) { return p.lat; }), '#34d399');

@@ -39,7 +39,10 @@ func init() {
 			return template.JS(b)
 		},
 		"formatTime": func(t time.Time) string {
-			return t.Format("15:04:05")
+			if t.Format("2006-01-02") == time.Now().Format("2006-01-02") {
+				return t.Format("15:04:05")
+			}
+			return t.Format("2006-01-02 15:04:05")
 		},
 		"formatDuration": func(ms int64) string {
 			if ms < 1000 {
