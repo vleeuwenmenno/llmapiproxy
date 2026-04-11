@@ -189,6 +189,20 @@ Delete a client.
 
 - `name`: Client name
 
+### POST /ui/settings/model-cache-ttl
+
+Update the model cache TTL.
+
+**Body:**
+
+- `ttl`: Duration string (e.g., `5m`, `1h`, `0`)
+
+### POST /ui/backends/{name}/refresh-models
+
+Clear the cached model list for a specific backend, forcing a fresh fetch.
+
+**Response:** Redirects back to the models page.
+
 ### POST /ui/routing/save
 
 Save routing configuration.

@@ -8,6 +8,8 @@
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Status</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.StatusCode}}</td></tr>
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Latency</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.LatencyMs}}ms</td></tr>
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Tokens</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.TotalTokens}} (prompt: {{.PromptTokens}}, completion: {{.CompletionTokens}})</td></tr>
+    {{if gt .CachedTokens 0}}<tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Cached Tokens</td><td style="font-family:monospace;padding:0.3rem 0.5rem;color:#fbbf24">⚡ {{.CachedTokens}}</td></tr>{{end}}
+    {{if gt .ReasoningTokens 0}}<tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Reasoning Tokens</td><td style="font-family:monospace;padding:0.3rem 0.5rem;color:#a78bfa">🧠 {{.ReasoningTokens}}</td></tr>{{end}}
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Stream</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{if .Stream}}yes{{else}}no{{end}}</td></tr>
     {{if .Error}}<tr><td style="color:var(--red,#f87171);padding:0.3rem 0.5rem">Error</td><td style="font-family:monospace;padding:0.3rem 0.5rem;color:var(--red,#f87171)">{{.Error}}</td></tr>{{end}}
   </table>

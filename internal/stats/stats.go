@@ -13,6 +13,8 @@ type Record struct {
 	PromptTokens     int       `json:"prompt_tokens"`
 	CompletionTokens int       `json:"completion_tokens"`
 	TotalTokens      int       `json:"total_tokens"`
+	CachedTokens     int       `json:"cached_tokens"`
+	ReasoningTokens  int       `json:"reasoning_tokens"`
 	LatencyMs        int64     `json:"latency_ms"`
 	StatusCode       int       `json:"status_code"`
 	Error            string    `json:"error,omitempty"`
@@ -69,6 +71,8 @@ type Summary struct {
 	TotalTokens     int            `json:"total_tokens"`
 	TotalErrors     int            `json:"total_errors"`
 	AvgLatencyMs    int64          `json:"avg_latency_ms"`
+	TotalCached     int            `json:"total_cached"`
+	TotalReasoning  int            `json:"total_reasoning"`
 	ByBackend       map[string]int `json:"by_backend"`
 	ByModel         map[string]int `json:"by_model"`
 	TokensByBackend map[string]int `json:"tokens_by_backend"`
@@ -244,6 +248,8 @@ func (c *Collector) Summarize(since time.Duration) Summary {
 		}
 		s.TotalRequests++
 		s.TotalTokens += r.TotalTokens
+		s.TotalCached += r.CachedTokens
+		s.TotalReasoning += r.ReasoningTokens
 		totalLatency += r.LatencyMs
 		s.ByBackend[r.Backend]++
 		s.ByModel[r.Model]++

@@ -97,6 +97,31 @@ Test models interactively from the browser:
 3. Chat with streaming responses
 4. View token usage and latency for each request
 
+## Model Caching
+
+Each backend caches its upstream `/v1/models` response to avoid spamming provider APIs on every model list request.
+
+### Configuration
+
+Set `model_cache_ttl` in the `server` section of your config (default: `5m`):
+
+```yaml
+server:
+  model_cache_ttl: "10m" # Cache for 10 minutes
+```
+
+Set to `"0"` or `0` to disable caching — every `ListModels` call will hit upstream.
+
+### Behavior
+
+- **Cache hit**: Returns cached model list without contacting upstream
+- **Cache miss**: Fetches from upstream, stores result with expiry
+- **Stale-while-error**: If upstream fails after cache expiry, stale data is returned if available
+- **Manual refresh**: Click the refresh button on the Models page to clear cache and fetch fresh data
+- **Config reload**: Cache resets when config is reloaded (backends are recreated)
+
+The TTL can also be changed from the **Settings** page without restarting.
+
 ## Backend Management
 
 Enable or disable backends without editing config:

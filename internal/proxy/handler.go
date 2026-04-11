@@ -156,13 +156,24 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 			rec.PromptTokens = resp.Usage.PromptTokens
 			rec.CompletionTokens = resp.Usage.CompletionTokens
 			rec.TotalTokens = resp.Usage.TotalTokens
+			if resp.Usage.PromptTokensDetails != nil {
+				rec.CachedTokens = resp.Usage.PromptTokensDetails.CachedTokens
+			}
+			if resp.Usage.CompletionTokensDetails != nil {
+				rec.ReasoningTokens = resp.Usage.CompletionTokensDetails.ReasoningTokens
+			}
 		}
 		rec.StatusCode = http.StatusOK
 		h.collector.Record(rec)
 
-		resp.Model = originalModel
+		// Use raw body passthrough — only rewrite the model field, preserve all other fields.
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		if len(resp.RawBody) > 0 {
+			w.Write(backend.RewriteResponseBody(resp.RawBody, originalModel))
+		} else {
+			resp.Model = originalModel
+			json.NewEncoder(w).Encode(resp)
+		}
 		return
 	}
 
@@ -281,11 +292,7 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 		if strings.HasPrefix(line, "data: ") && line != "data: [DONE]" {
 			data := line[6:]
 			rewritten, usage := rewriteStreamChunk(data, originalModel)
-			if usage != nil {
-				rec.PromptTokens = usage.PromptTokens
-				rec.CompletionTokens = usage.CompletionTokens
-				rec.TotalTokens = usage.TotalTokens
-			}
+			applyUsageToRecord(&rec, usage)
 			fmt.Fprintf(w, "data: %s\n\n", rewritten)
 		} else if line != "" {
 			fmt.Fprintf(w, "%s\n", line)
@@ -370,11 +377,21 @@ func (h *Handler) handleRaceNonStream(ctx context.Context, w http.ResponseWriter
 				rec.PromptTokens = rr.resp.Usage.PromptTokens
 				rec.CompletionTokens = rr.resp.Usage.CompletionTokens
 				rec.TotalTokens = rr.resp.Usage.TotalTokens
+				if rr.resp.Usage.PromptTokensDetails != nil {
+					rec.CachedTokens = rr.resp.Usage.PromptTokensDetails.CachedTokens
+				}
+				if rr.resp.Usage.CompletionTokensDetails != nil {
+					rec.ReasoningTokens = rr.resp.Usage.CompletionTokensDetails.ReasoningTokens
+				}
 			}
 			h.collector.Record(rec)
-			rr.resp.Model = originalModel
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(rr.resp)
+			if len(rr.resp.RawBody) > 0 {
+				w.Write(backend.RewriteResponseBody(rr.resp.RawBody, originalModel))
+			} else {
+				rr.resp.Model = originalModel
+				json.NewEncoder(w).Encode(rr.resp)
+			}
 			return
 		}
 		lastErr = rr.err
@@ -546,11 +563,7 @@ func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, e
 		if strings.HasPrefix(line, "data: ") && line != "data: [DONE]" {
 			data := line[6:]
 			rewritten, usage := rewriteStreamChunk(data, originalModel)
-			if usage != nil {
-				rec.PromptTokens = usage.PromptTokens
-				rec.CompletionTokens = usage.CompletionTokens
-				rec.TotalTokens = usage.TotalTokens
-			}
+			applyUsageToRecord(&rec, usage)
 			fmt.Fprintf(w, "data: %s\n\n", rewritten)
 		} else if line != "" {
 			fmt.Fprintf(w, "%s\n", line)
@@ -637,11 +650,21 @@ func (h *Handler) handleStaggeredRaceNonStream(ctx context.Context, w http.Respo
 				rec.PromptTokens = rr.resp.Usage.PromptTokens
 				rec.CompletionTokens = rr.resp.Usage.CompletionTokens
 				rec.TotalTokens = rr.resp.Usage.TotalTokens
+				if rr.resp.Usage.PromptTokensDetails != nil {
+					rec.CachedTokens = rr.resp.Usage.PromptTokensDetails.CachedTokens
+				}
+				if rr.resp.Usage.CompletionTokensDetails != nil {
+					rec.ReasoningTokens = rr.resp.Usage.CompletionTokensDetails.ReasoningTokens
+				}
 			}
 			h.collector.Record(rec)
-			rr.resp.Model = originalModel
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(rr.resp)
+			if len(rr.resp.RawBody) > 0 {
+				w.Write(backend.RewriteResponseBody(rr.resp.RawBody, originalModel))
+			} else {
+				rr.resp.Model = originalModel
+				json.NewEncoder(w).Encode(rr.resp)
+			}
 			return
 		}
 		lastErr = rr.err
@@ -813,11 +836,7 @@ func (h *Handler) handleStaggeredRaceStream(ctx context.Context, w http.Response
 		if strings.HasPrefix(line, "data: ") && line != "data: [DONE]" {
 			data := line[6:]
 			rewritten, usage := rewriteStreamChunk(data, originalModel)
-			if usage != nil {
-				rec.PromptTokens = usage.PromptTokens
-				rec.CompletionTokens = usage.CompletionTokens
-				rec.TotalTokens = usage.TotalTokens
-			}
+			applyUsageToRecord(&rec, usage)
 			fmt.Fprintf(w, "data: %s\n\n", rewritten)
 		} else if line != "" {
 			fmt.Fprintf(w, "%s\n", line)
@@ -917,6 +936,22 @@ func rewriteStreamChunk(data string, originalModel string) (string, *backend.Usa
 		return data, usage
 	}
 	return string(out), usage
+}
+
+// applyUsageToRecord copies usage data (including cache/reasoning details) into a stats record.
+func applyUsageToRecord(rec *stats.Record, usage *backend.Usage) {
+	if usage == nil {
+		return
+	}
+	rec.PromptTokens = usage.PromptTokens
+	rec.CompletionTokens = usage.CompletionTokens
+	rec.TotalTokens = usage.TotalTokens
+	if usage.PromptTokensDetails != nil {
+		rec.CachedTokens = usage.PromptTokensDetails.CachedTokens
+	}
+	if usage.CompletionTokensDetails != nil {
+		rec.ReasoningTokens = usage.CompletionTokensDetails.ReasoningTokens
+	}
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {

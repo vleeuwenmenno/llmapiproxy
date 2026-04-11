@@ -62,14 +62,16 @@ func OpenStore(path string, c *Collector) (*Store, error) {
 func (s *Store) Save(r Record) {
 	_, err := s.db.Exec(
 		`INSERT INTO requests
-		    (timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,latency_ms,status_code,error,stream,response_body,client,strategy,attempted_backends,fallback)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		    (timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,cached_tokens,reasoning_tokens,latency_ms,status_code,error,stream,response_body,client,strategy,attempted_backends,fallback)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		r.Timestamp.UnixMilli(),
 		r.Backend,
 		r.Model,
 		r.PromptTokens,
 		r.CompletionTokens,
 		r.TotalTokens,
+		r.CachedTokens,
+		r.ReasoningTokens,
 		r.LatencyMs,
 		r.StatusCode,
 		r.Error,
@@ -108,6 +110,7 @@ func (s *Store) Close() error {
 func (s *Store) loadInto(c *Collector) error {
 	rows, err := s.db.Query(
 		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
+		        cached_tokens,reasoning_tokens,
 		        latency_ms,status_code,error,stream,response_body,client,
 		        strategy,attempted_backends,fallback
 		 FROM requests ORDER BY timestamp ASC`)
@@ -128,6 +131,8 @@ func (s *Store) loadInto(c *Collector) error {
 			&r.PromptTokens,
 			&r.CompletionTokens,
 			&r.TotalTokens,
+			&r.CachedTokens,
+			&r.ReasoningTokens,
 			&r.LatencyMs,
 			&r.StatusCode,
 			&r.Error,
@@ -183,13 +188,22 @@ func (s *Store) migrate() error {
 			return fmt.Errorf("migration 5: %w", err)
 		}
 	}
-	_, err := s.db.Exec("PRAGMA user_version = 5")
+	if version < 6 {
+		if _, err := s.db.Exec("ALTER TABLE requests ADD COLUMN cached_tokens INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return fmt.Errorf("migration 6a: %w", err)
+		}
+		if _, err := s.db.Exec("ALTER TABLE requests ADD COLUMN reasoning_tokens INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return fmt.Errorf("migration 6b: %w", err)
+		}
+	}
+	_, err := s.db.Exec("PRAGMA user_version = 6")
 	return err
 }
 
 func (s *Store) GetByID(id int64) (*Record, error) {
 	row := s.db.QueryRow(
 		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
+		        cached_tokens,reasoning_tokens,
 		        latency_ms,status_code,error,stream,response_body,client,
 		        strategy,attempted_backends,fallback
 		 FROM requests WHERE id = ?`, id)
@@ -204,6 +218,8 @@ func (s *Store) GetByID(id int64) (*Record, error) {
 		&r.PromptTokens,
 		&r.CompletionTokens,
 		&r.TotalTokens,
+		&r.CachedTokens,
+		&r.ReasoningTokens,
 		&r.LatencyMs,
 		&r.StatusCode,
 		&r.Error,
@@ -295,12 +311,14 @@ func (s *Store) FilteredSummary(f StatsFilter) (Summary, error) {
 	where, args := buildWhere(f)
 	query := `SELECT COUNT(*), COALESCE(SUM(total_tokens),0),
 	                 COALESCE(SUM(CASE WHEN error!='' THEN 1 ELSE 0 END),0),
-	                 COALESCE(AVG(latency_ms),0)
+	                 COALESCE(AVG(latency_ms),0),
+	                 COALESCE(SUM(cached_tokens),0),
+	                 COALESCE(SUM(reasoning_tokens),0)
 	          FROM requests ` + where
 	row := s.db.QueryRow(query, args...)
 	var sum Summary
 	var avgLat float64
-	if err := row.Scan(&sum.TotalRequests, &sum.TotalTokens, &sum.TotalErrors, &avgLat); err != nil {
+	if err := row.Scan(&sum.TotalRequests, &sum.TotalTokens, &sum.TotalErrors, &avgLat, &sum.TotalCached, &sum.TotalReasoning); err != nil {
 		return empty, err
 	}
 	sum.AvgLatencyMs = int64(avgLat)
@@ -446,7 +464,7 @@ func (s *Store) FilteredRecords(f StatsFilter, page, pageSize int) ([]Record, in
 	rows, err := s.db.Query(
 		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
 		        latency_ms,status_code,error,stream,response_body,client,
-		        strategy,attempted_backends,fallback
+		        strategy,attempted_backends,fallback,cached_tokens,reasoning_tokens
 		 FROM requests `+where+`
 		 ORDER BY timestamp DESC
 		 LIMIT ? OFFSET ?`,
@@ -467,6 +485,7 @@ func (s *Store) FilteredRecords(f StatsFilter, page, pageSize int) ([]Record, in
 			&r.LatencyMs, &r.StatusCode, &r.Error, &stream,
 			&r.ResponseBody, &r.Client,
 			&r.Strategy, &r.AttemptedBackends, &fallback,
+			&r.CachedTokens, &r.ReasoningTokens,
 		); err != nil {
 			return nil, 0, err
 		}

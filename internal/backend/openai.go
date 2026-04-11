@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/menno/llmapiproxy/internal/config"
@@ -21,9 +22,15 @@ type OpenAIBackend struct {
 	extraHeaders map[string]string
 	models       []config.ModelConfig
 	client       *http.Client
+
+	// Model list cache
+	modelCacheTTL time.Duration
+	cacheMu       sync.RWMutex
+	cachedModels  []Model
+	cacheExpiry   time.Time
 }
 
-func NewOpenAI(cfg config.BackendConfig) *OpenAIBackend {
+func NewOpenAI(cfg config.BackendConfig, cacheTTL time.Duration) *OpenAIBackend {
 	return &OpenAIBackend{
 		name:         cfg.Name,
 		baseURL:      strings.TrimRight(cfg.BaseURL, "/"),
@@ -33,6 +40,7 @@ func NewOpenAI(cfg config.BackendConfig) *OpenAIBackend {
 		client: &http.Client{
 			Timeout: 5 * time.Minute,
 		},
+		modelCacheTTL: cacheTTL,
 	}
 }
 
@@ -75,10 +83,16 @@ func (b *OpenAIBackend) ChatCompletion(ctx context.Context, req *ChatCompletionR
 		return nil, &BackendError{StatusCode: resp.StatusCode, Body: string(errBody), Err: fmt.Errorf("backend %s returned status %d: %s", b.name, resp.StatusCode, string(errBody))}
 	}
 
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading response body: %w", err)
+	}
+
 	var result ChatCompletionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(rawBody, &result); err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
+	result.RawBody = rawBody
 	return &result, nil
 }
 
@@ -167,6 +181,47 @@ type upstreamModelList struct {
 }
 
 func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
+	// Fast path: return cached models if still fresh.
+	if b.modelCacheTTL > 0 {
+		b.cacheMu.RLock()
+		if !b.cacheExpiry.IsZero() && time.Now().Before(b.cacheExpiry) {
+			cached := b.cachedModels
+			b.cacheMu.RUnlock()
+			return cached, nil
+		}
+		b.cacheMu.RUnlock()
+	}
+
+	// Slow path: fetch from upstream and build model list.
+	models, err := b.buildModelList(ctx)
+	if err != nil {
+		// Stale-while-error: return stale cache if available.
+		if b.modelCacheTTL > 0 {
+			b.cacheMu.RLock()
+			if b.cachedModels != nil {
+				cached := b.cachedModels
+				b.cacheMu.RUnlock()
+				return cached, nil
+			}
+			b.cacheMu.RUnlock()
+		}
+		return nil, err
+	}
+
+	// Store in cache if caching is enabled.
+	if b.modelCacheTTL > 0 {
+		b.cacheMu.Lock()
+		b.cachedModels = models
+		b.cacheExpiry = time.Now().Add(b.modelCacheTTL)
+		b.cacheMu.Unlock()
+	}
+
+	return models, nil
+}
+
+// buildModelList fetches models from upstream and builds the final list.
+// This contains the original ListModels logic without caching.
+func (b *OpenAIBackend) buildModelList(ctx context.Context) ([]Model, error) {
 	if len(b.models) > 0 {
 		// Static model list — try to enrich from upstream, ignore errors.
 		upstreamMap := b.fetchUpstreamModelMap(ctx)
@@ -213,6 +268,15 @@ func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
 		models = append(models, m)
 	}
 	return models, nil
+}
+
+// ClearModelCache clears the cached model list, forcing a fresh fetch on the
+// next ListModels call.
+func (b *OpenAIBackend) ClearModelCache() {
+	b.cacheMu.Lock()
+	defer b.cacheMu.Unlock()
+	b.cachedModels = nil
+	b.cacheExpiry = time.Time{}
 }
 
 // applyConfigOverrides fills Model fields from config-level overrides when set.
@@ -269,7 +333,7 @@ func (b *OpenAIBackend) fetchUpstreamModels(ctx context.Context) ([]upstreamMode
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil
+		return nil, fmt.Errorf("upstream returned status %d", resp.StatusCode)
 	}
 
 	var list upstreamModelList
@@ -315,6 +379,20 @@ func (b *OpenAIBackend) rewriteBody(req *ChatCompletionRequest) []byte {
 	}
 
 	modelBytes, _ := json.Marshal(req.Model)
+	m["model"] = modelBytes
+	data, _ := json.Marshal(m)
+	return data
+}
+
+// RewriteResponseBody rewrites only the "model" field in a raw response JSON,
+// preserving all other fields (tool_calls, usage details, system_fingerprint, etc.)
+// for transparent passthrough.
+func RewriteResponseBody(rawBody []byte, newModel string) []byte {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(rawBody, &m); err != nil {
+		return rawBody
+	}
+	modelBytes, _ := json.Marshal(newModel)
 	m["model"] = modelBytes
 	data, _ := json.Marshal(m)
 	return data

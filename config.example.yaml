@@ -36,6 +36,11 @@ server:
   # If not set, titles default to a truncated version of the first message.
   # title_model: "glm-5-turbo"
 
+  # How long to cache dynamically fetched model lists from upstream providers.
+  # Accepts Go duration strings (e.g. "5m", "30s", "1h"). Default: "5m".
+  # Set to "0s" to disable caching (every ListModels call hits upstream).
+  # model_cache_ttl: "5m"
+
 backends:
   # ── OpenRouter ─────────────────────────────────────────────
   # Fully OpenAI-compatible. Supports hundreds of models.

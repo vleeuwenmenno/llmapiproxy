@@ -28,12 +28,13 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	cacheTTL := cfg.Server.ModelCacheTTL
 	r.backends = make(map[string]Backend, len(cfg.Backends))
 	for _, bc := range cfg.Backends {
 		if !bc.IsEnabled() {
 			continue
 		}
-		r.backends[bc.Name] = NewOpenAI(bc)
+		r.backends[bc.Name] = NewOpenAI(bc, cacheTTL)
 	}
 }
 

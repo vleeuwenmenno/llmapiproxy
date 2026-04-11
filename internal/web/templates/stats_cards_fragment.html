@@ -19,4 +19,18 @@
         <div class="value {{if gt .WindowStats.TotalErrors 0}}red{{else}}green{{end}}">{{.WindowStats.TotalErrors}}</div>
         <div class="sub">{{.Today.TotalErrors}} today &middot; {{.AllTime.TotalErrors}} all time</div>
     </div>
+    {{if gt .AllTime.TotalCached 0}}
+    <div class="card">
+        <div class="label">Cached Tokens ({{.WindowLabel}})</div>
+        <div class="value" style="color:var(--amber)">{{.WindowStats.TotalCached}}</div>
+        <div class="sub">{{.Today.TotalCached}} today &middot; {{.AllTime.TotalCached}} all time</div>
+    </div>
+    {{end}}
+    {{if gt .AllTime.TotalReasoning 0}}
+    <div class="card">
+        <div class="label">Reasoning Tokens ({{.WindowLabel}})</div>
+        <div class="value" style="color:#a78bfa">{{.WindowStats.TotalReasoning}}</div>
+        <div class="sub">{{.Today.TotalReasoning}} today &middot; {{.AllTime.TotalReasoning}} all time</div>
+    </div>
+    {{end}}
 </div>

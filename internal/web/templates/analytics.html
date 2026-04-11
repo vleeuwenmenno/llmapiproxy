@@ -496,6 +496,8 @@
         <div class="card"><div class="label">P50 Latency</div><div class="value" id="c-p50">—</div></div>
         <div class="card"><div class="label">P90 Latency</div><div class="value amber" id="c-p90">—</div></div>
         <div class="card"><div class="label">P99 Latency</div><div class="value red" id="c-p99">—</div></div>
+        <div class="card" id="c-cached-card" style="display:none"><div class="label">Cached Tokens</div><div class="value" id="c-cached" style="color:var(--amber)">—</div></div>
+        <div class="card" id="c-reason-card" style="display:none"><div class="label">Reasoning Tokens</div><div class="value" id="c-reason" style="color:#a78bfa">—</div></div>
     </div>
 
     <!-- Charts -->
@@ -715,6 +717,23 @@ function renderSummary(s, p) {
     document.getElementById('c-p50').textContent = fmtDur(p.p50);
     document.getElementById('c-p90').textContent = fmtDur(p.p90);
     document.getElementById('c-p99').textContent = fmtDur(p.p99);
+
+    // Cached tokens card
+    var cachedCard = document.getElementById('c-cached-card');
+    if (s.total_cached > 0) {
+        cachedCard.style.display = '';
+        document.getElementById('c-cached').textContent = fmtNum(s.total_cached);
+    } else {
+        cachedCard.style.display = 'none';
+    }
+    // Reasoning tokens card
+    var reasonCard = document.getElementById('c-reason-card');
+    if (s.total_reasoning > 0) {
+        reasonCard.style.display = '';
+        document.getElementById('c-reason').textContent = fmtNum(s.total_reasoning);
+    } else {
+        reasonCard.style.display = 'none';
+    }
 }
 
 // ── Charts ─────────────────────────────────────────────────────────────────
@@ -939,6 +958,9 @@ function renderLog(rec) {
         return;
     }
     tbody.innerHTML = rec.items.map(function(r) {
+        var tokExtra = '';
+        if (r.cached_tokens > 0) tokExtra += ' <span title="Cached" style="color:var(--amber);font-size:0.7rem">⚡' + fmtNum(r.cached_tokens) + '</span>';
+        if (r.reasoning_tokens > 0) tokExtra += ' <span title="Reasoning" style="color:#a78bfa;font-size:0.7rem">🧠' + fmtNum(r.reasoning_tokens) + '</span>';
         return '<tr onclick="showDetail(' + r.id + ')" style="cursor:pointer">' +
             '<td>' + (r.error ? '<span class="status-err" title="'+esc(r.error)+'"></span>' : '<span class="status-ok"></span>') + '</td>' +
             '<td>' + fmtTime(r.timestamp) + '</td>' +
@@ -946,7 +968,7 @@ function renderLog(rec) {
             '<td>' + esc(r.model) + '</td>' +
             '<td>' + fmtNum(r.prompt_tokens) + '</td>' +
             '<td>' + fmtNum(r.completion_tokens) + '</td>' +
-            '<td>' + fmtNum(r.total_tokens) + '</td>' +
+            '<td>' + fmtNum(r.total_tokens) + tokExtra + '</td>' +
             '<td>' + fmtDur(r.latency_ms) + '</td>' +
             '<td>' + (r.stream ? 'SSE' : '—') + '</td>' +
             '<td>' + esc(r.client) + '</td>' +

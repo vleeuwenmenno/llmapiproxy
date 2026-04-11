@@ -13,15 +13,17 @@ server:
   admin_key: "admin-key" # Optional: key for config editor access
   stats_path: "stats.db" # SQLite database path
   disable_stats: false # Set to true to disable tracking
+  model_cache_ttl: "5m" # Cache upstream model lists for 5 minutes
 ```
 
-| Option          | Type   | Default    | Description                                                           |
-| --------------- | ------ | ---------- | --------------------------------------------------------------------- |
-| `listen`        | string | `:8080`    | Address/port to bind to                                               |
-| `api_keys`      | list   | required   | API keys clients must provide in `Authorization: Bearer <key>` header |
-| `admin_key`     | string | -          | Optional separate key for web UI config editor access                 |
-| `stats_path`    | string | `stats.db` | Path to SQLite database for persistent stats                          |
-| `disable_stats` | bool   | `false`    | Disable stats collection entirely                                     |
+| Option            | Type     | Default    | Description                                                           |
+| ----------------- | -------- | ---------- | --------------------------------------------------------------------- |
+| `listen`          | string   | `:8080`    | Address/port to bind to                                               |
+| `api_keys`        | list     | required   | API keys clients must provide in `Authorization: Bearer <key>` header |
+| `admin_key`       | string   | -          | Optional separate key for web UI config editor access                 |
+| `stats_path`      | string   | `stats.db` | Path to SQLite database for persistent stats                          |
+| `disable_stats`   | bool     | `false`    | Disable stats collection entirely                                     |
+| `model_cache_ttl` | duration | `5m`       | How long to cache upstream `/v1/models` responses. Set to `0` to disable caching |
 
 ## Backends
 

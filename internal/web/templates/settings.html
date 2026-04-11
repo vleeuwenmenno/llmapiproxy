@@ -841,6 +841,28 @@
             </form>
         </div>
 
+        <!-- Model Cache Section -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">Model Cache</div>
+            </div>
+            <p class="section-desc">
+                How long to cache model lists from upstream APIs before refreshing.
+                Set to <code style="font-family:var(--mono);background:var(--surface-2);padding:0.1em 0.3em;border-radius:3px;">0s</code> to disable caching (every request hits upstream).
+                Supported units: <code>s</code>, <code>m</code>, <code>h</code>.
+            </p>
+            <form method="POST" action="/ui/settings/model-cache-ttl" style="margin-top:0.75rem;">
+                <div class="toggle-row" style="gap:1rem;align-items:flex-end;">
+                    <div style="flex:0 0 160px;">
+                        <label style="display:block;font-size:0.8rem;color:var(--text-dim);margin-bottom:0.35rem;">Cache TTL</label>
+                        <input type="text" name="ttl" value="{{.ModelCacheTTL}}" placeholder="5m0s"
+                               style="width:100%;padding:0.5rem 0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:0.85rem;">
+                    </div>
+                    <button type="submit" class="btn" style="margin-bottom:0;">Save</button>
+                </div>
+            </form>
+        </div>
+
         <!-- Stats Section -->
         <div class="section">
             <div class="section-header">

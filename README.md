@@ -74,6 +74,7 @@ Set the API base URL to `http://localhost:8080/v1` and use your proxy API key. S
 - **Hot reload** — Config changes apply without restart
 - **Client system** — Named API keys with per-backend overrides
 - **Model failover** — Configure fallback backends per model
+- **Model caching** — TTL-based caching of upstream model lists with stale-while-error fallback
 
 ---
 

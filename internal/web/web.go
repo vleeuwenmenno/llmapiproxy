@@ -637,6 +637,58 @@ func (u *UI) BackendModels(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// RefreshBackendModels clears the model cache for a specific backend and returns
+// a fresh model list. Used by the UI refresh button on dynamic backends.
+func (u *UI) RefreshBackendModels(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+
+	var b backend.Backend
+	for _, bb := range u.registry.All() {
+		if bb.Name() == name {
+			b = bb
+			break
+		}
+	}
+	if b == nil {
+		http.Error(w, "backend not found", http.StatusNotFound)
+		return
+	}
+
+	// Clear the cache so next ListModels fetches fresh data.
+	b.ClearModelCache()
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	models, err := b.ListModels(ctx)
+	if err != nil {
+		http.Error(w, "failed to list models: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	type modelResp struct {
+		ID              string   `json:"id"`
+		DisplayName     string   `json:"display_name,omitempty"`
+		ContextLength   *int64   `json:"context_length,omitempty"`
+		MaxOutputTokens *int64   `json:"max_output_tokens,omitempty"`
+		Capabilities    []string `json:"capabilities,omitempty"`
+	}
+
+	resp := make([]modelResp, len(models))
+	for i, m := range models {
+		resp[i] = modelResp{
+			ID:              name + "/" + m.ID,
+			DisplayName:     m.DisplayName,
+			ContextLength:   m.ContextLength,
+			MaxOutputTokens: m.MaxOutputTokens,
+			Capabilities:    m.Capabilities,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
 // playgroundModel is a compact model descriptor sent to the playground JS.
 type playgroundModel struct {
 	ID              string `json:"id"`
@@ -1261,6 +1313,7 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 		"ClientsJSON":  template.JS(func() []byte { b, _ := json.Marshal(visibleClients); return b }()),
 		"ServerHost":   cfg.Server.Host,
 		"ServerPort":   cfg.Server.Port,
+		"ModelCacheTTL": cfg.Server.ModelCacheTTL.String(),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "settings.html", data); err != nil {
@@ -1436,6 +1489,28 @@ func (u *UI) UpdateServerAddr(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/ui/settings?msg=Server+address+updated.+Restart+the+proxy+for+changes+to+take+effect.", http.StatusSeeOther)
+}
+
+func (u *UI) UpdateModelCacheTTL(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/ui/settings?msg=Failed+to+parse+form.", http.StatusSeeOther)
+		return
+	}
+	ttlStr := strings.TrimSpace(r.FormValue("ttl"))
+	ttl, err := time.ParseDuration(ttlStr)
+	if err != nil || ttl < 0 {
+		http.Redirect(w, r, "/ui/settings?msg=Error:+invalid+duration.+Use+e.g.+5m,+30s,+1h,+or+0s+to+disable.", http.StatusSeeOther)
+		return
+	}
+	if err := u.cfgMgr.UpdateModelCacheTTL(ttl); err != nil {
+		http.Redirect(w, r, "/ui/settings?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		return
+	}
+	msg := "Model+cache+TTL+updated+to+" + ttlStr
+	if ttl == 0 {
+		msg = "Model+cache+disabled+(TTL+set+to+0)"
+	}
+	http.Redirect(w, r, "/ui/settings?msg="+msg, http.StatusSeeOther)
 }
 
 func (u *UI) SaveRouting(w http.ResponseWriter, r *http.Request) {

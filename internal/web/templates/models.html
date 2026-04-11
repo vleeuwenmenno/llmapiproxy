@@ -546,6 +546,32 @@
             font-family: var(--mono);
         }
 
+        .refresh-models-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            margin-left: 0.4rem;
+            vertical-align: middle;
+            transition: all 0.2s ease;
+        }
+        .refresh-models-btn:hover {
+            color: var(--accent);
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+        .refresh-models-btn.spinning {
+            animation: spin 0.6s linear infinite;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
         .model-count {
             font-size: 0.7rem;
             font-family: var(--mono);
@@ -1218,6 +1244,7 @@
                     <div style="padding:0.3rem 1.1rem 0.2rem;font-family:var(--mono);font-size:0.65rem;color:var(--text-dim)">{{.BaseURL}}</div>
                     {{if .IsDynamic}}
                     <span class="dynamic-badge">&#x221E; dynamic &#x2014; uses /v1/models from upstream</span>
+                    <button class="refresh-models-btn" onclick="refreshBackendModels(event, '{{.Name}}')" title="Refresh model list from upstream">&#x21BB;</button>
                     <div class="model-loading"><div class="spinner"></div><span>Loading models&#x2026;</span></div>
                     {{else}}
                     {{range .Models}}
@@ -1367,28 +1394,7 @@
                         <span>~/.config/zed/settings.json</span>
                         <button class="copy-block-btn" onclick="copyBlock(this, 'zed-config')">copy</button>
                     </div>
-                    <pre id="zed-config">{
-  "language_models": {
-    "openai": {
-      "api_url": "http://{{.DisplayAddr}}/v1",
-      "available_models": [
-        {{- range $i, $b := .Backends}}{{if $b.Enabled}}{{range $j, $m := $b.Models}}{{if or $i $j}},
-        {{end}}{
-          "name": "{{$m.FullID}}",
-          "display_name": "{{$m.FullID}} (proxy)",
-          "max_tokens": 8192
-        }{{end}}{{end}}{{end}}
-      ]
-    }
-  },
-  "assistant": {
-    "default_model": {
-      "provider": "openai",
-      "model": "{{.SampleModel}}"
-    },
-    "version": "2"
-  }
-}</pre>
+                    <pre id="zed-config">Loading models…</pre>
                 </div>
 
                 <div class="step">Step 2 — Set your API key</div>
@@ -1533,6 +1539,7 @@
         function openModal(id) {
             document.getElementById(id).classList.add('open');
             document.body.style.overflow = 'hidden';
+            if (id === 'modal-zed' && !zedConfigBuilt) buildZedConfig();
         }
         function closeModal(id) {
             document.getElementById(id).classList.remove('open');
@@ -1833,6 +1840,69 @@
             if (card) card.classList.toggle('collapsed');
         }
 
+        // ── Zed config builder ──────────────────────────────────────────
+        // Builds the Zed settings.json config from allBackendModels,
+        // deduplicating the same way /v1/models does (matching what the
+        // VS Code extension sees).
+        var zedConfigBuilt = false;
+        function buildZedConfig() {
+            if (zedConfigBuilt) return;
+            zedConfigBuilt = true;
+
+            var displayAddr = '{{.DisplayAddr}}';
+            // Deduplicate: collect unique model IDs across all backends,
+            // merging metadata (largest context/output, union of capabilities).
+            var seen = {};  // fullID → { context_length, max_output_tokens, capabilities }
+            var order = []; // preserve first-seen order
+
+            Object.keys(allBackendModels).forEach(function(backendName) {
+                (allBackendModels[backendName] || []).forEach(function(m) {
+                    var fullID = backendName + '/' + m.id;
+                    if (!seen[fullID]) {
+                        seen[fullID] = { context_length: m.context_length || 0, max_output_tokens: m.max_output_tokens || 0, capabilities: (m.capabilities || []).slice() };
+                        order.push(fullID);
+                    } else {
+                        var entry = seen[fullID];
+                        if (m.context_length && m.context_length > entry.context_length) entry.context_length = m.context_length;
+                        if (m.max_output_tokens && m.max_output_tokens > entry.max_output_tokens) entry.max_output_tokens = m.max_output_tokens;
+                        (m.capabilities || []).forEach(function(c) { if (entry.capabilities.indexOf(c) === -1) entry.capabilities.push(c); });
+                    }
+                });
+            });
+
+            if (order.length === 0) {
+                document.getElementById('zed-config').textContent = 'No models loaded yet. Try refreshing the page.';
+                return;
+            }
+
+            var sampleModel = order[0];
+            var modelLines = order.map(function(id) {
+                var meta = seen[id];
+                var maxTokens = meta.max_output_tokens || 8192;
+                return '        {\n          "name": "' + escHtml(id) + '",\n          "display_name": "' + escHtml(id) + ' (proxy)",\n          "max_tokens": ' + maxTokens + '\n        }';
+            });
+
+            var config = '{\n'
+                + '  "language_models": {\n'
+                + '    "openai": {\n'
+                + '      "api_url": "http://' + escHtml(displayAddr) + '/v1",\n'
+                + '      "available_models": [\n'
+                + modelLines.join(',\n') + '\n'
+                + '      ]\n'
+                + '    }\n'
+                + '  },\n'
+                + '  "assistant": {\n'
+                + '    "default_model": {\n'
+                + '      "provider": "openai",\n'
+                + '      "model": "' + escHtml(sampleModel) + '"\n'
+                + '    },\n'
+                + '    "version": "2"\n'
+                + '  }\n'
+                + '}';
+
+            document.getElementById('zed-config').textContent = config;
+        }
+
         function fmtN(n) {
             if (!n) return '';
             if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
@@ -1870,6 +1940,50 @@
             }
         }
 
+        function refreshBackendModels(e, name) {
+            e.stopPropagation();
+            var btn = e.currentTarget;
+            if (btn.classList.contains('spinning')) return;
+            btn.classList.add('spinning');
+            fetch('/ui/backends/' + encodeURIComponent(name) + '/refresh-models', { method: 'POST' })
+                .then(function(res) {
+                    if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+                    return res.json();
+                })
+                .then(function(models) {
+                    models = models || [];
+                    allBackendModels[name] = models;
+                    zedConfigBuilt = false;
+                    recomputeOverlaps();
+                    buildZedConfig();
+                    var countEl = document.getElementById('count-' + name);
+                    if (countEl) countEl.textContent = models.length + ' model' + (models.length !== 1 ? 's' : '');
+                    // Re-render the card's model list.
+                    var listEl = document.getElementById('models-' + name);
+                    if (!listEl) return;
+                    var baseUrlEl = listEl.querySelector(':scope > div:first-child');
+                    var dynBadgeEl = listEl.querySelector('.dynamic-badge');
+                    var baseUrlHtml = baseUrlEl ? baseUrlEl.outerHTML : '';
+                    var dynHtml = dynBadgeEl ? dynBadgeEl.outerHTML : '';
+                    var preview = models.slice(0, PREVIEW_COUNT);
+                    var rest = models.slice(PREVIEW_COUNT);
+                    var html = baseUrlHtml + dynHtml;
+                    html += preview.map(function(m) { return renderModelItem({ BareID: m.id.split('/').pop(), FullID: m.id, ContextLength: m.context_length, MaxOutputTokens: m.max_output_tokens }); }).join('');
+                    if (rest.length > 0) {
+                        html += '<div class="model-rest" id="rest-' + name + '" style="display:none">'
+                            + rest.map(function(m) { return renderModelItem({ BareID: m.id.split('/').pop(), FullID: m.id, ContextLength: m.context_length, MaxOutputTokens: m.max_output_tokens }); }).join('') + '</div>';
+                        html += '<button class="show-more-btn" id="showmore-' + name + '" onclick="toggleMore(\'' + name + '\',' + rest.length + ')">\u25BE Show ' + rest.length + ' more models</button>';
+                    }
+                    listEl.innerHTML = html;
+                })
+                .catch(function(err) {
+                    alert('Refresh failed: ' + err.message);
+                })
+                .finally(function() {
+                    btn.classList.remove('spinning');
+                });
+        }
+
         function loadBackendModels(name) {
             var listEl = document.getElementById('models-' + name);
             var countEl = document.getElementById('count-' + name);
@@ -1896,7 +2010,7 @@
                     // Track for client-side overlap recomputation.
                     allBackendModels[name] = models;
                     pendingLoads--;
-                    if (pendingLoads <= 0) recomputeOverlaps();
+                    if (pendingLoads <= 0) { recomputeOverlaps(); buildZedConfig(); }
 
                     if (countEl) countEl.textContent = models.length + ' model' + (models.length !== 1 ? 's' : '');
 
@@ -1921,7 +2035,7 @@
                 .catch(function(e) {
                     allBackendModels[name] = []; // treat as empty so pending count still completes
                     pendingLoads--;
-                    if (pendingLoads <= 0) recomputeOverlaps();
+                    if (pendingLoads <= 0) { recomputeOverlaps(); buildZedConfig(); }
 
                     listEl.innerHTML = baseUrlHtml + dynHtml
                         + '<div style="padding:0.75rem 1.1rem;font-size:0.75rem;color:var(--red);font-family:var(--mono)">\u2717 ' + escHtml(e.message) + '</div>';
@@ -2102,7 +2216,7 @@
 
             var cards = document.querySelectorAll('.backend-card[data-backend]');
             pendingLoads = cards.length;
-            if (pendingLoads === 0) { recomputeOverlaps(); return; }
+            if (pendingLoads === 0) { recomputeOverlaps(); buildZedConfig(); return; }
             cards.forEach(function(card) {
                 loadBackendModels(card.dataset.backend);
             });

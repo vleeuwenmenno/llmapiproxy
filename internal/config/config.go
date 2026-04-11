@@ -60,16 +60,22 @@ type RoutingConfig struct {
 }
 
 type ServerConfig struct {
-	Host         string   `yaml:"host,omitempty"`
-	Port         int      `yaml:"port,omitempty"`
-	Listen       string   `yaml:"listen,omitempty"` // Legacy: host:port. New host/port fields take precedence.
-	APIKeys      []string `yaml:"api_keys"`
-	AdminKey     string   `yaml:"admin_key"`
-	StatsPath    string   `yaml:"stats_path"`
-	DisableStats bool     `yaml:"disable_stats"`
-	ChatDBPath   string   `yaml:"chat_db_path"`
-	TitleModel   string   `yaml:"title_model"`
-	DefaultModel string   `yaml:"default_model,omitempty"`
+	Host          string        `yaml:"host,omitempty"`
+	Port          int           `yaml:"port,omitempty"`
+	Listen        string        `yaml:"listen,omitempty"` // Legacy: host:port. New host/port fields take precedence.
+	APIKeys       []string      `yaml:"api_keys"`
+	AdminKey      string        `yaml:"admin_key"`
+	StatsPath     string        `yaml:"stats_path"`
+	DisableStats  bool          `yaml:"disable_stats"`
+	ChatDBPath    string        `yaml:"chat_db_path"`
+	TitleModel    string        `yaml:"title_model"`
+	DefaultModel  string        `yaml:"default_model,omitempty"`
+	ModelCacheTTL time.Duration `yaml:"-"` // Set via custom YAML unmarshal; use ModelCacheTTLSec for JSON.
+
+	// modelCacheTTLSet tracks whether model_cache_ttl was explicitly provided.
+	// When false (field absent), ModelCacheTTL defaults to DefaultModelCacheTTL in Validate().
+	// When true and ModelCacheTTL == 0, caching is disabled.
+	modelCacheTTLSet bool
 }
 
 // ModelConfig specifies a single model with optional metadata overrides.
@@ -102,6 +108,107 @@ func (b *BackendConfig) ModelIDs() []string {
 		ids[i] = m.ID
 	}
 	return ids
+}
+
+// DefaultModelCacheTTL is the default time-to-live for cached model lists.
+// When model_cache_ttl is not set or is 0, this default is used.
+const DefaultModelCacheTTL = 5 * time.Minute
+
+// UnmarshalYAML implements custom YAML unmarshaling for ServerConfig
+// to parse model_cache_ttl as a duration string (e.g. "5m", "300s").
+func (sc *ServerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// Use a shadow type to avoid infinite recursion.
+	type raw struct {
+		Host          string      `yaml:"host,omitempty"`
+		Port          int         `yaml:"port,omitempty"`
+		Listen        string      `yaml:"listen,omitempty"`
+		APIKeys       []string    `yaml:"api_keys"`
+		AdminKey      string      `yaml:"admin_key"`
+		StatsPath     string      `yaml:"stats_path"`
+		DisableStats  bool        `yaml:"disable_stats"`
+		ChatDBPath    string      `yaml:"chat_db_path"`
+		TitleModel    string      `yaml:"title_model"`
+		DefaultModel  string      `yaml:"default_model,omitempty"`
+		ModelCacheTTL interface{} `yaml:"model_cache_ttl,omitempty"`
+	}
+	var r raw
+	if err := unmarshal(&r); err != nil {
+		return err
+	}
+	sc.Host = r.Host
+	sc.Port = r.Port
+	sc.Listen = r.Listen
+	sc.APIKeys = r.APIKeys
+	sc.AdminKey = r.AdminKey
+	sc.StatsPath = r.StatsPath
+	sc.DisableStats = r.DisableStats
+	sc.ChatDBPath = r.ChatDBPath
+	sc.TitleModel = r.TitleModel
+	sc.DefaultModel = r.DefaultModel
+
+	switch v := r.ModelCacheTTL.(type) {
+	case string:
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("server.model_cache_ttl: invalid duration %q: %w", v, err)
+		}
+		if d < 0 {
+			return fmt.Errorf("server.model_cache_ttl: must not be negative, got %s", d)
+		}
+		sc.ModelCacheTTL = d
+		sc.modelCacheTTLSet = true
+	case int:
+		sc.ModelCacheTTL = time.Duration(v)
+		sc.modelCacheTTLSet = true
+	case float64:
+		sc.ModelCacheTTL = time.Duration(int64(v))
+		sc.modelCacheTTLSet = true
+	case nil:
+		// Not specified — will use default in Validate().
+		sc.ModelCacheTTL = 0
+		sc.modelCacheTTLSet = false
+	default:
+		return fmt.Errorf("server.model_cache_ttl: unsupported type %T", v)
+	}
+
+	return nil
+}
+
+// MarshalYAML implements custom YAML marshaling for ServerConfig
+// to serialize model_cache_ttl as a human-readable duration string.
+func (sc *ServerConfig) MarshalYAML() (interface{}, error) {
+	type raw struct {
+		Host          string   `yaml:"host,omitempty"`
+		Port          int      `yaml:"port,omitempty"`
+		Listen        string   `yaml:"listen,omitempty"`
+		APIKeys       []string `yaml:"api_keys"`
+		AdminKey      string   `yaml:"admin_key"`
+		StatsPath     string   `yaml:"stats_path"`
+		DisableStats  bool     `yaml:"disable_stats"`
+		ChatDBPath    string   `yaml:"chat_db_path"`
+		TitleModel    string   `yaml:"title_model"`
+		DefaultModel  string   `yaml:"default_model,omitempty"`
+		ModelCacheTTL string   `yaml:"model_cache_ttl,omitempty"`
+	}
+
+	var ttlStr string
+	if sc.modelCacheTTLSet {
+		ttlStr = sc.ModelCacheTTL.String()
+	}
+
+	return raw{
+		Host:          sc.Host,
+		Port:          sc.Port,
+		Listen:        sc.Listen,
+		APIKeys:       sc.APIKeys,
+		AdminKey:      sc.AdminKey,
+		StatsPath:     sc.StatsPath,
+		DisableStats:  sc.DisableStats,
+		ChatDBPath:    sc.ChatDBPath,
+		TitleModel:    sc.TitleModel,
+		DefaultModel:  sc.DefaultModel,
+		ModelCacheTTL: ttlStr,
+	}, nil
 }
 
 // UnmarshalYAML implements custom YAML unmarshaling for BackendConfig
@@ -211,6 +318,11 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.ChatDBPath == "" {
 		c.Server.ChatDBPath = "chat.db"
+	}
+	// Default model cache TTL: 5 minutes when not explicitly set.
+	// Setting model_cache_ttl to "0s" or "0" explicitly disables caching.
+	if !c.Server.modelCacheTTLSet {
+		c.Server.ModelCacheTTL = DefaultModelCacheTTL
 	}
 	if len(c.Server.APIKeys) == 0 && len(c.Clients) == 0 {
 		return fmt.Errorf("server.api_keys: at least one API key is required")
@@ -561,6 +673,27 @@ func (m *Manager) UpdateTitleModel(titleModel string) error {
 func (m *Manager) UpdateDefaultModel(defaultModel string) error {
 	m.mu.Lock()
 	m.current.Server.DefaultModel = defaultModel
+	cfg := m.current
+	m.mu.Unlock()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+// UpdateModelCacheTTL updates the model cache TTL, persists the config, and
+// reloads. A TTL of 0 disables caching. Backends are recreated on reload so
+// the new TTL takes effect immediately.
+func (m *Manager) UpdateModelCacheTTL(ttl time.Duration) error {
+	m.mu.Lock()
+	m.current.Server.ModelCacheTTL = ttl
+	m.current.Server.modelCacheTTLSet = true
 	cfg := m.current
 	m.mu.Unlock()
 
