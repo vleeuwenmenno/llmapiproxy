@@ -122,6 +122,9 @@ func (h *CodexDeviceCodeHandler) InitiateDeviceCode(ctx context.Context) (*Codex
 		if json.Unmarshal(body, &errResp) == nil && errResp.Error != "" {
 			return nil, &DeviceCodeError{Code: errResp.Error, Description: errResp.ErrorDescription}
 		}
+		if resp.StatusCode == http.StatusForbidden && isCloudflareChallenge(body) {
+			return nil, fmt.Errorf("codex device code: OpenAI blocked the device code request with a Cloudflare challenge; use browser login instead")
+		}
 		return nil, fmt.Errorf("codex device code: unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -250,4 +253,12 @@ func (h *CodexDeviceCodeHandler) HasPendingFlow() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return len(h.pending) > 0
+}
+
+func isCloudflareChallenge(body []byte) bool {
+	s := strings.ToLower(string(body))
+	return strings.Contains(s, "__cf_chl") ||
+		strings.Contains(s, "just a moment") ||
+		strings.Contains(s, "challenge-platform") ||
+		strings.Contains(s, "enable javascript and cookies to continue")
 }

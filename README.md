@@ -203,12 +203,14 @@ backends:
     type: codex
     base_url: https://chatgpt.com/backend-api/codex
     oauth:
-      client_id: "your-codex-client-id"
+      # Optional. Omit this to use the built-in Codex client id.
+      # client_id: "app_EMoamEEZ73f0CkXaXp7hrann"
       scopes:
         - "openid"
         - "profile"
         - "email"
-      auth_url: "https://auth.openai.com/authorize"
+        - "offline_access"
+      auth_url: "https://auth.openai.com/oauth/authorize"
       token_url: "https://auth.openai.com/oauth/token"
     # No api_key needed — uses OAuth.
 ```
@@ -217,7 +219,7 @@ backends:
 
 | Field        | Description                                         |
 | ------------ | --------------------------------------------------- |
-| `client_id`  | OAuth client identifier                             |
+| `client_id`  | Optional OAuth client identifier override           |
 | `scopes`     | List of OAuth scopes to request                     |
 | `auth_url`   | Authorization endpoint URL                          |
 | `token_url`  | Token exchange endpoint URL                         |

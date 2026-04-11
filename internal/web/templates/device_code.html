@@ -138,7 +138,7 @@
 <body>
     <div class="card">
         <h1>Connect {{.BackendName}}</h1>
-        <p class="subtitle">Authorize using GitHub Device Code Flow</p>
+        <p class="subtitle">Authorize using device code flow</p>
 
         <div class="step">
             <span class="step-number">1</span>
@@ -182,35 +182,42 @@
         // Poll for authorization status
         const backend = "{{.BackendName}}";
         const pollInterval = 3000; // 3 seconds
+        const expiresAt = Date.now() + ({{.ExpiresIn}} * 1000);
+
+        function markSuccess() {
+            document.getElementById('status').className = 'status success';
+            document.getElementById('status').innerHTML = '✓ Authorization successful! Redirecting to settings...';
+            setTimeout(() => { window.location.href = '/ui/settings?msg=' + backend + '+authentication+successful!'; }, 1500);
+        }
+
+        function markExpired() {
+            document.getElementById('status').className = 'status error';
+            document.getElementById('status').innerHTML = 'Authorization timed out. Please return to settings and try again.';
+        }
 
         function pollStatus() {
+            if (Date.now() >= expiresAt) {
+                markExpired();
+                return;
+            }
+
             fetch('/ui/oauth/status')
                 .then(r => r.text())
                 .then(html => {
-                    // Check if the backend is now authenticated by parsing the status fragment
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
-                    const cards = doc.querySelectorAll('.oauth-status-card');
-                    for (const card of cards) {
-                        const nameEl = card.querySelector('.oauth-backend-name');
-                        if (nameEl && nameEl.textContent.trim().toLowerCase() === backend.toLowerCase()) {
-                            const stateEl = card.querySelector('.oauth-status-state');
-                            if (stateEl) {
-                                const state = stateEl.textContent.trim().toLowerCase();
-                                if (state.includes('connected') || state.includes('valid')) {
-                                    document.getElementById('status').className = 'status success';
-                                    document.getElementById('status').innerHTML = '✓ Authorization successful! Redirecting to settings...';
-                                    setTimeout(() => { window.location.href = '/ui/settings?msg=' + backend + '+authentication+successful!'; }, 2000);
-                                    return;
-                                }
-                            }
+                    const card = doc.getElementById(`oauth-status-${backend}`);
+                    if (card) {
+                        const authenticated = card.dataset.authenticated === 'true';
+                        const tokenState = (card.dataset.tokenState || '').toLowerCase();
+                        if (authenticated && (tokenState === 'valid' || tokenState === 'expiring')) {
+                            markSuccess();
+                            return;
                         }
                     }
-                    // Still waiting
                     setTimeout(pollStatus, pollInterval);
                 })
                 .catch(() => {
-                    // Network error, keep polling
                     setTimeout(pollStatus, pollInterval);
                 });
         }

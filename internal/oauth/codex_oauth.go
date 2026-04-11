@@ -24,7 +24,7 @@ const (
 	defaultCodexClientID    = "app_EMoamEEZ73f0CkXaXp7hrann"
 	defaultCodexAuthURL     = "https://auth.openai.com/oauth/authorize"
 	defaultCodexTokenURL    = "https://auth.openai.com/oauth/token"
-	defaultCodexRedirectURI = "http://localhost:8000/ui/oauth/callback/codex"
+	defaultCodexRedirectURI = "http://localhost:1455/auth/callback"
 	defaultCodexScope       = "openid profile email offline_access"
 
 	// PKCE parameters.
@@ -72,9 +72,9 @@ func GeneratePKCE() (*PKCEPair, error) {
 
 // PendingOAuthState holds the in-memory state for an in-progress OAuth flow.
 type PendingOAuthState struct {
-	State      string
-	PKCE       *PKCEPair
-	CreatedAt  time.Time
+	State       string
+	PKCE        *PKCEPair
+	CreatedAt   time.Time
 	RedirectURI string
 }
 
@@ -103,6 +103,17 @@ func DefaultCodexOAuthConfig() *CodexOAuthConfig {
 	}
 }
 
+// BuiltinCodexClientID returns the bundled OpenAI Codex client ID.
+func BuiltinCodexClientID() string {
+	return defaultCodexClientID
+}
+
+// BuiltinCodexRedirectURI returns the loopback redirect URI used by the
+// bundled OpenAI Codex client.
+func BuiltinCodexRedirectURI() string {
+	return defaultCodexRedirectURI
+}
+
 // CodexOAuthHandler manages the OAuth PKCE flow for OpenAI Codex.
 // It handles:
 //   - PKCE code verifier/challenge generation (S256)
@@ -118,7 +129,7 @@ type CodexOAuthHandler struct {
 	store  *TokenStore
 	client *http.Client
 
-	mu     sync.RWMutex
+	mu      sync.RWMutex
 	pending map[string]*PendingOAuthState // keyed by state string
 }
 
@@ -469,7 +480,7 @@ func parseTokenResponse(body []byte) (*TokenData, error) {
 		Scope:        resp.Scope,
 		ExpiresAt:    now.Add(time.Duration(resp.ExpiresIn) * time.Second),
 		ObtainedAt:   now,
-		Source:        "codex_oauth",
+		Source:       "codex_oauth",
 	}, nil
 }
 
@@ -494,7 +505,7 @@ func maskTokenBody(body []byte) string {
 // For ":port" or "0.0.0.0:port" forms, "localhost" is used as the host since
 // the redirect must point back to the local machine for the OAuth callback to
 // reach the proxy server.
-func DeriveRedirectURI(listenAddr, backendName string) string {
+func DeriveLocalServerBaseURL(listenAddr string) string {
 	host := "localhost"
 	port := "8000"
 
@@ -523,7 +534,13 @@ func DeriveRedirectURI(listenAddr, backendName string) string {
 		host = "localhost"
 	}
 
-	return fmt.Sprintf("http://%s:%s/ui/oauth/callback/%s", host, port, backendName)
+	return fmt.Sprintf("http://%s:%s", host, port)
+}
+
+// DeriveRedirectURI constructs the OAuth redirect URI from the server's listen
+// address and the backend name.
+func DeriveRedirectURI(listenAddr, backendName string) string {
+	return fmt.Sprintf("%s/ui/oauth/callback/%s", DeriveLocalServerBaseURL(listenAddr), backendName)
 }
 
 // SetRedirectURI updates the redirect URI used in the OAuth flow.

@@ -18,7 +18,7 @@ func helperToken(accessToken string, expiresIn time.Duration) *TokenData {
 		TokenType:   "Bearer",
 		ExpiresAt:   now.Add(expiresIn),
 		ObtainedAt:  now,
-		Source:       "test",
+		Source:      "test",
 	}
 }
 
@@ -30,7 +30,7 @@ func helperExpiredToken(accessToken string) *TokenData {
 		TokenType:   "Bearer",
 		ExpiresAt:   now.Add(-1 * time.Hour),
 		ObtainedAt:  now.Add(-2 * time.Hour),
-		Source:       "test",
+		Source:      "test",
 	}
 }
 
@@ -578,7 +578,7 @@ func TestTokenStore_StaleTokenFallback(t *testing.T) {
 		TokenType:   "Bearer",
 		ExpiresAt:   time.Now().Add(2 * time.Minute),
 		ObtainedAt:  time.Now().Add(-58 * time.Minute),
-		Source:       "test",
+		Source:      "test",
 	}
 	_ = ts.Save(nearExpiry)
 
@@ -768,7 +768,7 @@ func TestTokenData_NeedsRefresh_WithRefreshIn(t *testing.T) {
 		ExpiresAt:   now.Add(1 * time.Hour),
 		ObtainedAt:  now.Add(-30 * time.Minute),
 		RefreshIn:   1200, // 20 minutes = 1200 seconds, obtained 30 min ago → should need refresh
-		Source:       "test",
+		Source:      "test",
 	}
 
 	if !token.NeedsRefresh() {
@@ -783,7 +783,7 @@ func TestTokenData_NeedsRefresh_Default80Percent(t *testing.T) {
 		AccessToken: "test",
 		ExpiresAt:   now.Add(10 * time.Minute),
 		ObtainedAt:  now.Add(-50 * time.Minute),
-		Source:       "test",
+		Source:      "test",
 	}
 
 	if !token.NeedsRefresh() {
@@ -799,7 +799,7 @@ func TestTokenData_NeedsRefresh_NotYet(t *testing.T) {
 		ExpiresAt:   now.Add(55 * time.Minute),
 		ObtainedAt:  now.Add(-5 * time.Minute),
 		RefreshIn:   3600, // 1 hour
-		Source:       "test",
+		Source:      "test",
 	}
 
 	if token.NeedsRefresh() {

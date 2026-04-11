@@ -376,7 +376,7 @@ func TestCopilotProxy_NoFallbackOn4xx(t *testing.T) {
 func TestCopilotProxy_PerClientBackendKeyOverrides(t *testing.T) {
 	// Set up a mock upstream server for the "openrouter" backend.
 	var receivedAuth string
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedAuth = r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -451,7 +451,7 @@ func TestCopilotProxy_PerClientBackendKeyOverrides(t *testing.T) {
 func TestCopilotProxy_BackendKeyOverrideIgnoredForCopilot(t *testing.T) {
 	// Create a Copilot backend with a mock upstream.
 	var receivedAuth string
-	copilotUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	copilotUpstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedAuth = r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -468,12 +468,12 @@ func TestCopilotProxy_BackendKeyOverrideIgnoredForCopilot(t *testing.T) {
 	defer copilotUpstream.Close()
 
 	// Mock GitHub token exchange server.
-	githubAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	githubAPI := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"expires_at": time.Now().Add(30 * time.Minute).Unix(),
 			"refresh_in": 1500,
-			"token":       "test-copilot-token",
+			"token":      "test-copilot-token",
 		})
 	}))
 	defer githubAPI.Close()
@@ -725,12 +725,12 @@ func TestCopilotProxy_StatsRecording_Streaming(t *testing.T) {
 // mockResponsesBackend implements both Backend and ResponsesBackend for testing.
 type mockResponsesBackend struct {
 	mockBackend
-	responsesBody   []byte      // Raw response body for non-streaming
-	responsesErr    error
-	responsesStreamBody string  // Raw SSE stream body for streaming
-	responsesStreamErr  error
+	responsesBody         []byte // Raw response body for non-streaming
+	responsesErr          error
+	responsesStreamBody   string // Raw SSE stream body for streaming
+	responsesStreamErr    error
 	responsesRequestCount int
-	lastResponsesModel   string
+	lastResponsesModel    string
 }
 
 func (m *mockResponsesBackend) Responses(_ context.Context, req *backend.ResponsesRequest) (*backend.ResponsesResponse, error) {

@@ -2,12 +2,12 @@ package oauth
 
 import (
 	"context"
-	"errors"
 	"encoding/json"
+	"errors"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,7 +16,7 @@ import (
 // --- Codex Device Code Flow Tests ---
 
 func TestCodexDeviceCode_InitiateDeviceCode(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
@@ -80,7 +80,7 @@ func TestCodexDeviceCode_InitiateDeviceCode(t *testing.T) {
 }
 
 func TestCodexDeviceCode_InitiateDeviceCode_StoresPending(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(CodexDeviceCodeResponse{
 			DeviceCode:      "DC-pending-test",
@@ -117,9 +117,32 @@ func TestCodexDeviceCode_InitiateDeviceCode_StoresPending(t *testing.T) {
 	}
 }
 
+func TestCodexDeviceCode_InitiateDeviceCode_CloudflareChallenge(t *testing.T) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<!DOCTYPE html><html><head><title>Just a moment...</title></head><body>__cf_chl challenge-platform</body></html>`))
+	}))
+	defer server.Close()
+
+	dir, _ := os.MkdirTemp("", "codex-device-test-*")
+	defer os.RemoveAll(dir)
+
+	ts, _ := NewTokenStore(filepath.Join(dir, "token.json"))
+	handler := NewCodexDeviceCodeHandler(ts, nil, WithCodexDeviceCodeURL(server.URL))
+
+	_, err := handler.InitiateDeviceCode(context.Background())
+	if err == nil {
+		t.Fatal("expected error for Cloudflare challenge response")
+	}
+	if !strings.Contains(err.Error(), "Cloudflare challenge") {
+		t.Fatalf("expected Cloudflare challenge error, got %v", err)
+	}
+}
+
 func TestCodexDeviceCode_PollUntilAuthorized(t *testing.T) {
 	pollCount := 0
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pollCount++
 		if pollCount < 3 {
 			// Return "authorization_pending" for first 2 polls.
@@ -197,7 +220,7 @@ func TestCodexDeviceCode_PollUntilAuthorized(t *testing.T) {
 
 func TestCodexDeviceCode_PollSlowDown(t *testing.T) {
 	pollCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pollCount++
 		if pollCount == 1 {
 			w.Header().Set("Content-Type", "application/json")
@@ -240,7 +263,7 @@ func TestCodexDeviceCode_PollSlowDown(t *testing.T) {
 }
 
 func TestCodexDeviceCode_PollExpired(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"error":             "expired_token",
@@ -276,7 +299,7 @@ func TestCodexDeviceCode_PollExpired(t *testing.T) {
 }
 
 func TestCodexDeviceCode_PollAccessDenied(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"error": "access_denied"})
 	}))
@@ -305,7 +328,7 @@ func TestCodexDeviceCode_PollAccessDenied(t *testing.T) {
 }
 
 func TestCodexDeviceCode_ContextCancellation(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"error": "authorization_pending"})
 	}))
@@ -338,7 +361,7 @@ func TestCodexDeviceCode_ContextCancellation(t *testing.T) {
 
 func TestCodexDeviceCode_FullFlow(t *testing.T) {
 	// Test the complete flow: initiate → poll → tokens persisted.
-	deviceServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	deviceServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(CodexDeviceCodeResponse{
 			DeviceCode:      "DC-full-flow",
@@ -351,7 +374,7 @@ func TestCodexDeviceCode_FullFlow(t *testing.T) {
 	defer deviceServer.Close()
 
 	pollCount := 0
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pollCount++
 		if pollCount < 2 {
 			w.Header().Set("Content-Type", "application/json")
@@ -418,7 +441,7 @@ func TestCodexDeviceCode_TokensUsableForRefresh(t *testing.T) {
 	// Verify that tokens obtained from device code flow can be refreshed
 	// using the same refresh mechanism as PKCE tokens.
 	pollCount := 0
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pollCount++
 		if pollCount == 1 {
 			// Initial device code poll response.
@@ -493,7 +516,7 @@ func TestCodexDeviceCode_TokensUsableForRefresh(t *testing.T) {
 }
 
 func TestCodexDeviceCode_ConcurrentInitiate(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(CodexDeviceCodeResponse{
 			DeviceCode:      "DC-concurrent",
@@ -546,7 +569,7 @@ func TestCodexDeviceCode_ConcurrentInitiate(t *testing.T) {
 }
 
 func TestCodexDeviceCode_InvalidClientID(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
@@ -570,7 +593,7 @@ func TestCodexDeviceCode_InvalidClientID(t *testing.T) {
 
 func TestCodexDeviceCode_DefaultIntervalAndExpiry(t *testing.T) {
 	// When the response doesn't include interval or expires_in, defaults should be used.
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"device_code":      "DC-defaults",

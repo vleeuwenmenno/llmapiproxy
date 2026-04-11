@@ -1,8 +1,10 @@
 package backend
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -150,25 +152,29 @@ func (r *Registry) createCodexBackend(bc config.BackendConfig, existingTS *oauth
 
 	// Build OAuth config from the backend config, falling back to defaults.
 	oauthCfg := oauth.DefaultCodexOAuthConfig()
+	usesBuiltinCodexClient := true
 	if bc.OAuth != nil {
-		if bc.OAuth.ClientID != "" {
-			oauthCfg.ClientID = bc.OAuth.ClientID
+		if clientID := normalizeCodexClientID(bc.OAuth.ClientID); clientID != "" {
+			oauthCfg.ClientID = clientID
 		}
-		if bc.OAuth.AuthURL != "" {
-			oauthCfg.AuthURL = bc.OAuth.AuthURL
+		if authURL := normalizeCodexAuthURL(bc.OAuth.AuthURL); authURL != "" {
+			oauthCfg.AuthURL = authURL
 		}
 		if bc.OAuth.TokenURL != "" {
 			oauthCfg.TokenURL = bc.OAuth.TokenURL
 		}
-		if len(bc.OAuth.Scopes) > 0 {
-			oauthCfg.Scope = strings.Join(bc.OAuth.Scopes, " ")
+		if scopes := normalizeCodexScopes(bc.OAuth.Scopes); len(scopes) > 0 {
+			oauthCfg.Scope = strings.Join(scopes, " ")
 		}
 	}
+	usesBuiltinCodexClient = oauthCfg.ClientID == oauth.BuiltinCodexClientID()
 
-	// Derive the redirect URI from the server's actual listen address and
-	// the backend name, instead of using the hardcoded default.
-	redirectURI := oauth.DeriveRedirectURI(r.listenAddr, bc.Name)
-	oauthCfg.RedirectURI = redirectURI
+	// The bundled Codex client expects the official loopback callback on
+	// localhost:1455. Custom OAuth clients can keep using the proxy-hosted
+	// callback route under /ui/oauth/callback/<backend>.
+	if !usesBuiltinCodexClient {
+		oauthCfg.RedirectURI = oauth.DeriveRedirectURI(r.listenAddr, bc.Name)
+	}
 
 	oauthHandler := oauth.NewCodexOAuthHandler(ts, oauthCfg)
 
@@ -176,6 +182,90 @@ func (r *Registry) createCodexBackend(bc config.BackendConfig, existingTS *oauth
 	deviceCodeHandler := oauth.NewCodexDeviceCodeHandler(ts, oauthCfg)
 
 	return NewCodexBackend(bc, oauthHandler, ts, deviceCodeHandler), ts, nil
+}
+
+// HandleCodexLoopbackCallback routes a loopback OAuth callback to the Codex
+// backend that owns the pending state.
+func (r *Registry) HandleCodexLoopbackCallback(ctx context.Context, code string, state string) (string, error) {
+	r.mu.RLock()
+	candidates := make([]*CodexBackend, 0, len(r.backends))
+	for _, b := range r.backends {
+		codexBackend, ok := b.(*CodexBackend)
+		if ok {
+			candidates = append(candidates, codexBackend)
+		}
+	}
+	r.mu.RUnlock()
+
+	for _, candidate := range candidates {
+		if candidate.GetOAuthHandler().GetPendingState(state) == nil {
+			continue
+		}
+		if err := candidate.HandleCallback(ctx, code, state); err != nil {
+			return candidate.Name(), err
+		}
+		return candidate.Name(), nil
+	}
+
+	return "", fmt.Errorf("no pending codex oauth flow matched the callback state")
+}
+
+func normalizeCodexClientID(clientID string) string {
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		return ""
+	}
+
+	switch strings.ToLower(clientID) {
+	case "your-codex-client-id", "your-client-id", "<your-codex-client-id>", "replace-me":
+		log.Printf("warning: ignoring placeholder codex oauth client_id %q; using built-in client id", clientID)
+		return ""
+	default:
+		return clientID
+	}
+}
+
+func normalizeCodexAuthURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+
+	if strings.EqualFold(u.Host, "auth.openai.com") && u.Path == "/authorize" {
+		u.Path = "/oauth/authorize"
+		log.Printf("warning: normalizing legacy Codex auth_url %q to %q", raw, u.String())
+		return u.String()
+	}
+
+	return raw
+}
+
+func normalizeCodexScopes(scopes []string) []string {
+	if len(scopes) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]bool, len(scopes)+1)
+	out := make([]string, 0, len(scopes)+1)
+	for _, scope := range scopes {
+		scope = strings.TrimSpace(scope)
+		if scope == "" || seen[scope] {
+			continue
+		}
+		seen[scope] = true
+		out = append(out, scope)
+	}
+
+	if !seen["offline_access"] {
+		out = append(out, "offline_access")
+	}
+
+	return out
 }
 
 // Resolve parses a model string like "openrouter/openai/gpt-5.2" and returns

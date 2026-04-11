@@ -39,7 +39,7 @@ func codexTestHelper(t *testing.T) (*CodexBackend, *httptest.Server, func()) {
 	}
 
 	// Create a mock OAuth token server.
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"access_token":  "test-access-token-refreshed",
@@ -58,7 +58,7 @@ func codexTestHelper(t *testing.T) (*CodexBackend, *httptest.Server, func()) {
 	// Create mock Codex upstream (Responses API).
 	// Responds with SSE events since ChatCompletion now forces stream=true
 	// internally for prompt caching consistency.
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check if this is a streaming request.
 		var reqBody map[string]json.RawMessage
 		raw, _ := io.ReadAll(r.Body)
@@ -148,11 +148,11 @@ func codexStreamResponse(w http.ResponseWriter, response map[string]any) {
 	// Send text delta events.
 	if text != "" {
 		deltaEvent := map[string]any{
-			"type":           "response.output_text.delta",
-			"delta":          text,
-			"item_id":        "msg-test",
-			"output_index":   0,
-			"content_index":  0,
+			"type":          "response.output_text.delta",
+			"delta":         text,
+			"item_id":       "msg-test",
+			"output_index":  0,
+			"content_index": 0,
 		}
 		deltaJSON, _ := json.Marshal(deltaEvent)
 		fmt.Fprintf(w, "data: %s\n\n", deltaJSON)
@@ -172,7 +172,6 @@ func codexStreamResponse(w http.ResponseWriter, response map[string]any) {
 		f.Flush()
 	}
 }
-
 
 // codexRespondWithJSON sends a response as SSE if the request has stream=true,
 // or as plain JSON otherwise. Used for test handlers that need to support both modes.
@@ -2204,7 +2203,7 @@ func TestCodexBackend_DeviceCodeLogin(t *testing.T) {
 
 	// Mock token server (for polling). Must stay alive for background goroutine.
 	pollCount := 0
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pollCount++
 		if pollCount < 2 {
 			w.Header().Set("Content-Type", "application/json")
@@ -2222,7 +2221,7 @@ func TestCodexBackend_DeviceCodeLogin(t *testing.T) {
 	defer tokenServer.Close()
 
 	// Mock device code server.
-	deviceCodeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	deviceCodeServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(oauth.CodexDeviceCodeResponse{
 			DeviceCode:      "DC-codex-test",

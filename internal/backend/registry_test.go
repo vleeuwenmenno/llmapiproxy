@@ -2,6 +2,7 @@ package backend
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -860,7 +861,7 @@ func TestRegistry_CodexBackend_DerivedRedirectURI(t *testing.T) {
 	}
 
 	redirectURI := u.Query().Get("redirect_uri")
-	expected := "http://localhost:9000/ui/oauth/callback/codex"
+	expected := oauth.BuiltinCodexRedirectURI()
 	if redirectURI != expected {
 		t.Errorf("redirect_uri = %q, want %q", redirectURI, expected)
 	}
@@ -905,13 +906,13 @@ func TestRegistry_CodexBackend_DefaultListenAddr(t *testing.T) {
 	}
 
 	redirectURI := u.Query().Get("redirect_uri")
-	expected := "http://localhost:8000/ui/oauth/callback/codex"
+	expected := oauth.BuiltinCodexRedirectURI()
 	if redirectURI != expected {
 		t.Errorf("redirect_uri = %q, want %q", redirectURI, expected)
 	}
 }
 
-func TestRegistry_CodexBackend_CustomBackendName(t *testing.T) {
+func TestRegistry_CodexBackend_BuiltinClientIgnoresBackendNameInRedirectURI(t *testing.T) {
 	cfg := &config.Config{
 		Server: config.ServerConfig{
 			Listen: ":8000",
@@ -950,9 +951,179 @@ func TestRegistry_CodexBackend_CustomBackendName(t *testing.T) {
 	}
 
 	redirectURI := u.Query().Get("redirect_uri")
-	expected := "http://localhost:8000/ui/oauth/callback/my-codex"
+	expected := oauth.BuiltinCodexRedirectURI()
 	if redirectURI != expected {
 		t.Errorf("redirect_uri = %q, want %q", redirectURI, expected)
+	}
+}
+
+func TestRegistry_CodexBackend_CustomClientUsesUIRedirectURI(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Listen: ":8123",
+		},
+		Backends: []config.BackendConfig{
+			{
+				Name:    "my-codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+				OAuth: &config.OAuthConfig{
+					ClientID: "custom-client-id",
+				},
+			},
+		},
+	}
+
+	r := NewRegistry()
+	r.LoadFromConfig(cfg)
+
+	b := r.Get("my-codex")
+	if b == nil {
+		t.Fatal("my-codex backend is nil")
+	}
+
+	codexBackend := b.(*CodexBackend)
+	authURL, _, err := codexBackend.GetOAuthHandler().AuthorizeURL()
+	if err != nil {
+		t.Fatalf("AuthorizeURL() error: %v", err)
+	}
+
+	u, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parsing auth URL: %v", err)
+	}
+
+	redirectURI := u.Query().Get("redirect_uri")
+	expected := "http://localhost:8123/ui/oauth/callback/my-codex"
+	if redirectURI != expected {
+		t.Errorf("redirect_uri = %q, want %q", redirectURI, expected)
+	}
+}
+
+func TestRegistry_CodexBackend_IgnoresPlaceholderClientID(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Listen: ":8000",
+		},
+		Backends: []config.BackendConfig{
+			{
+				Name:    "codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+				OAuth: &config.OAuthConfig{
+					ClientID: "your-codex-client-id",
+				},
+			},
+		},
+	}
+
+	r := NewRegistry()
+	r.LoadFromConfig(cfg)
+
+	b := r.Get("codex")
+	if b == nil {
+		t.Fatal("codex backend is nil")
+	}
+
+	codexBackend := b.(*CodexBackend)
+	authURL, _, err := codexBackend.GetOAuthHandler().AuthorizeURL()
+	if err != nil {
+		t.Fatalf("AuthorizeURL() error: %v", err)
+	}
+
+	u, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parsing auth URL: %v", err)
+	}
+
+	gotClientID := u.Query().Get("client_id")
+	if gotClientID == "your-codex-client-id" {
+		t.Fatalf("placeholder client_id leaked into authorize URL")
+	}
+	if gotClientID == "" {
+		t.Fatalf("expected built-in client_id to be used")
+	}
+}
+
+func TestRegistry_CodexBackend_NormalizesLegacyAuthURL(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Listen: ":8000",
+		},
+		Backends: []config.BackendConfig{
+			{
+				Name:    "codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+				OAuth: &config.OAuthConfig{
+					AuthURL: "https://auth.openai.com/authorize",
+				},
+			},
+		},
+	}
+
+	r := NewRegistry()
+	r.LoadFromConfig(cfg)
+
+	b := r.Get("codex")
+	if b == nil {
+		t.Fatal("codex backend is nil")
+	}
+
+	codexBackend := b.(*CodexBackend)
+	authURL, _, err := codexBackend.GetOAuthHandler().AuthorizeURL()
+	if err != nil {
+		t.Fatalf("AuthorizeURL() error: %v", err)
+	}
+
+	u, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parsing auth URL: %v", err)
+	}
+
+	if got := u.Scheme + "://" + u.Host + u.Path; got != "https://auth.openai.com/oauth/authorize" {
+		t.Fatalf("normalized auth url = %q, want %q", got, "https://auth.openai.com/oauth/authorize")
+	}
+}
+
+func TestRegistry_CodexBackend_AppendsOfflineAccessScope(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Listen: ":8000",
+		},
+		Backends: []config.BackendConfig{
+			{
+				Name:    "codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+				OAuth: &config.OAuthConfig{
+					Scopes: []string{"openid", "profile", "email"},
+				},
+			},
+		},
+	}
+
+	r := NewRegistry()
+	r.LoadFromConfig(cfg)
+
+	b := r.Get("codex")
+	if b == nil {
+		t.Fatal("codex backend is nil")
+	}
+
+	codexBackend := b.(*CodexBackend)
+	authURL, _, err := codexBackend.GetOAuthHandler().AuthorizeURL()
+	if err != nil {
+		t.Fatalf("AuthorizeURL() error: %v", err)
+	}
+
+	u, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parsing auth URL: %v", err)
+	}
+
+	if got := u.Query().Get("scope"); !strings.Contains(got, "offline_access") {
+		t.Fatalf("expected offline_access scope to be appended, got %q", got)
 	}
 }
 
@@ -995,7 +1166,7 @@ func TestRegistry_CodexBackend_WildcardListenAddr(t *testing.T) {
 	}
 
 	redirectURI := u.Query().Get("redirect_uri")
-	expected := "http://localhost:8080/ui/oauth/callback/codex"
+	expected := oauth.BuiltinCodexRedirectURI()
 	if redirectURI != expected {
 		t.Errorf("redirect_uri = %q, want %q", redirectURI, expected)
 	}

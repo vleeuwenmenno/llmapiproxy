@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -235,7 +234,7 @@ func TestHandleCallback_Success(t *testing.T) {
 	var receivedCode string
 	var receivedVerifier string
 	var receivedRedirectURI string
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		values, _ := url.ParseQuery(string(body))
 		receivedCode = values.Get("code")
@@ -340,7 +339,7 @@ func TestHandleCallback_MissingState(t *testing.T) {
 }
 
 func TestHandleCallback_ReplayProtection(t *testing.T) {
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(tokenResponse{
 			AccessToken:  "test-access-token",
@@ -381,7 +380,7 @@ func TestHandleCallback_ReplayProtection(t *testing.T) {
 }
 
 func TestHandleCallback_TokenExchangeFailure(t *testing.T) {
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"error":"invalid_grant"}`))
 	}))
@@ -415,7 +414,7 @@ func TestHandleCallback_TokenExchangeFailure(t *testing.T) {
 
 func TestRefreshToken_Success(t *testing.T) {
 	var receivedRefreshToken string
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		values, _ := url.ParseQuery(string(body))
 		receivedRefreshToken = values.Get("refresh_token")
@@ -441,7 +440,7 @@ func TestRefreshToken_Success(t *testing.T) {
 		TokenType:    "Bearer",
 		ExpiresAt:    time.Now().Add(-1 * time.Hour), // expired
 		ObtainedAt:   time.Now().Add(-2 * time.Hour),
-		Source:        "codex_oauth",
+		Source:       "codex_oauth",
 	})
 
 	handler := NewCodexOAuthHandler(store, &CodexOAuthConfig{
@@ -503,7 +502,7 @@ func TestRefreshToken_NoRefreshToken(t *testing.T) {
 		TokenType:   "Bearer",
 		ExpiresAt:   time.Now().Add(1 * time.Hour),
 		ObtainedAt:  time.Now(),
-		Source:       "codex_oauth",
+		Source:      "codex_oauth",
 	})
 
 	handler := NewCodexOAuthHandler(store, nil)
@@ -518,7 +517,7 @@ func TestRefreshToken_NoRefreshToken(t *testing.T) {
 }
 
 func TestRefreshToken_RefreshTokenRevoked(t *testing.T) {
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error":"invalid_grant","error_description":"The refresh token is invalid or expired."}`))
 	}))
@@ -533,7 +532,7 @@ func TestRefreshToken_RefreshTokenRevoked(t *testing.T) {
 		TokenType:    "Bearer",
 		ExpiresAt:    time.Now().Add(-1 * time.Hour),
 		ObtainedAt:   time.Now().Add(-2 * time.Hour),
-		Source:        "codex_oauth",
+		Source:       "codex_oauth",
 	})
 
 	handler := NewCodexOAuthHandler(store, &CodexOAuthConfig{
@@ -554,7 +553,7 @@ func TestRefreshToken_RefreshTokenRevoked(t *testing.T) {
 
 func TestRefreshToken_Rotation(t *testing.T) {
 	callCount := 0
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(tokenResponse{
@@ -576,7 +575,7 @@ func TestRefreshToken_Rotation(t *testing.T) {
 		TokenType:    "Bearer",
 		ExpiresAt:    time.Now().Add(-1 * time.Hour),
 		ObtainedAt:   time.Now().Add(-2 * time.Hour),
-		Source:        "codex_oauth",
+		Source:       "codex_oauth",
 	})
 
 	handler := NewCodexOAuthHandler(store, &CodexOAuthConfig{
@@ -645,7 +644,7 @@ func TestPKCEVerifier_NeverPersisted(t *testing.T) {
 func TestPKCEVerifier_NotInTokenData(t *testing.T) {
 	// Complete a full OAuth flow and verify the persisted token doesn't
 	// contain the PKCE verifier.
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(tokenResponse{
 			AccessToken:  "test-access",
@@ -702,14 +701,14 @@ func TestStateCleanup_OnCallback(t *testing.T) {
 	handler := NewCodexOAuthHandler(store, nil)
 
 	// Create a pending state.
-	 handler.AuthorizeURL()
+	handler.AuthorizeURL()
 	if handler.PendingStateCount() != 1 {
 		t.Fatalf("pending state count = %d, want 1", handler.PendingStateCount())
 	}
 
 	// The pending state should be removed after callback (even if it fails).
 	// We'll use an invalid code but a valid state.
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer tokenServer.Close()
@@ -821,7 +820,7 @@ func TestRefreshWithRetry_CachedTokenValid(t *testing.T) {
 		TokenType:    "Bearer",
 		ExpiresAt:    time.Now().Add(1 * time.Hour),
 		ObtainedAt:   time.Now(),
-		Source:        "codex_oauth",
+		Source:       "codex_oauth",
 	})
 
 	handler := NewCodexOAuthHandler(store, nil)
@@ -836,7 +835,7 @@ func TestRefreshWithRetry_CachedTokenValid(t *testing.T) {
 }
 
 func TestRefreshWithRetry_ExpiredTokenRefreshes(t *testing.T) {
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(tokenResponse{
 			AccessToken:  "refreshed-access",
@@ -856,7 +855,7 @@ func TestRefreshWithRetry_ExpiredTokenRefreshes(t *testing.T) {
 		TokenType:    "Bearer",
 		ExpiresAt:    time.Now().Add(-1 * time.Hour), // expired
 		ObtainedAt:   time.Now().Add(-2 * time.Hour),
-		Source:        "codex_oauth",
+		Source:       "codex_oauth",
 	})
 
 	handler := NewCodexOAuthHandler(store, &CodexOAuthConfig{
@@ -879,7 +878,7 @@ func TestRefreshWithRetry_ConcurrentRefresh(t *testing.T) {
 	// Simulate concurrent refresh requests — only one should hit the token server.
 	callCount := 0
 	var mu sync.Mutex
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		callCount++
 		mu.Unlock()
@@ -906,7 +905,7 @@ func TestRefreshWithRetry_ConcurrentRefresh(t *testing.T) {
 		TokenType:    "Bearer",
 		ExpiresAt:    time.Now().Add(-1 * time.Hour),
 		ObtainedAt:   time.Now().Add(-2 * time.Hour),
-		Source:        "codex_oauth",
+		Source:       "codex_oauth",
 	})
 
 	handler := NewCodexOAuthHandler(store, &CodexOAuthConfig{
@@ -949,7 +948,7 @@ func TestRefreshWithRetry_ConcurrentRefresh(t *testing.T) {
 func TestRefreshWithRetry_StaleTokenFallback(t *testing.T) {
 	// When refresh fails but the cached token is still usable (not expired),
 	// the stale token should be returned.
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer tokenServer.Close()
@@ -963,9 +962,9 @@ func TestRefreshWithRetry_StaleTokenFallback(t *testing.T) {
 		RefreshToken: "stale-refresh",
 		TokenType:    "Bearer",
 		ExpiresAt:    time.Now().Add(5 * time.Minute), // still valid for 5 min
-		RefreshIn:    -1,                               // negative to force NeedsRefresh
+		RefreshIn:    -1,                              // negative to force NeedsRefresh
 		ObtainedAt:   time.Now().Add(-2 * time.Hour),
-		Source:        "codex_oauth",
+		Source:       "codex_oauth",
 	})
 
 	handler := NewCodexOAuthHandler(store, &CodexOAuthConfig{
@@ -1010,6 +1009,15 @@ func TestDefaultCodexOAuthConfig(t *testing.T) {
 	}
 }
 
+func TestBuiltinCodexOAuthValues(t *testing.T) {
+	if BuiltinCodexClientID() != defaultCodexClientID {
+		t.Errorf("BuiltinCodexClientID() = %q, want %q", BuiltinCodexClientID(), defaultCodexClientID)
+	}
+	if BuiltinCodexRedirectURI() != defaultCodexRedirectURI {
+		t.Errorf("BuiltinCodexRedirectURI() = %q, want %q", BuiltinCodexRedirectURI(), defaultCodexRedirectURI)
+	}
+}
+
 // ============================================================================
 // Helper functions
 // ============================================================================
@@ -1027,6 +1035,14 @@ func newTestTokenStore(t *testing.T) *TokenStore {
 // ============================================================================
 // DeriveRedirectURI Tests
 // ============================================================================
+
+func TestDeriveLocalServerBaseURL_PortOnly(t *testing.T) {
+	got := DeriveLocalServerBaseURL(":8000")
+	want := "http://localhost:8000"
+	if got != want {
+		t.Errorf("DeriveLocalServerBaseURL(\":8000\") = %q, want %q", got, want)
+	}
+}
 
 func TestDeriveRedirectURI_PortOnly(t *testing.T) {
 	got := DeriveRedirectURI(":8000", "codex")
@@ -1151,7 +1167,7 @@ func TestSetRedirectURI_UsedInAuthorizeURL(t *testing.T) {
 
 func TestSetRedirectURI_UsedInCallbackExchange(t *testing.T) {
 	var receivedRedirectURI string
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		values, _ := url.ParseQuery(string(body))
 		receivedRedirectURI = values.Get("redirect_uri")

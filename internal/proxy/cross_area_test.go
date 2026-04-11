@@ -52,7 +52,7 @@ func copilotTestEnv(t *testing.T, opts ...func(*copilotTestOpts)) (*backend.Copi
 	tracker := &copilotTracker{}
 
 	// Mock GitHub token exchange server.
-	githubAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	githubAPI := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tracker.mu.Lock()
 		tracker.githubExchangeCount++
 		tracker.mu.Unlock()
@@ -61,12 +61,12 @@ func copilotTestEnv(t *testing.T, opts ...func(*copilotTestOpts)) (*backend.Copi
 		json.NewEncoder(w).Encode(map[string]any{
 			"expires_at": time.Now().Add(30 * time.Minute).Unix(),
 			"refresh_in": 1500,
-			"token":       o.copilotToken,
+			"token":      o.copilotToken,
 		})
 	}))
 
 	// Mock Copilot upstream API.
-	copilotUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	copilotUpstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tracker.mu.Lock()
 		tracker.upstreamRequestCount++
 		tracker.lastAuth = r.Header.Get("Authorization")
@@ -150,7 +150,7 @@ type copilotTracker struct {
 func openaiTestEnv(t *testing.T) (backend.Backend, func()) {
 	t.Helper()
 
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"id":      "chatcmpl-openai-test",
@@ -522,17 +522,17 @@ func TestCrossArea_TokenPersistenceAcrossRestarts(t *testing.T) {
 
 	tokenPath := filepath.Join(tempDir, "copilot-token.json")
 
-	githubAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	githubAPI := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"expires_at": time.Now().Add(30 * time.Minute).Unix(),
 			"refresh_in": 1500,
-			"token":       "copilot-persist-test-token",
+			"token":      "copilot-persist-test-token",
 		})
 	}))
 	defer githubAPI.Close()
 
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"id":      "chatcmpl-test",
@@ -669,7 +669,7 @@ func TestCrossArea_NoGitHubToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("upstream should not be called")
 	}))
 	defer upstream.Close()
@@ -713,7 +713,7 @@ func TestCrossArea_OAuthCallbackErrors(t *testing.T) {
 	ts, _ := oauth.NewTokenStore(filepath.Join(tempDir, "codex-token.json"))
 
 	// Mock OAuth server that returns error on token exchange.
-	oauthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	oauthServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(400)
 		json.NewEncoder(w).Encode(map[string]any{
@@ -766,8 +766,8 @@ func TestCrossArea_OAuthTokenExpiry_NoRefresh(t *testing.T) {
 	oauthHandler := oauth.NewCodexOAuthHandler(ts, oauthCfg)
 	b := backend.NewCodexBackend(
 		config.BackendConfig{
-			Name:    "codex", Type:    "codex", BaseURL: "https://chatgpt.com/backend-api/codex",
-			Models:  []string{"o4-mini"},
+			Name: "codex", Type: "codex", BaseURL: "https://chatgpt.com/backend-api/codex",
+			Models: []string{"o4-mini"},
 		},
 		oauthHandler, ts, nil)
 
@@ -810,7 +810,7 @@ func TestCrossArea_SimultaneousOAuthFlows(t *testing.T) {
 		Source:       "codex_oauth",
 	})
 
-	codexUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	codexUpstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"id":     "resp-test",
@@ -827,8 +827,8 @@ func TestCrossArea_SimultaneousOAuthFlows(t *testing.T) {
 	codexHandler := oauth.NewCodexOAuthHandler(codexTS, oauthCfg)
 	codexB := backend.NewCodexBackend(
 		config.BackendConfig{
-			Name:    "codex", Type:    "codex", BaseURL: codexUpstream.URL,
-			Models:  []string{"o4-mini"},
+			Name: "codex", Type: "codex", BaseURL: codexUpstream.URL,
+			Models: []string{"o4-mini"},
 		},
 		codexHandler, codexTS, nil)
 
@@ -1038,7 +1038,7 @@ backends:
 // --- VAL-CROSS-017: OAuth streaming ---
 
 func TestCrossArea_OAuthStreaming(t *testing.T) {
-	sseUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	sseUpstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		flusher, _ := w.(http.Flusher)
@@ -1272,7 +1272,7 @@ func TestCrossArea_CodexOAuthPKCEFlow(t *testing.T) {
 
 	ts, _ := oauth.NewTokenStore(filepath.Join(tempDir, "codex-token.json"))
 
-	oauthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	oauthServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"access_token":  "test-access-token",

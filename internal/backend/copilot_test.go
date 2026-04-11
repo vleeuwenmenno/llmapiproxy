@@ -37,7 +37,7 @@ func newTestCopilotBackend(t *testing.T) (*CopilotBackend, *httptest.Server) {
 	t.Helper()
 
 	// Create a mock Copilot upstream API (api.githubcopilot.com equivalent).
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Default handler; individual tests override via closures.
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -90,7 +90,7 @@ func newTestCopilotBackend(t *testing.T) (*CopilotBackend, *httptest.Server) {
 func newTestCopilotBackendWithExchange(t *testing.T) (*CopilotBackend, *httptest.Server, *httptest.Server) {
 	t.Helper()
 
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"id":      "chatcmpl-test",
@@ -116,7 +116,7 @@ func newTestCopilotBackendWithExchange(t *testing.T) (*CopilotBackend, *httptest
 	}))
 
 	expiresAt := time.Now().Add(30 * time.Minute).Unix()
-	githubAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	githubAPI := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"expires_at": expiresAt,
@@ -1203,7 +1203,7 @@ func TestCopilotBackend_OAuthStatus_ExpiredTokenNoGitHubToken(t *testing.T) {
 
 func TestCopilotBackend_RefreshOAuthStatus_Success(t *testing.T) {
 	// Create a mock GitHub API server that handles the Copilot token exchange
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mockServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/copilot_internal/v2/token" {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1225,11 +1225,11 @@ func TestCopilotBackend_RefreshOAuthStatus_Success(t *testing.T) {
 
 	// Store an expired token with a GitHub token (so re-exchange is possible)
 	ts.Save(&oauth.TokenData{
-		AccessToken:  "expired-copilot-token",
-		ExpiresAt:    time.Now().Add(-1 * time.Hour),
-		ObtainedAt:   time.Now().Add(-2 * time.Hour),
-		Source:       "device_code_flow",
-		GitHubToken:  "test-github-token",
+		AccessToken: "expired-copilot-token",
+		ExpiresAt:   time.Now().Add(-1 * time.Hour),
+		ObtainedAt:  time.Now().Add(-2 * time.Hour),
+		Source:      "device_code_flow",
+		GitHubToken: "test-github-token",
 	})
 
 	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts,

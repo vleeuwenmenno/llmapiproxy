@@ -846,8 +846,9 @@
             </div>
             <p class=section-desc>
                 Authentication status for OAuth-based backends (Copilot, Codex).
-                Tokens are automatically refreshed. Use <strong>Connect</strong> to initiate OAuth for Codex,
-                or <strong>Disconnect</strong> to clear stored tokens.
+                Tokens are automatically refreshed when possible. Use <strong>Connect</strong> to start
+                GitHub Copilot device-code login or the Codex browser/device flow, and <strong>Disconnect</strong>
+                to clear stored tokens.
             </p>
             {{template "oauth_status.html" .OAuthStatuses}}
         </div>

@@ -3,9 +3,9 @@ package web
 import (
 	"encoding/json"
 	"io"
-	"net/url"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -176,8 +176,35 @@ func TestOAuthStatus_ShowsVisualIndicators(t *testing.T) {
 	if !strings.Contains(body, "oauth-status-dot-valid") {
 		t.Error("expected green dot class for valid token")
 	}
+	if !strings.Contains(body, `data-authenticated="true"`) {
+		t.Error("expected oauth status card to expose authenticated state for polling")
+	}
+	if !strings.Contains(body, `data-token-state="valid"`) {
+		t.Error("expected oauth status card to expose token state for polling")
+	}
 	if !strings.Contains(body, "Connected") {
 		t.Error("expected 'Connected' text for valid token")
+	}
+}
+
+func TestDeviceCodeTemplate_PollsUsingOAuthStatusCardData(t *testing.T) {
+	data, err := templateFS.ReadFile("templates/device_code.html")
+	if err != nil {
+		t.Fatalf("reading device code template: %v", err)
+	}
+
+	body := string(data)
+	if !strings.Contains(body, "getElementById(`oauth-status-${backend}`)") {
+		t.Error("expected device code template to look up the current oauth status card by id")
+	}
+	if !strings.Contains(body, "card.dataset.authenticated") {
+		t.Error("expected device code template to read authenticated state from data attributes")
+	}
+	if !strings.Contains(body, "card.dataset.tokenState") {
+		t.Error("expected device code template to read token state from data attributes")
+	}
+	if !strings.Contains(body, "Authorization timed out") {
+		t.Error("expected device code template to stop polling after device code expiry")
 	}
 }
 
@@ -344,7 +371,7 @@ func TestOAuthLogin_CodexRedirects(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/ui/oauth/login/{backend}", ui.OAuthLogin)
 
-	server := httptest.NewServer(r)
+	server := newTestServer(t, r)
 	defer server.Close()
 
 	// Use a client that does not follow redirects so we can check the 302.
@@ -375,6 +402,9 @@ func TestOAuthLogin_CodexRedirects(t *testing.T) {
 	if !strings.Contains(location, "state=") {
 		t.Errorf("expected state in redirect URL, got %s", location)
 	}
+	if !strings.Contains(location, url.QueryEscape(oauth.BuiltinCodexRedirectURI())) {
+		t.Errorf("expected built-in Codex redirect URI %q, got %s", oauth.BuiltinCodexRedirectURI(), location)
+	}
 }
 
 func TestOAuthLogin_UnknownBackendReturns404(t *testing.T) {
@@ -384,7 +414,7 @@ func TestOAuthLogin_UnknownBackendReturns404(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/ui/oauth/login/{backend}", ui.OAuthLogin)
 
-	server := httptest.NewServer(r)
+	server := newTestServer(t, r)
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/ui/oauth/login/nonexistent")
@@ -405,7 +435,7 @@ func TestOAuthLogin_CopilotInitiatesDeviceCodeFlow(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/ui/oauth/login/{backend}", ui.OAuthLogin)
 
-	server := httptest.NewServer(r)
+	server := newTestServer(t, r)
 	defer server.Close()
 
 	// Copilot now supports OAuth login via device code flow.
@@ -436,7 +466,7 @@ func TestOAuthCallback_MissingParamsReturns400(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/ui/oauth/callback/{backend}", ui.OAuthCallback)
 
-	server := httptest.NewServer(r)
+	server := newTestServer(t, r)
 	defer server.Close()
 
 	// Missing code and state
@@ -467,7 +497,7 @@ func TestOAuthCallback_ErrorParamRedirectsToSettings(t *testing.T) {
 
 	resp, err := client.Get("http://localhost" + "/ui/oauth/callback/codex?error=access_denied&error_description=User+denied+access")
 	// Use the test server directly
-	server := httptest.NewServer(r)
+	server := newTestServer(t, r)
 	defer server.Close()
 
 	resp, err = client.Get(server.URL + "/ui/oauth/callback/codex?error=access_denied&error_description=User+denied+access")
@@ -517,7 +547,7 @@ func TestOAuthDisconnect_ClearsToken(t *testing.T) {
 	r := chi.NewRouter()
 	r.Post("/ui/oauth/disconnect/{backend}", ui.OAuthDisconnect)
 
-	server := httptest.NewServer(r)
+	server := newTestServer(t, r)
 	defer server.Close()
 
 	client := &http.Client{
@@ -728,9 +758,19 @@ func TestSettingsPage_IncludesOAuthCSS(t *testing.T) {
 	}
 }
 
-func TestOAuthStatus_CopilotShowsCheckStatusButton(t *testing.T) {
+func TestOAuthStatus_CopilotShowsConnectButtonWhenMissingToken(t *testing.T) {
 	ui, cleanup := createTestUI(t)
 	defer cleanup()
+
+	b := ui.registry.Get("copilot")
+	if b == nil {
+		t.Fatal("copilot backend not found")
+	}
+	if disconnecter, ok := b.(backend.OAuthDisconnectHandler); ok {
+		if err := disconnecter.Disconnect(); err != nil {
+			t.Fatalf("disconnecting copilot token: %v", err)
+		}
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/ui/oauth/status", nil)
 	w := httptest.NewRecorder()
@@ -739,19 +779,33 @@ func TestOAuthStatus_CopilotShowsCheckStatusButton(t *testing.T) {
 
 	body := w.Body.String()
 
-	// Copilot backend should show a Check Status button
-	if !strings.Contains(body, "Check Status") {
-		t.Error("expected 'Check Status' button for Copilot backend")
+	if !strings.Contains(body, `href="/ui/oauth/login/copilot"`) {
+		t.Error("expected Copilot connect button to point to /ui/oauth/login/copilot")
 	}
-	// The Check Status button should use HTMX to refresh the status
-	if !strings.Contains(body, "btn-oauth-secondary") {
-		t.Error("expected btn-oauth-secondary class for Check Status button")
+	if !strings.Contains(body, `target="_blank"`) {
+		t.Error("expected OAuth connect links to open in a new tab")
+	}
+	if !strings.Contains(body, `rel="noopener noreferrer"`) {
+		t.Error("expected OAuth connect links to use noopener noreferrer")
+	}
+	if !strings.Contains(body, "Connect") {
+		t.Error("expected Copilot connect button label when no token is stored")
 	}
 }
 
-func TestOAuthStatus_CheckStatusButtonUsesHTMX(t *testing.T) {
+func TestOAuthStatus_CodexConnectLinksOpenInNewTab(t *testing.T) {
 	ui, cleanup := createTestUI(t)
 	defer cleanup()
+
+	b := ui.registry.Get("codex")
+	if b == nil {
+		t.Fatal("codex backend not found")
+	}
+	if disconnecter, ok := b.(backend.OAuthDisconnectHandler); ok {
+		if err := disconnecter.Disconnect(); err != nil {
+			t.Fatalf("disconnecting codex token: %v", err)
+		}
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/ui/oauth/status", nil)
 	w := httptest.NewRecorder()
@@ -760,12 +814,48 @@ func TestOAuthStatus_CheckStatusButtonUsesHTMX(t *testing.T) {
 
 	body := w.Body.String()
 
-	// The Check Status button should use hx-post to trigger a proactive token check
+	if !strings.Contains(body, `href="/ui/oauth/login/codex" class="btn btn-oauth-primary" target="_blank" rel="noopener noreferrer"`) {
+		t.Error("expected Codex browser connect link to open in a new tab")
+	}
+	if !strings.Contains(body, `href="/ui/oauth/device-login/codex" class="btn btn-oauth-secondary" target="_blank" rel="noopener noreferrer"`) {
+		t.Error("expected Codex device code link to open in a new tab")
+	}
+}
+
+func TestOAuthStatus_CopilotCheckStatusUsesHTMXWhenTokenExists(t *testing.T) {
+	ui, cleanup := createTestUI(t)
+	defer cleanup()
+
+	b := ui.registry.Get("copilot")
+	if b == nil {
+		t.Fatal("copilot backend not found")
+	}
+	copilotBackend := b.(*backend.CopilotBackend)
+	if err := copilotBackend.GetTokenStore().Save(&oauth.TokenData{
+		AccessToken: "copilot-token",
+		TokenType:   "Bearer",
+		ExpiresAt:   time.Now().Add(1 * time.Hour),
+		ObtainedAt:  time.Now(),
+		Source:      "device_code_flow",
+	}); err != nil {
+		t.Fatalf("saving token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/oauth/status", nil)
+	w := httptest.NewRecorder()
+
+	ui.OAuthStatus(w, req)
+
+	body := w.Body.String()
+
 	if !strings.Contains(body, `hx-post="/ui/oauth/check-status/copilot"`) {
 		t.Error("expected hx-post attribute on Check Status button pointing to check-status endpoint")
 	}
 	if !strings.Contains(body, `hx-target="#oauth-status-container"`) {
 		t.Error("expected hx-target attribute pointing to oauth-status-container")
+	}
+	if !strings.Contains(body, "Disconnect") {
+		t.Error("expected Disconnect button when a Copilot token is stored")
 	}
 }
 
@@ -796,12 +886,19 @@ func TestSettingsPage_OAuthCSSDarkLightMode(t *testing.T) {
 
 // createTestUIWithTokenURL creates a test UI with a codex backend that uses
 // the given tokenURL for the OAuth token exchange endpoint.
-func createTestUIWithTokenURL(t *testing.T, tokenURL string) (*UI, func()) {
+func createTestUIWithTokenURL(t *testing.T, tokenURL string, clientID string) (*UI, func()) {
 	t.Helper()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
 	tokenDir := filepath.Join(tmpDir, "tokens")
 	os.MkdirAll(tokenDir, 0700)
+
+	var oauthConfig strings.Builder
+	oauthConfig.WriteString("    oauth:\n")
+	oauthConfig.WriteString(`      token_url: "` + tokenURL + "\"\n")
+	if clientID != "" {
+		oauthConfig.WriteString(`      client_id: "` + clientID + "\"\n")
+	}
 
 	configContent := `
 server:
@@ -815,9 +912,7 @@ backends:
   - name: codex
     type: codex
     base_url: https://chatgpt.com/backend-api/codex
-    oauth:
-      token_url: "` + tokenURL + `"
-`
+` + oauthConfig.String()
 	if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
 		t.Fatalf("writing config: %v", err)
 	}
@@ -845,7 +940,7 @@ func TestOAuthCallback_FullFlow(t *testing.T) {
 	// Set up a mock token server that exchanges the code.
 	var receivedCode string
 	var receivedRedirectURI string
-	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		values, _ := url.ParseQuery(string(body))
 		receivedCode = values.Get("code")
@@ -862,7 +957,7 @@ func TestOAuthCallback_FullFlow(t *testing.T) {
 	}))
 	defer tokenServer.Close()
 
-	ui, cleanup := createTestUIWithTokenURL(t, tokenServer.URL)
+	ui, cleanup := createTestUIWithTokenURL(t, tokenServer.URL, "custom-client-id")
 	defer cleanup()
 
 	// Set up routes.
@@ -870,7 +965,7 @@ func TestOAuthCallback_FullFlow(t *testing.T) {
 	r.Get("/ui/oauth/login/{backend}", ui.OAuthLogin)
 	r.Get("/ui/oauth/callback/{backend}", ui.OAuthCallback)
 
-	loginServer := httptest.NewServer(r)
+	loginServer := newTestServer(t, r)
 	defer loginServer.Close()
 
 	client := &http.Client{
@@ -957,14 +1052,14 @@ func TestOAuthCheckStatus_TriggersTokenRefreshForCopilot(t *testing.T) {
 	defer cleanup()
 
 	// Create a mock GitHub API server that handles the Copilot token exchange
-	mockGitHub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mockGitHub := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/copilot_internal/v2/token" {
 			// Return a fresh Copilot token
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"token":       "fresh-copilot-token",
-				"expires_at":  time.Now().Add(30 * time.Minute).Unix(),
-				"refresh_in":  1500,
+				"token":      "fresh-copilot-token",
+				"expires_at": time.Now().Add(30 * time.Minute).Unix(),
+				"refresh_in": 1500,
 			})
 			return
 		}
@@ -977,12 +1072,12 @@ func TestOAuthCheckStatus_TriggersTokenRefreshForCopilot(t *testing.T) {
 	os.MkdirAll(tokenDir, 0700)
 	mockStore, _ := oauth.NewTokenStore(filepath.Join(tokenDir, "copilot-token.json"))
 	mockStore.Save(&oauth.TokenData{
-		AccessToken:  "expired-copilot-token",
-		TokenType:    "Bearer",
-		ExpiresAt:    time.Now().Add(-1 * time.Hour),
-		ObtainedAt:   time.Now().Add(-2 * time.Hour),
-		Source:       "device_code_flow",
-		GitHubToken:  "test-github-token",
+		AccessToken: "expired-copilot-token",
+		TokenType:   "Bearer",
+		ExpiresAt:   time.Now().Add(-1 * time.Hour),
+		ObtainedAt:  time.Now().Add(-2 * time.Hour),
+		Source:      "device_code_flow",
+		GitHubToken: "test-github-token",
 	})
 
 	// Build a Copilot backend with the mock exchanger URL
@@ -1001,7 +1096,7 @@ func TestOAuthCheckStatus_TriggersTokenRefreshForCopilot(t *testing.T) {
 	// Route through chi so URL params work
 	r := chi.NewRouter()
 	r.Post("/ui/oauth/check-status/{backend}", ui.OAuthCheckStatus)
-	server := httptest.NewServer(r)
+	server := newTestServer(t, r)
 	defer server.Close()
 
 	resp, err := http.Post(server.URL+"/ui/oauth/check-status/copilot", "", nil)
@@ -1039,7 +1134,7 @@ func TestOAuthCheckStatus_Returns404ForUnknownBackend(t *testing.T) {
 
 	r := chi.NewRouter()
 	r.Post("/ui/oauth/check-status/{backend}", ui.OAuthCheckStatus)
-	server := httptest.NewServer(r)
+	server := newTestServer(t, r)
 	defer server.Close()
 
 	resp, err := http.Post(server.URL+"/ui/oauth/check-status/nonexistent", "", nil)
@@ -1077,7 +1172,7 @@ func TestOAuthCheckStatus_ReturnsStatusEvenOnRefreshFailure(t *testing.T) {
 	// Route through chi so URL params work
 	r := chi.NewRouter()
 	r.Post("/ui/oauth/check-status/{backend}", ui.OAuthCheckStatus)
-	server := httptest.NewServer(r)
+	server := newTestServer(t, r)
 	defer server.Close()
 
 	resp, err := http.Post(server.URL+"/ui/oauth/check-status/copilot", "", nil)

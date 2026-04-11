@@ -4,7 +4,11 @@
      hx-trigger="every 30s" 
      hx-swap="innerHTML">
 {{range .}}
-<div class="oauth-backend-card" id="oauth-status-{{.BackendName}}">
+<div class="oauth-backend-card"
+     id="oauth-status-{{.BackendName}}"
+     data-backend-name="{{.BackendName}}"
+     data-authenticated="{{if .Authenticated}}true{{else}}false{{end}}"
+     data-token-state="{{.TokenState}}">
   <div class="oauth-backend-header">
     <div class="oauth-backend-info">
       <div class="oauth-backend-name-row">
@@ -13,24 +17,19 @@
         <span class="oauth-backend-type-badge">{{.BackendType}}</span>
       </div>
       <div class="oauth-backend-details">
-        {{if .Authenticated}}
-          <span class="oauth-detail-label">Status:</span>
-          <span class="oauth-detail-value oauth-text-{{.TokenState}}">
-            {{if eq .TokenState "valid"}}Connected{{else if eq .TokenState "expiring"}}Expiring soon{{else}}Expired{{end}}
-          </span>
-        {{else}}
-          <span class="oauth-detail-label">Status:</span>
-          <span class="oauth-detail-value oauth-text-missing">Not connected</span>
-        {{end}}
+        <span class="oauth-detail-label">Status:</span>
+        <span class="oauth-detail-value oauth-text-{{if eq .TokenState "missing"}}missing{{else}}{{.TokenState}}{{end}}">
+          {{if eq .TokenState "valid"}}Connected{{else if eq .TokenState "expiring"}}Expiring soon{{else if eq .TokenState "expired"}}Expired{{else}}Not connected{{end}}
+        </span>
       </div>
     </div>
     <div class="oauth-backend-actions">
       {{if eq .BackendType "codex"}}
         {{if .NeedsReauth}}
-          <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-oauth-primary">
+          <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-oauth-primary" target="_blank" rel="noopener noreferrer">
             Re-authenticate (Browser)
           </a>
-          <a href="/ui/oauth/device-login/{{.BackendName}}" class="btn btn-oauth-secondary">
+          <a href="/ui/oauth/device-login/{{.BackendName}}" class="btn btn-oauth-secondary" target="_blank" rel="noopener noreferrer">
             Re-authenticate (Device Code)
           </a>
         {{else if .Authenticated}}
@@ -41,19 +40,26 @@
             </button>
           </form>
         {{else}}
-          <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-oauth-primary">
+          <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-oauth-primary" target="_blank" rel="noopener noreferrer">
             Connect (Browser)
           </a>
-          <a href="/ui/oauth/device-login/{{.BackendName}}" class="btn btn-oauth-secondary">
+          <a href="/ui/oauth/device-login/{{.BackendName}}" class="btn btn-oauth-secondary" target="_blank" rel="noopener noreferrer">
             Connect (Device Code)
           </a>
         {{end}}
       {{else if eq .BackendType "copilot"}}
-        <button type="button" class="btn btn-oauth-secondary"
-                hx-post="/ui/oauth/check-status/{{.BackendName}}" hx-target="#oauth-status-container" hx-swap="innerHTML">
-          Check Status
-        </button>
-        {{if .Authenticated}}
+        {{if not .Authenticated}}
+          <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-oauth-primary" target="_blank" rel="noopener noreferrer">
+            {{if .TokenSource}}Re-authenticate{{else}}Connect{{end}}
+          </a>
+        {{end}}
+        {{if or .Authenticated .TokenSource}}
+          <button type="button" class="btn btn-oauth-secondary"
+                  hx-post="/ui/oauth/check-status/{{.BackendName}}" hx-target="#oauth-status-container" hx-swap="innerHTML">
+            Check Status
+          </button>
+        {{end}}
+        {{if or .Authenticated .TokenSource}}
           <form method="POST" action="/ui/oauth/disconnect/{{.BackendName}}" style="display: inline;">
             <button type="submit" class="btn btn-oauth-danger"
                     onclick="return confirm('Clear stored token for {{.BackendName}}?')">
@@ -64,11 +70,12 @@
       {{end}}
     </div>
   </div>
-  {{if .Authenticated}}
+  {{if or .Authenticated .TokenSource .TokenExpiry .LastRefresh}}
   <div class="oauth-backend-meta">
     {{if .TokenSource}}<div class="oauth-meta-item"><span class="oauth-meta-label">Source:</span> <span class="oauth-meta-value">{{.TokenSource}}</span></div>{{end}}
     {{if .TokenExpiry}}<div class="oauth-meta-item"><span class="oauth-meta-label">Expires:</span> <span class="oauth-meta-value oauth-expiry-{{.TokenState}}">{{.TokenExpiry}}</span></div>{{end}}
     {{if .LastRefresh}}<div class="oauth-meta-item"><span class="oauth-meta-label">Last refreshed:</span> <span class="oauth-meta-value">{{.LastRefresh}}</span></div>{{end}}
+    {{if .NeedsReauth}}<div class="oauth-meta-item oauth-meta-warning">Token expired or missing — re-authentication required</div>{{end}}
   </div>
   {{else if .NeedsReauth}}
   <div class="oauth-backend-meta">

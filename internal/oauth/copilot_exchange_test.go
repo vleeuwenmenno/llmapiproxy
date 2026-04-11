@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync"
@@ -21,7 +20,7 @@ func TestExchangeCopilotToken_Success(t *testing.T) {
 	refreshIn := 1500 // 25 minutes in seconds
 	mockToken := "tid=abc123;fcv1=1:mac"
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request path
 		if r.URL.Path != "/copilot_internal/v2/token" {
 			t.Errorf("request path = %q, want /copilot_internal/v2/token", r.URL.Path)
@@ -97,7 +96,7 @@ func TestExchangeCopilotToken_Success(t *testing.T) {
 // --- VAL-TOKEN-010: Copilot token exchange with invalid GitHub token ---
 
 func TestExchangeCopilotToken_InvalidGitHubToken(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"message":"Bad credentials"}`))
 	}))
@@ -125,7 +124,7 @@ func TestExchangeCopilotToken_InvalidGitHubToken(t *testing.T) {
 }
 
 func TestExchangeCopilotToken_ForbiddenToken(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte(`{"message":"Forbidden"}`))
 	}))
@@ -150,7 +149,7 @@ func TestExchangeCopilotToken_ForbiddenToken(t *testing.T) {
 // --- VAL-TOKEN-011: Copilot token exchange with GitHub API rate limit ---
 
 func TestExchangeCopilotToken_RateLimit(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", "60")
 		w.WriteHeader(http.StatusTooManyRequests)
 		w.Write([]byte(`{"message":"API rate limit exceeded"}`))
@@ -181,7 +180,7 @@ func TestExchangeCopilotToken_RateLimit(t *testing.T) {
 
 func TestExchangeCopilotToken_NetworkFailure(t *testing.T) {
 	// Create a server that's immediately closed to simulate network failure
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Never reached
 	}))
 	server.Close()
@@ -211,7 +210,7 @@ func TestExchangeCopilotToken_RefreshInFieldUsed(t *testing.T) {
 
 	refreshIn := 1500
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := copilotTokenResponse{
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			RefreshIn: 1500,
@@ -236,7 +235,7 @@ func TestExchangeCopilotToken_RefreshInFieldUsed(t *testing.T) {
 		ExpiresAt:   now.Add(2 * time.Minute),
 		ObtainedAt:  now.Add(-28 * time.Minute),
 		RefreshIn:   refreshIn,
-		Source:       "copilot_exchange",
+		Source:      "copilot_exchange",
 	}
 	if err := ts.Save(oldToken); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -260,7 +259,7 @@ func TestExchangeCopilotToken_MissingRefreshIn(t *testing.T) {
 	expiresAt := time.Now().Add(30 * time.Minute).Unix()
 	// Response does NOT include refresh_in
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Simulate response without refresh_in by using a map
 		resp := map[string]interface{}{
 			"expires_at": expiresAt,
@@ -320,7 +319,7 @@ func TestExchangeCopilotToken_OfflineStartup_WithCache(t *testing.T) {
 		ExpiresAt:   time.Now().Add(25 * time.Minute),
 		ObtainedAt:  time.Now().Add(-5 * time.Minute),
 		RefreshIn:   1500,
-		Source:       "copilot_exchange",
+		Source:      "copilot_exchange",
 	}
 	if err := ts.Save(cachedToken); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -364,9 +363,9 @@ func TestExchangeCopilotToken_ResponseParsing(t *testing.T) {
 	expiresAt := time.Now().Add(30 * time.Minute).Unix()
 
 	tests := []struct {
-		name       string
-		response   copilotTokenResponse
-		wantToken  string
+		name      string
+		response  copilotTokenResponse
+		wantToken string
 	}{
 		{
 			name: "standard response",
@@ -390,7 +389,7 @@ func TestExchangeCopilotToken_ResponseParsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(tt.response)
 			}))
@@ -427,7 +426,7 @@ func TestExchangeCopilotToken_ResponseParsing(t *testing.T) {
 
 func TestExchangeCopilotToken_CachedTokenReturned(t *testing.T) {
 	requestCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestCount++
 		resp := copilotTokenResponse{
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
@@ -453,7 +452,7 @@ func TestExchangeCopilotToken_CachedTokenReturned(t *testing.T) {
 		ExpiresAt:   time.Now().Add(25 * time.Minute),
 		ObtainedAt:  time.Now().Add(-5 * time.Minute),
 		RefreshIn:   1800,
-		Source:       "copilot_exchange",
+		Source:      "copilot_exchange",
 	}
 	if err := ts.Save(freshToken); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -482,7 +481,7 @@ func TestExchangeCopilotToken_ConcurrentGetOrRefresh(t *testing.T) {
 	requestCount := 0
 	var mu sync.Mutex
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		requestCount++
 		mu.Unlock()
@@ -575,7 +574,7 @@ func TestExchangeCopilotToken_EmptyGitHubToken(t *testing.T) {
 // --- Token file persisted after exchange ---
 
 func TestExchangeCopilotToken_PersistsToFile(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := copilotTokenResponse{
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
 			RefreshIn: 1800,
@@ -627,7 +626,7 @@ func TestExchangeCopilotToken_PersistsToFile(t *testing.T) {
 // --- Context cancellation ---
 
 func TestExchangeCopilotToken_ContextCancelled(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(5 * time.Second) // Slow response
 		resp := copilotTokenResponse{
 			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
@@ -665,7 +664,7 @@ func TestExchangeCopilotToken_ExpiryCalculation(t *testing.T) {
 	expectedExpiry := time.Now().Add(30 * time.Minute)
 	expiresAt := expectedExpiry.Unix()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := copilotTokenResponse{
 			ExpiresAt: expiresAt,
 			RefreshIn: 1500,

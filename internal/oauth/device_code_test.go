@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync"
@@ -16,7 +15,7 @@ import (
 // --- Device Code Flow Tests ---
 
 func TestDeviceCodeFlow_InitiateDeviceCode(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
@@ -78,7 +77,7 @@ func TestDeviceCodeFlow_InitiateDeviceCode(t *testing.T) {
 
 func TestDeviceCodeFlow_PollUntilAuthorized(t *testing.T) {
 	pollCount := 0
-	githubServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	githubServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pollCount++
 		if pollCount < 3 {
 			// Return "authorization_pending" for first 2 polls
@@ -91,16 +90,16 @@ func TestDeviceCodeFlow_PollUntilAuthorized(t *testing.T) {
 		// Third poll succeeds
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"access_token":  "gho_test-github-token",
-			"token_type":    "bearer",
-			"scope":         "",
-			"expires_in":    28800,
+			"access_token": "gho_test-github-token",
+			"token_type":   "bearer",
+			"scope":        "",
+			"expires_in":   28800,
 		})
 	}))
 	defer githubServer.Close()
 
 	// Mock Copilot exchange server
-	copilotServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	copilotServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"expires_at": time.Now().Add(30 * time.Minute).Unix(),
@@ -145,7 +144,7 @@ func TestDeviceCodeFlow_PollUntilAuthorized(t *testing.T) {
 
 func TestDeviceCodeFlow_PollSlowDown(t *testing.T) {
 	pollCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pollCount++
 		if pollCount == 1 {
 			// Return "slow_down" to increase interval
@@ -181,7 +180,7 @@ func TestDeviceCodeFlow_PollSlowDown(t *testing.T) {
 }
 
 func TestDeviceCodeFlow_PollExpired(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"error":             "expired_token",
@@ -206,7 +205,7 @@ func TestDeviceCodeFlow_PollExpired(t *testing.T) {
 }
 
 func TestDeviceCodeFlow_PollAccessDenied(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "access_denied",
@@ -228,7 +227,7 @@ func TestDeviceCodeFlow_PollAccessDenied(t *testing.T) {
 
 func TestDeviceCodeFlow_FullFlow(t *testing.T) {
 	// This tests the full flow: initiate → poll → exchange → validate
-	githubDeviceServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	githubDeviceServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(DeviceCodeResponse{
 			DeviceCode:      "DC-full-flow",
@@ -241,7 +240,7 @@ func TestDeviceCodeFlow_FullFlow(t *testing.T) {
 	defer githubDeviceServer.Close()
 
 	pollCount := 0
-	githubTokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	githubTokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pollCount++
 		if pollCount < 2 {
 			w.Header().Set("Content-Type", "application/json")
@@ -257,7 +256,7 @@ func TestDeviceCodeFlow_FullFlow(t *testing.T) {
 	}))
 	defer githubTokenServer.Close()
 
-	copilotServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	copilotServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer gho_full-flow-token" {
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{"message": "Bad credentials"})
@@ -315,7 +314,7 @@ func TestDeviceCodeFlow_FullFlow(t *testing.T) {
 }
 
 func TestDeviceCodeFlow_InvalidClientID(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
@@ -339,7 +338,7 @@ func TestDeviceCodeFlow_InvalidClientID(t *testing.T) {
 
 func TestDeviceCodeFlow_CopilotExchangeFailure(t *testing.T) {
 	// GitHub token succeeds but Copilot exchange fails (e.g., no subscription)
-	githubTokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	githubTokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"access_token": "gho_test-token",
@@ -348,7 +347,7 @@ func TestDeviceCodeFlow_CopilotExchangeFailure(t *testing.T) {
 	}))
 	defer githubTokenServer.Close()
 
-	copilotServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	copilotServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{"message": "Not Found"})
 	}))
@@ -373,7 +372,7 @@ func TestDeviceCodeFlow_CopilotExchangeFailure(t *testing.T) {
 func TestDeviceCodeFlow_SubscriptionValidation(t *testing.T) {
 	// Verify that after exchange, the token is tested by making a Copilot API call
 	calledWithToken := ""
-	copilotServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	copilotServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calledWithToken = r.Header.Get("Authorization")
 		if r.URL.Path == "/copilot_internal/v2/token" {
 			w.Header().Set("Content-Type", "application/json")
@@ -413,7 +412,7 @@ func TestDeviceCodeFlow_SubscriptionValidation(t *testing.T) {
 }
 
 func TestDeviceCodeFlow_ContextCancellation(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Always return pending
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"error": "authorization_pending"})
@@ -437,7 +436,7 @@ func TestDeviceCodeFlow_ContextCancellation(t *testing.T) {
 
 func TestDeviceCodeFlow_ConcurrentInitiate(t *testing.T) {
 	// Ensure multiple goroutines can safely initiate device code flows
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(DeviceCodeResponse{
 			DeviceCode:      "DC-concurrent",
@@ -492,7 +491,7 @@ func TestDeviceCodeFlow_ConcurrentInitiate(t *testing.T) {
 func TestDeviceCodeFlow_GetCopilotToken_UsesCached(t *testing.T) {
 	// When a valid token is already cached, GetCopilotToken should return it
 	exchangeCount := 0
-	copilotServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	copilotServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		exchangeCount++
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -532,7 +531,7 @@ func TestDeviceCodeFlow_GetCopilotToken_UsesCached(t *testing.T) {
 func TestDeviceCodeFlow_GetCopilotToken_ExpiredRevalidates(t *testing.T) {
 	// When the cached token is expired, GetCopilotToken should re-validate
 	exchangeCount := 0
-	copilotServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	copilotServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		exchangeCount++
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -575,7 +574,7 @@ func TestDeviceCodeFlow_GetCopilotToken_ExpiredRevalidates(t *testing.T) {
 func TestDeviceCodeFlow_GetCopilotToken_ExpiredNoGitHubToken(t *testing.T) {
 	// When the cached token is expired and there's no stored GitHub token,
 	// GetCopilotToken should return an error
-	copilotServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	copilotServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("unexpected exchange call")
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
@@ -611,7 +610,7 @@ func TestDeviceCodeFlow_DeviceCodeError_Type(t *testing.T) {
 
 func TestDeviceCodeFlow_PendingFlowTracking(t *testing.T) {
 	// Verify that pending device flows are tracked and can be retrieved
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(DeviceCodeResponse{
 			DeviceCode:      "DC-tracking",
