@@ -133,7 +133,8 @@ func (r *Registry) createCopilotBackend(bc config.BackendConfig, existingTS *oau
 
 // createCodexBackend creates a CodexBackend, reusing the existing token store
 // if provided. The OAuth redirect URI is derived from the server's listen
-// address and the backend name.
+// address and the backend name. A device code handler is also created to
+// support device code flow as an alternative login method.
 func (r *Registry) createCodexBackend(bc config.BackendConfig, existingTS *oauth.TokenStore) (*CodexBackend, *oauth.TokenStore, error) {
 	tokenPath := tokenStorePath(bc)
 
@@ -170,7 +171,10 @@ func (r *Registry) createCodexBackend(bc config.BackendConfig, existingTS *oauth
 
 	oauthHandler := oauth.NewCodexOAuthHandler(ts, oauthCfg)
 
-	return NewCodexBackend(bc, oauthHandler, ts), ts, nil
+	// Create a device code handler for headless/SSH login support.
+	deviceCodeHandler := oauth.NewCodexDeviceCodeHandler(ts, oauthCfg)
+
+	return NewCodexBackend(bc, oauthHandler, ts, deviceCodeHandler), ts, nil
 }
 
 // Resolve parses a model string like "openrouter/openai/gpt-5.2" and returns

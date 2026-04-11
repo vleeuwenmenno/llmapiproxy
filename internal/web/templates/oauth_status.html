@@ -28,7 +28,10 @@
       {{if eq .BackendType "codex"}}
         {{if .NeedsReauth}}
           <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-oauth-primary">
-            Re-authenticate
+            Re-authenticate (Browser)
+          </a>
+          <a href="/ui/oauth/device-login/{{.BackendName}}" class="btn btn-oauth-secondary">
+            Re-authenticate (Device Code)
           </a>
         {{else if .Authenticated}}
           <form method="POST" action="/ui/oauth/disconnect/{{.BackendName}}" style="display: inline;">
@@ -39,7 +42,10 @@
           </form>
         {{else}}
           <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-oauth-primary">
-            Connect
+            Connect (Browser)
+          </a>
+          <a href="/ui/oauth/device-login/{{.BackendName}}" class="btn btn-oauth-secondary">
+            Connect (Device Code)
           </a>
         {{end}}
       {{else if eq .BackendType "copilot"}}

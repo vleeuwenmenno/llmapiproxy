@@ -92,7 +92,7 @@ func codexTestHelper(t *testing.T) (*CodexBackend, *httptest.Server, func()) {
 		Models:  []string{"o4-mini", "gpt-5.2-codex"},
 	}
 
-	b := NewCodexBackend(cfg, oauthHandler, ts)
+	b := NewCodexBackend(cfg, oauthHandler, ts, nil)
 
 	// Pre-set a valid access token.
 	ts.Save(&oauth.TokenData{
@@ -632,7 +632,7 @@ func TestCodexBackend_ListModels_Default(t *testing.T) {
 		BaseURL: "https://chatgpt.com/backend-api/codex",
 		// No models configured — should use defaults.
 	}
-	b := NewCodexBackend(cfg, nil, ts)
+	b := NewCodexBackend(cfg, nil, ts, nil)
 
 	models, err := b.ListModels(context.Background())
 	if err != nil {
@@ -683,7 +683,7 @@ func TestCodexBackend_SupportsModel(t *testing.T) {
 			defer os.RemoveAll(dir)
 
 			ts, _ := oauth.NewTokenStore(filepath.Join(dir, "codex-token.json"))
-			b := NewCodexBackend(cfg, nil, ts)
+			b := NewCodexBackend(cfg, nil, ts, nil)
 
 			if got := b.SupportsModel(tt.check); got != tt.want {
 				t.Errorf("SupportsModel(%q) = %v, want %v", tt.check, got, tt.want)
@@ -712,7 +712,7 @@ func TestCodexBackend_NoTokens(t *testing.T) {
 		Type:    "codex",
 		BaseURL: "https://chatgpt.com/backend-api/codex",
 	}
-	b := NewCodexBackend(cfg, oauthHandler, ts)
+	b := NewCodexBackend(cfg, oauthHandler, ts, nil)
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
@@ -1183,7 +1183,7 @@ func TestCodexBackend_CoexistenceWithOpenAI(t *testing.T) {
 		BaseURL: "https://chatgpt.com/backend-api/codex",
 		Models:  []string{"o4-mini"},
 	}
-	b := NewCodexBackend(cfg, nil, ts)
+	b := NewCodexBackend(cfg, nil, ts, nil)
 	r.Register("codex", b)
 
 	// Also register an OpenAI backend.
@@ -1232,7 +1232,7 @@ func TestCodexBackend_PrefixRouting(t *testing.T) {
 		BaseURL: "https://chatgpt.com/backend-api/codex",
 		Models:  []string{"o4-mini", "gpt-5.2-codex"},
 	}
-	b := NewCodexBackend(cfg, nil, ts)
+	b := NewCodexBackend(cfg, nil, ts, nil)
 	r.Register("codex", b)
 
 	// Test codex/o4-mini.
@@ -1275,7 +1275,7 @@ func TestCodexBackend_PrefixRoutingNoCrossMatch(t *testing.T) {
 		BaseURL: "https://chatgpt.com/backend-api/codex",
 		Models:  []string{"o4-mini"},
 	}
-	b := NewCodexBackend(cfg, nil, ts)
+	b := NewCodexBackend(cfg, nil, ts, nil)
 	r.Register("codex", b)
 
 	// openrouter/... should NOT match codex.
@@ -1523,7 +1523,7 @@ func TestCodexBackend_Name(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	ts, _ := oauth.NewTokenStore(filepath.Join(dir, "codex-token.json"))
-	b := NewCodexBackend(cfg, nil, ts)
+	b := NewCodexBackend(cfg, nil, ts, nil)
 
 	if b.Name() != "my-codex" {
 		t.Errorf("Name() = %q, want %q", b.Name(), "my-codex")
@@ -1825,4 +1825,163 @@ func TestCodexBackend_HandleCallback_InvalidState(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for invalid state")
 	}
+}
+
+// --- Codex Device Code Login Tests ---
+
+func TestCodexBackend_DeviceCodeLogin(t *testing.T) {
+	dir, err := os.MkdirTemp("", "codex-device-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	ts, err := oauth.NewTokenStore(filepath.Join(dir, "token.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mock token server (for polling). Must stay alive for background goroutine.
+	pollCount := 0
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pollCount++
+		if pollCount < 2 {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"error": "authorization_pending"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "device-code-access-token",
+			"refresh_token": "device-code-refresh-token",
+			"token_type":    "Bearer",
+			"expires_in":    3600,
+		})
+	}))
+	defer tokenServer.Close()
+
+	// Mock device code server.
+	deviceCodeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(oauth.CodexDeviceCodeResponse{
+			DeviceCode:      "DC-codex-test",
+			UserCode:        "CODE-1234",
+			VerificationURI: "https://auth.openai.com/device",
+			ExpiresIn:       900,
+			Interval:        1,
+		})
+	}))
+	defer deviceCodeServer.Close()
+
+	oauthCfg := oauth.DefaultCodexOAuthConfig()
+	oauthCfg.TokenURL = tokenServer.URL
+
+	deviceCodeHandler := oauth.NewCodexDeviceCodeHandler(ts, oauthCfg,
+		oauth.WithCodexDeviceCodeURL(deviceCodeServer.URL),
+	)
+
+	cfg := config.BackendConfig{
+		Name:   "codex",
+		Type:   "codex",
+		Models: []string{"o4-mini"},
+	}
+
+	oauthHandler := oauth.NewCodexOAuthHandler(ts, oauthCfg)
+	b := NewCodexBackend(cfg, oauthHandler, ts, deviceCodeHandler)
+
+	// Verify device code flow is supported.
+	if !b.SupportsDeviceCodeFlow() {
+		t.Error("SupportsDeviceCodeFlow should return true")
+	}
+
+	// Initiate device code login.
+	authURL, state, err := b.InitiateDeviceCodeLogin()
+	if err != nil {
+		t.Fatalf("InitiateDeviceCodeLogin: %v", err)
+	}
+
+	if state == "" {
+		t.Error("state should not be empty")
+	}
+
+	// Parse the returned JSON.
+	var info DeviceCodeLoginInfo
+	if err := json.Unmarshal([]byte(authURL), &info); err != nil {
+		t.Fatalf("parsing device code info: %v", err)
+	}
+
+	if info.UserCode != "CODE-1234" {
+		t.Errorf("UserCode = %q, want %q", info.UserCode, "CODE-1234")
+	}
+	if info.VerificationURI != "https://auth.openai.com/device" {
+		t.Errorf("VerificationURI = %q, unexpected", info.VerificationURI)
+	}
+
+	// Wait for the background polling to complete.
+	// The poll interval is 1 second, and it takes 2 pending + 1 success = 3 polls = ~3 seconds.
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		token := ts.Get()
+		if token != nil && token.AccessToken == "device-code-access-token" {
+			// Token was stored successfully.
+			if token.Source != "codex_device_code" {
+				t.Errorf("Source = %q, want %q", token.Source, "codex_device_code")
+			}
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for device code token to be stored")
+}
+
+func TestCodexBackend_DeviceCodeLogin_NoHandler(t *testing.T) {
+	dir, err := os.MkdirTemp("", "codex-device-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	ts, err := oauth.NewTokenStore(filepath.Join(dir, "token.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.BackendConfig{
+		Name:   "codex",
+		Type:   "codex",
+		Models: []string{"o4-mini"},
+	}
+
+	// Create backend without device code handler (nil).
+	b := NewCodexBackend(cfg, nil, ts, nil)
+
+	if b.SupportsDeviceCodeFlow() {
+		t.Error("SupportsDeviceCodeFlow should return false when no handler")
+	}
+
+	_, _, err = b.InitiateDeviceCodeLogin()
+	if err == nil {
+		t.Fatal("expected error when no device code handler")
+	}
+}
+
+func TestCodexBackend_DeviceCodeLogin_SupportsInterface(t *testing.T) {
+	// Verify CodexBackend implements OAuthDeviceCodeLoginHandler.
+	dir, err := os.MkdirTemp("", "codex-device-iface-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	ts, err := oauth.NewTokenStore(filepath.Join(dir, "token.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.BackendConfig{Name: "codex", Type: "codex"}
+	oauthHandler := oauth.NewCodexOAuthHandler(ts, nil)
+	b := NewCodexBackend(cfg, oauthHandler, ts, nil)
+
+	// CodexBackend should implement the OAuthDeviceCodeLoginHandler interface.
+	var _ OAuthDeviceCodeLoginHandler = b
 }

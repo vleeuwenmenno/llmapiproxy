@@ -188,3 +188,11 @@ type OAuthDisconnectHandler interface {
 	// Disconnect clears all stored tokens for the backend.
 	Disconnect() error
 }
+
+// OAuthDeviceCodeLoginHandler is an optional interface for backends that support
+// device code flow as an alternative login method (for headless/SSH environments).
+type OAuthDeviceCodeLoginHandler interface {
+	// InitiateDeviceCodeLogin starts a device code flow. Like OAuthLoginHandler,
+	// it returns a JSON-encoded DeviceCodeLoginInfo as the authURL.
+	InitiateDeviceCodeLogin() (authURL string, state string, err error)
+}

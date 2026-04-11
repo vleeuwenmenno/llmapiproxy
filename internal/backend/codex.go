@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -38,30 +39,34 @@ const (
 // Authentication is via OAuth tokens managed by CodexOAuthHandler.
 // Upstream 401 responses trigger token refresh with a single retry.
 type CodexBackend struct {
-	name        string
-	baseURL     string
-	models      []string
-	client      *http.Client
-	oauthHandler *oauth.CodexOAuthHandler
-	tokenStore  *oauth.TokenStore
-	cfg         config.BackendConfig
+	name              string
+	baseURL           string
+	models            []string
+	client            *http.Client
+	oauthHandler      *oauth.CodexOAuthHandler
+	deviceCodeHandler *oauth.CodexDeviceCodeHandler
+	tokenStore        *oauth.TokenStore
+	cfg               config.BackendConfig
 }
 
 // NewCodexBackend creates a new CodexBackend from the given configuration.
-func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHandler, tokenStore *oauth.TokenStore) *CodexBackend {
+// The deviceCodeHandler is optional and enables device code flow as an alternative
+// login method for headless/SSH environments.
+func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHandler, tokenStore *oauth.TokenStore, deviceCodeHandler *oauth.CodexDeviceCodeHandler) *CodexBackend {
 	baseURL := strings.TrimRight(cfg.BaseURL, "/")
 	if baseURL == "" {
 		baseURL = codexDefaultBaseURL
 	}
 
 	return &CodexBackend{
-		name:         cfg.Name,
-		baseURL:      baseURL,
-		models:       cfg.Models,
-		client:       &http.Client{Timeout: codexHTTPTimeout},
-		oauthHandler: oauthHandler,
-		tokenStore:   tokenStore,
-		cfg:          cfg,
+		name:              cfg.Name,
+		baseURL:           baseURL,
+		models:            cfg.Models,
+		client:            &http.Client{Timeout: codexHTTPTimeout},
+		oauthHandler:      oauthHandler,
+		deviceCodeHandler: deviceCodeHandler,
+		tokenStore:        tokenStore,
+		cfg:               cfg,
 	}
 }
 
@@ -904,4 +909,62 @@ func (b *CodexBackend) GetOAuthHandler() *oauth.CodexOAuthHandler {
 // GetTokenStore returns the underlying TokenStore (for status checking).
 func (b *CodexBackend) GetTokenStore() *oauth.TokenStore {
 	return b.tokenStore
+}
+
+// --- OAuthDeviceCodeLoginHandler interface ---
+
+// InitiateDeviceCodeLogin starts the device code flow for Codex authentication.
+// This is an alternative to the browser-based PKCE flow, designed for headless/SSH
+// environments where opening a browser is impractical.
+//
+// Returns JSON-encoded DeviceCodeLoginInfo containing the user_code and verification_uri
+// that the UI should display to the user, plus a state (device_code) for tracking.
+// The polling happens in the background — the tokens are stored automatically.
+func (b *CodexBackend) InitiateDeviceCodeLogin() (authURL string, state string, err error) {
+	if b.deviceCodeHandler == nil {
+		return "", "", fmt.Errorf("codex backend %s: device code flow not available", b.name)
+	}
+
+	resp, err := b.deviceCodeHandler.InitiateDeviceCode(context.Background())
+	if err != nil {
+		return "", "", fmt.Errorf("codex device code flow: %w", err)
+	}
+
+	// Return JSON-encoded device code info as the "auth URL" (the web handler
+	// will parse this and display the device code page).
+	info := DeviceCodeLoginInfo{
+		DeviceCode:      resp.DeviceCode,
+		UserCode:        resp.UserCode,
+		VerificationURI: resp.VerificationURI,
+		ExpiresIn:       resp.ExpiresIn,
+	}
+
+	infoJSON, err := json.Marshal(info)
+	if err != nil {
+		return "", "", fmt.Errorf("encoding device code info: %w", err)
+	}
+
+	// Use the device_code as the state.
+	state = resp.DeviceCode
+	authURL = string(infoJSON)
+
+	log.Printf("codex backend %s: device code flow initiated, user_code=%s", b.name, resp.UserCode)
+
+	// Start polling in the background — the result will be stored automatically.
+	go func() {
+		bgCtx := context.Background()
+		_, pollErr := b.deviceCodeHandler.WaitForAuthorization(bgCtx, resp)
+		if pollErr != nil {
+			log.Printf("codex backend %s: device code authorization failed: %v", b.name, pollErr)
+		} else {
+			log.Printf("codex backend %s: device code authorization completed successfully", b.name)
+		}
+	}()
+
+	return authURL, state, nil
+}
+
+// SupportsDeviceCodeFlow returns true if this backend has a device code handler configured.
+func (b *CodexBackend) SupportsDeviceCodeFlow() bool {
+	return b.deviceCodeHandler != nil
 }

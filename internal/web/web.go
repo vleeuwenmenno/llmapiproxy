@@ -838,6 +838,59 @@ func (u *UI) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/ui/settings?msg="+backendName+"+authentication+successful!", http.StatusSeeOther)
 }
 
+// OAuthDeviceLogin initiates the device code flow for the specified backend.
+// This is an alternative to the browser-based PKCE flow, designed for headless/SSH
+// environments. It displays a device code and verification URL for the user.
+func (u *UI) OAuthDeviceLogin(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	if backendName == "" {
+		http.Error(w, "backend parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	b := u.registry.Get(backendName)
+	if b == nil {
+		http.Error(w, fmt.Sprintf("backend %q not found", backendName), http.StatusNotFound)
+		return
+	}
+
+	deviceHandler, ok := b.(backend.OAuthDeviceCodeLoginHandler)
+	if !ok {
+		http.Error(w, fmt.Sprintf("backend %q does not support device code login", backendName), http.StatusBadRequest)
+		return
+	}
+
+	authURL, state, err := deviceHandler.InitiateDeviceCodeLogin()
+	if err != nil {
+		log.Printf("oauth device code login error for %s: %v", backendName, err)
+		http.Error(w, "failed to initiate device code login: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("oauth: initiated device code login for backend %s, state=%s", backendName, state)
+
+	// Parse the JSON response to check for device code info.
+	var deviceCodeInfo backend.DeviceCodeLoginInfo
+	if json.Unmarshal([]byte(authURL), &deviceCodeInfo) == nil && deviceCodeInfo.UserCode != "" {
+		// Device code flow: render the device code page.
+		data := map[string]any{
+			"BackendName":     backendName,
+			"UserCode":        deviceCodeInfo.UserCode,
+			"VerificationURI": deviceCodeInfo.VerificationURI,
+			"ExpiresIn":       deviceCodeInfo.ExpiresIn,
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := templates.ExecuteTemplate(w, "device_code.html", data); err != nil {
+			log.Printf("template error: %v", err)
+			http.Error(w, "template error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Fallback: redirect to regular login if device code info is not available.
+	http.Redirect(w, r, "/ui/oauth/login/"+backendName, http.StatusSeeOther)
+}
+
 // OAuthDisconnect clears stored tokens for the specified backend.
 func (u *UI) OAuthDisconnect(w http.ResponseWriter, r *http.Request) {
 	backendName := chi.URLParam(r, "backend")

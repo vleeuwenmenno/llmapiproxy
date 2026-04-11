@@ -94,6 +94,7 @@ func main() {
 		// OAuth management endpoints
 		r.Get("/oauth/status", ui.OAuthStatus)
 		r.Get("/oauth/login/{backend}", ui.OAuthLogin)
+		r.Get("/oauth/device-login/{backend}", ui.OAuthDeviceLogin)
 		r.Get("/oauth/callback/{backend}", ui.OAuthCallback)
 		r.Post("/oauth/disconnect/{backend}", ui.OAuthDisconnect)
 
