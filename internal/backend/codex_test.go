@@ -1638,3 +1638,186 @@ func TestCodexBackend_EmptyStream(t *testing.T) {
 }
 
 // Helper for creating bool pointer.
+
+// --- OAuthStatusProvider tests ---
+
+func TestCodexBackend_OAuthStatus_NoToken(t *testing.T) {
+	b, _, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	// Clear the pre-set token from codexTestHelper.
+	b.GetTokenStore().Clear()
+
+	status := b.OAuthStatus()
+	if status.BackendName != "codex" {
+		t.Errorf("BackendName = %q, want %q", status.BackendName, "codex")
+	}
+	if status.BackendType != "codex" {
+		t.Errorf("BackendType = %q, want %q", status.BackendType, "codex")
+	}
+	if status.Authenticated {
+		t.Error("should not be authenticated without token")
+	}
+	if !status.NeedsReauth {
+		t.Error("should need re-auth without token")
+	}
+}
+
+func TestCodexBackend_OAuthStatus_WithValidToken(t *testing.T) {
+	b, _, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	// Save a valid token.
+	b.GetTokenStore().Save(&oauth.TokenData{
+		AccessToken:  "valid-access-token",
+		RefreshToken: "valid-refresh-token",
+		TokenType:    "Bearer",
+		ExpiresAt:    time.Now().Add(1 * time.Hour),
+		ObtainedAt:   time.Now(),
+		Source:       "codex_oauth",
+	})
+
+	status := b.OAuthStatus()
+	if !status.Authenticated {
+		t.Error("should be authenticated with valid token")
+	}
+	if status.NeedsReauth {
+		t.Error("should not need re-auth with valid token")
+	}
+	if status.TokenSource != "codex_oauth" {
+		t.Errorf("TokenSource = %q, want %q", status.TokenSource, "codex_oauth")
+	}
+	if status.TokenExpiry == "" {
+		t.Error("TokenExpiry should be set")
+	}
+}
+
+func TestCodexBackend_OAuthStatus_WithExpiredToken(t *testing.T) {
+	b, _, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	// Save an expired token.
+	b.GetTokenStore().Save(&oauth.TokenData{
+		AccessToken:  "expired-access-token",
+		RefreshToken: "valid-refresh-token",
+		TokenType:    "Bearer",
+		ExpiresAt:    time.Now().Add(-1 * time.Hour),
+		ObtainedAt:   time.Now().Add(-2 * time.Hour),
+		Source:       "codex_oauth",
+	})
+
+	status := b.OAuthStatus()
+	if status.Authenticated {
+		t.Error("should not be authenticated with expired token")
+	}
+	// Has refresh token, so doesn't need re-auth yet (can refresh).
+	if status.NeedsReauth {
+		t.Error("should not need re-auth when refresh token exists")
+	}
+}
+
+func TestCodexBackend_OAuthStatus_WithExpiredTokenNoRefresh(t *testing.T) {
+	b, _, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	// Save an expired token without refresh token.
+	b.GetTokenStore().Save(&oauth.TokenData{
+		AccessToken: "expired-access-token",
+		TokenType:   "Bearer",
+		ExpiresAt:   time.Now().Add(-1 * time.Hour),
+		ObtainedAt:  time.Now().Add(-2 * time.Hour),
+		Source:      "codex_oauth",
+	})
+
+	status := b.OAuthStatus()
+	if status.Authenticated {
+		t.Error("should not be authenticated with expired token")
+	}
+	if !status.NeedsReauth {
+		t.Error("should need re-auth when token expired without refresh token")
+	}
+}
+
+func TestCodexBackend_InitiateLogin(t *testing.T) {
+	b, _, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	authURL, state, err := b.InitiateLogin()
+	if err != nil {
+		t.Fatalf("InitiateLogin failed: %v", err)
+	}
+	if authURL == "" {
+		t.Error("authURL should not be empty")
+	}
+	if state == "" {
+		t.Error("state should not be empty")
+	}
+	if !strings.Contains(authURL, "code_challenge") {
+		t.Error("authURL should contain code_challenge parameter")
+	}
+	if !strings.Contains(authURL, state) {
+		t.Error("authURL should contain state parameter")
+	}
+}
+
+func TestCodexBackend_Disconnect(t *testing.T) {
+	b, _, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	// Save a token first.
+	b.GetTokenStore().Save(&oauth.TokenData{
+		AccessToken:  "test-token",
+		RefreshToken: "test-refresh",
+		ExpiresAt:    time.Now().Add(1 * time.Hour),
+		ObtainedAt:   time.Now(),
+		Source:       "codex_oauth",
+	})
+
+	if b.GetTokenStore().Get() == nil {
+		t.Fatal("token should exist before disconnect")
+	}
+
+	if err := b.Disconnect(); err != nil {
+		t.Fatalf("Disconnect failed: %v", err)
+	}
+
+	if b.GetTokenStore().Get() != nil {
+		t.Error("token should be nil after disconnect")
+	}
+}
+
+func TestCodexBackend_HandleCallback(t *testing.T) {
+	b, _, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	// First initiate login to get a state.
+	_, state, err := b.InitiateLogin()
+	if err != nil {
+		t.Fatalf("InitiateLogin failed: %v", err)
+	}
+
+	// Handle the callback (the mock token server will respond).
+	err = b.HandleCallback(context.Background(), "test-auth-code", state)
+	if err != nil {
+		t.Fatalf("HandleCallback failed: %v", err)
+	}
+
+	// Verify token was stored.
+	token := b.GetTokenStore().Get()
+	if token == nil {
+		t.Fatal("token should be stored after callback")
+	}
+	if token.AccessToken != "test-access-token-refreshed" {
+		t.Errorf("AccessToken = %q, want %q", token.AccessToken, "test-access-token-refreshed")
+	}
+}
+
+func TestCodexBackend_HandleCallback_InvalidState(t *testing.T) {
+	b, _, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	err := b.HandleCallback(context.Background(), "test-code", "invalid-state")
+	if err == nil {
+		t.Error("expected error for invalid state")
+	}
+}

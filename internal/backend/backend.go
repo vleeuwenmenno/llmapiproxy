@@ -131,3 +131,51 @@ type ResponsesBackend interface {
 	// Returns a reader of raw SSE data from the upstream (no translation).
 	ResponsesStream(ctx context.Context, req *ResponsesRequest) (io.ReadCloser, error)
 }
+
+// OAuthStatus represents the authentication status of an OAuth-based backend.
+type OAuthStatus struct {
+	// BackendName is the name of the backend.
+	BackendName string `json:"backend_name"`
+	// BackendType is the type of the backend (e.g., "copilot", "codex").
+	BackendType string `json:"backend_type"`
+	// Authenticated is true if the backend has a valid token.
+	Authenticated bool `json:"authenticated"`
+	// TokenExpiry is the time the current token expires, if available.
+	TokenExpiry string `json:"token_expiry,omitempty"`
+	// TokenSource is where the token came from (e.g., "env:GH_TOKEN", "codex_oauth").
+	TokenSource string `json:"token_source,omitempty"`
+	// NeedsReauth is true if the token is expired and cannot be refreshed.
+	NeedsReauth bool `json:"needs_reauth,omitempty"`
+	// ReauthURL is the URL to initiate re-authentication (if needed).
+	ReauthURL string `json:"reauth_url,omitempty"`
+}
+
+// OAuthStatusProvider is an optional interface that backends can implement
+// to expose their current OAuth authentication status. The web UI and health
+// endpoint use this to display auth status and support re-authentication.
+type OAuthStatusProvider interface {
+	// OAuthStatus returns the current authentication status of the backend.
+	OAuthStatus() OAuthStatus
+}
+
+// OAuthLoginHandler is an optional interface for backends that support
+// initiating an OAuth login flow (e.g., Codex with PKCE).
+type OAuthLoginHandler interface {
+	// InitiateLogin returns a URL to redirect the user to for authentication.
+	// The state parameter is used for CSRF protection.
+	InitiateLogin() (authURL string, state string, err error)
+}
+
+// OAuthCallbackHandler is an optional interface for backends that handle
+// OAuth callbacks (e.g., Codex with authorization code exchange).
+type OAuthCallbackHandler interface {
+	// HandleCallback processes an OAuth callback with the given code and state.
+	HandleCallback(ctx context.Context, code string, state string) error
+}
+
+// OAuthDisconnectHandler is an optional interface for backends that support
+// disconnecting (clearing stored tokens).
+type OAuthDisconnectHandler interface {
+	// Disconnect clears all stored tokens for the backend.
+	Disconnect() error
+}

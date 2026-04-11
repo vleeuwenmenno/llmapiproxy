@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/menno/llmapiproxy/internal/backend"
 	"github.com/menno/llmapiproxy/internal/config"
 	"github.com/menno/llmapiproxy/internal/quota"
@@ -717,4 +719,127 @@ func (u *UI) ToggleBackend(w http.ResponseWriter, r *http.Request) {
 		status = "enabled"
 	}
 	http.Redirect(w, r, redirectTo+"?msg=Backend+"+name+"+"+status+".", http.StatusSeeOther)
+}
+
+// --- OAuth management handlers ---
+
+// OAuthStatus returns the authentication status for all OAuth backends as an HTMX fragment.
+// This endpoint is called via HTMX to display live auth status on the settings page.
+func (u *UI) OAuthStatus(w http.ResponseWriter, r *http.Request) {
+	statuses := u.registry.OAuthStatuses()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.ExecuteTemplate(w, "oauth_status.html", statuses); err != nil {
+		log.Printf("template error: %v", err)
+		http.Error(w, "template error", http.StatusInternalServerError)
+	}
+}
+
+// OAuthLogin initiates the OAuth login flow for the specified backend.
+// Currently supports Codex (PKCE flow). For Codex, the user is redirected
+// to the OpenAI authorization URL.
+func (u *UI) OAuthLogin(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	if backendName == "" {
+		http.Error(w, "backend parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	b := u.registry.Get(backendName)
+	if b == nil {
+		http.Error(w, fmt.Sprintf("backend %q not found", backendName), http.StatusNotFound)
+		return
+	}
+
+	loginHandler, ok := b.(backend.OAuthLoginHandler)
+	if !ok {
+		http.Error(w, fmt.Sprintf("backend %q does not support OAuth login", backendName), http.StatusBadRequest)
+		return
+	}
+
+	authURL, state, err := loginHandler.InitiateLogin()
+	if err != nil {
+		log.Printf("oauth login error for %s: %v", backendName, err)
+		http.Error(w, "failed to initiate login: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("oauth: initiated login for backend %s, state=%s", backendName, state)
+	http.Redirect(w, r, authURL, http.StatusFound)
+}
+
+// OAuthCallback handles the OAuth callback for the specified backend.
+// For Codex, it exchanges the authorization code for tokens.
+func (u *UI) OAuthCallback(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	if backendName == "" {
+		http.Error(w, "backend parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	code := r.URL.Query().Get("code")
+	state := r.URL.Query().Get("state")
+	errParam := r.URL.Query().Get("error")
+
+	if errParam != "" {
+		errDesc := r.URL.Query().Get("error_description")
+		log.Printf("oauth callback error for %s: %s: %s", backendName, errParam, errDesc)
+		http.Redirect(w, r, "/ui/settings?msg=OAuth+authentication+failed:+"+errParam, http.StatusSeeOther)
+		return
+	}
+
+	if code == "" || state == "" {
+		http.Error(w, "missing code or state parameter", http.StatusBadRequest)
+		return
+	}
+
+	b := u.registry.Get(backendName)
+	if b == nil {
+		http.Error(w, fmt.Sprintf("backend %q not found", backendName), http.StatusNotFound)
+		return
+	}
+
+	callbackHandler, ok := b.(backend.OAuthCallbackHandler)
+	if !ok {
+		http.Error(w, fmt.Sprintf("backend %q does not support OAuth callbacks", backendName), http.StatusBadRequest)
+		return
+	}
+
+	if err := callbackHandler.HandleCallback(r.Context(), code, state); err != nil {
+		log.Printf("oauth callback error for %s: %v", backendName, err)
+		http.Redirect(w, r, "/ui/settings?msg=OAuth+callback+failed:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		return
+	}
+
+	log.Printf("oauth: successfully authenticated backend %s", backendName)
+	http.Redirect(w, r, "/ui/settings?msg="+backendName+"+authentication+successful!", http.StatusSeeOther)
+}
+
+// OAuthDisconnect clears stored tokens for the specified backend.
+func (u *UI) OAuthDisconnect(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	if backendName == "" {
+		http.Error(w, "backend parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	b := u.registry.Get(backendName)
+	if b == nil {
+		http.Error(w, fmt.Sprintf("backend %q not found", backendName), http.StatusNotFound)
+		return
+	}
+
+	disconnectHandler, ok := b.(backend.OAuthDisconnectHandler)
+	if !ok {
+		http.Error(w, fmt.Sprintf("backend %q does not support disconnect", backendName), http.StatusBadRequest)
+		return
+	}
+
+	if err := disconnectHandler.Disconnect(); err != nil {
+		log.Printf("oauth disconnect error for %s: %v", backendName, err)
+		http.Redirect(w, r, "/ui/settings?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		return
+	}
+
+	log.Printf("oauth: disconnected backend %s", backendName)
+	http.Redirect(w, r, "/ui/settings?msg="+backendName+"+disconnected+successfully.", http.StatusSeeOther)
 }

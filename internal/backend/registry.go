@@ -12,92 +12,127 @@ import (
 )
 
 // Registry maps model prefixes to backends and resolves routing.
+// It preserves token stores across config hot-reloads so that in-memory
+// tokens are not lost when backends are re-created.
 type Registry struct {
-	mu       sync.RWMutex
-	backends map[string]Backend
+	mu         sync.RWMutex
+	backends   map[string]Backend
+	tokenStores map[string]*oauth.TokenStore // preserved across reloads
 }
 
 func NewRegistry() *Registry {
 	return &Registry{
-		backends: make(map[string]Backend),
+		backends:    make(map[string]Backend),
+		tokenStores: make(map[string]*oauth.TokenStore),
 	}
 }
 
 // LoadFromConfig creates backends from config and registers them.
 // Only enabled backends are registered for routing.
 // Supports backend types: openai, copilot, codex.
+// Token stores for OAuth backends are preserved across reloads — if a backend
+// with the same name exists in the old set, its token store is reused.
 func (r *Registry) LoadFromConfig(cfg *config.Config) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.backends = make(map[string]Backend, len(cfg.Backends))
+	newBackends := make(map[string]Backend, len(cfg.Backends))
+	newTokenStores := make(map[string]*oauth.TokenStore)
+
 	for _, bc := range cfg.Backends {
 		if !bc.IsEnabled() {
 			continue
 		}
-		b, err := r.createBackend(bc)
+
+		// For OAuth backends, try to reuse the existing token store.
+		var existingTS *oauth.TokenStore
+		if bc.IsOAuthBackend() {
+			existingTS = r.tokenStores[bc.Name]
+		}
+
+		b, ts, err := r.createBackend(bc, existingTS)
 		if err != nil {
 			log.Printf("warning: skipping backend %q: %v", bc.Name, err)
 			continue
 		}
-		r.backends[bc.Name] = b
+		newBackends[bc.Name] = b
+		if ts != nil {
+			newTokenStores[bc.Name] = ts
+		}
 	}
+
+	r.backends = newBackends
+	r.tokenStores = newTokenStores
 }
 
 // createBackend instantiates the appropriate backend based on the config type.
-func (r *Registry) createBackend(bc config.BackendConfig) (Backend, error) {
+// If existingTS is non-nil, it is reused instead of creating a new token store.
+// Returns the backend and (for OAuth backends) the token store used.
+func (r *Registry) createBackend(bc config.BackendConfig, existingTS *oauth.TokenStore) (Backend, *oauth.TokenStore, error) {
 	switch bc.Type {
 	case "copilot":
-		return newCopilotBackendFromConfig(bc)
+		b, ts, err := r.createCopilotBackend(bc, existingTS)
+		if err != nil {
+			return nil, nil, err
+		}
+		return b, ts, nil
 	case "codex":
-		return newCodexBackendFromConfig(bc)
+		b, ts, err := r.createCodexBackend(bc, existingTS)
+		if err != nil {
+			return nil, nil, err
+		}
+		return b, ts, nil
 	case "openai", "":
-		return NewOpenAI(bc), nil
+		return NewOpenAI(bc), nil, nil
 	default:
-		return nil, fmt.Errorf("unknown backend type %q", bc.Type)
+		return nil, nil, fmt.Errorf("unknown backend type %q", bc.Type)
 	}
 }
 
-// newCopilotBackendFromConfig creates a CopilotBackend with its token store,
-// discoverer, and exchanger properly wired.
-func newCopilotBackendFromConfig(bc config.BackendConfig) (*CopilotBackend, error) {
-	// Determine token file path.
-	tokenPath := "copilot-token.json"
+// tokenStorePath determines the token file path for a backend.
+func tokenStorePath(bc config.BackendConfig) string {
+	tokenPath := bc.Type + "-token.json"
 	if bc.OAuth != nil && bc.OAuth.TokenPath != "" {
 		tokenPath = bc.OAuth.TokenPath
 	}
-	// Use a per-backend token file to support multiple Copilot backends.
 	if !strings.Contains(tokenPath, "/") {
 		tokenPath = filepath.Join("tokens", bc.Name+"-token.json")
 	}
+	return tokenPath
+}
 
-	ts, err := oauth.NewTokenStore(tokenPath)
-	if err != nil {
-		return nil, fmt.Errorf("creating token store: %w", err)
+// createCopilotBackend creates a CopilotBackend, reusing the existing token store
+// if provided.
+func (r *Registry) createCopilotBackend(bc config.BackendConfig, existingTS *oauth.TokenStore) (*CopilotBackend, *oauth.TokenStore, error) {
+	tokenPath := tokenStorePath(bc)
+
+	ts := existingTS
+	var err error
+	if ts == nil {
+		ts, err = oauth.NewTokenStore(tokenPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("creating token store: %w", err)
+		}
 	}
 
 	discoverer := oauth.NewDiscoverer(oauth.WithTokenStore(ts))
 	exchanger := oauth.NewCopilotExchanger(ts)
 
-	return NewCopilotBackend(bc, discoverer, exchanger, ts), nil
+	return NewCopilotBackend(bc, discoverer, exchanger, ts), ts, nil
 }
 
-// newCodexBackendFromConfig creates a CodexBackend with its token store
-// and OAuth handler properly wired.
-func newCodexBackendFromConfig(bc config.BackendConfig) (*CodexBackend, error) {
-	// Determine token file path.
-	tokenPath := "codex-token.json"
-	if bc.OAuth != nil && bc.OAuth.TokenPath != "" {
-		tokenPath = bc.OAuth.TokenPath
-	}
-	// Use a per-backend token file.
-	if !strings.Contains(tokenPath, "/") {
-		tokenPath = filepath.Join("tokens", bc.Name+"-token.json")
-	}
+// createCodexBackend creates a CodexBackend, reusing the existing token store
+// if provided.
+func (r *Registry) createCodexBackend(bc config.BackendConfig, existingTS *oauth.TokenStore) (*CodexBackend, *oauth.TokenStore, error) {
+	tokenPath := tokenStorePath(bc)
 
-	ts, err := oauth.NewTokenStore(tokenPath)
-	if err != nil {
-		return nil, fmt.Errorf("creating token store: %w", err)
+	ts := existingTS
+	var err error
+	if ts == nil {
+		ts, err = oauth.NewTokenStore(tokenPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("creating token store: %w", err)
+		}
 	}
 
 	// Build OAuth config from the backend config, falling back to defaults.
@@ -119,7 +154,7 @@ func newCodexBackendFromConfig(bc config.BackendConfig) (*CodexBackend, error) {
 
 	oauthHandler := oauth.NewCodexOAuthHandler(ts, oauthCfg)
 
-	return NewCodexBackend(bc, oauthHandler, ts), nil
+	return NewCodexBackend(bc, oauthHandler, ts), ts, nil
 }
 
 // Resolve parses a model string like "openrouter/openai/gpt-5.2" and returns
@@ -183,6 +218,28 @@ func (r *Registry) Names() []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+// OAuthStatuses returns the OAuth authentication status for all backends
+// that implement OAuthStatusProvider.
+func (r *Registry) OAuthStatuses() []OAuthStatus {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var statuses []OAuthStatus
+	for _, b := range r.backends {
+		if sp, ok := b.(OAuthStatusProvider); ok {
+			statuses = append(statuses, sp.OAuthStatus())
+		}
+	}
+	return statuses
+}
+
+// GetTokenStore returns the token store for the named backend, or nil.
+func (r *Registry) GetTokenStore(name string) *oauth.TokenStore {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.tokenStores[name]
 }
 
 // ResolveRoute returns an ordered list of RouteEntry values for the given model,

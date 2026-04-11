@@ -2,8 +2,10 @@ package backend
 
 import (
 	"testing"
+	"time"
 
 	"github.com/menno/llmapiproxy/internal/config"
+	"github.com/menno/llmapiproxy/internal/oauth"
 )
 
 func boolPtr(b bool) *bool { return &b }
@@ -402,5 +404,415 @@ func TestRegistry_All_Empty(t *testing.T) {
 	all := r.All()
 	if len(all) != 0 {
 		t.Errorf("All() on empty registry should return empty slice, got %d", len(all))
+	}
+}
+
+// --- Token preservation tests ---
+
+func TestRegistry_HotReload_PreservesCodexTokens(t *testing.T) {
+	r := NewRegistry()
+
+	// Initial config with codex backend.
+	cfg1 := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+			},
+		},
+	}
+	r.LoadFromConfig(cfg1)
+
+	// Clean up any stale token files from previous test runs.
+	ts := r.GetTokenStore("codex")
+	ts.Clear()
+
+	// Get the token store and save a token.
+	if ts == nil {
+		t.Fatal("token store should exist for codex backend")
+	}
+
+	testToken := &oauth.TokenData{
+		AccessToken:  "test-access-token-123",
+		RefreshToken: "test-refresh-token-456",
+		TokenType:    "Bearer",
+		ExpiresAt:    time.Now().Add(1 * time.Hour),
+		ObtainedAt:   time.Now(),
+		Source:       "codex_oauth",
+	}
+	if err := ts.Save(testToken); err != nil {
+		t.Fatalf("failed to save token: %v", err)
+	}
+
+	// Verify the token is accessible.
+	loaded := ts.Get()
+	if loaded == nil || loaded.AccessToken != "test-access-token-123" {
+		t.Fatal("token should be accessible before reload")
+	}
+
+	// Reload config (simulating SIGHUP).
+	cfg2 := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+			},
+		},
+	}
+	r.LoadFromConfig(cfg2)
+
+	// Verify the token store was preserved.
+	ts2 := r.GetTokenStore("codex")
+	if ts2 == nil {
+		t.Fatal("token store should still exist after reload")
+	}
+
+	// The token should still be accessible (same token store instance).
+	loaded2 := ts2.Get()
+	if loaded2 == nil {
+		t.Fatal("token should be preserved across reload")
+	}
+	if loaded2.AccessToken != "test-access-token-123" {
+		t.Errorf("access token mismatch after reload: got %q, want %q", loaded2.AccessToken, "test-access-token-123")
+	}
+	if loaded2.RefreshToken != "test-refresh-token-456" {
+		t.Errorf("refresh token mismatch after reload: got %q, want %q", loaded2.RefreshToken, "test-refresh-token-456")
+	}
+}
+
+func TestRegistry_HotReload_PreservesCopilotTokens(t *testing.T) {
+	r := NewRegistry()
+
+	cfg := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "copilot",
+				Type:    "copilot",
+				BaseURL: "https://api.githubcopilot.com",
+			},
+		},
+	}
+	r.LoadFromConfig(cfg)
+
+	// Save a token.
+	ts := r.GetTokenStore("copilot")
+	if ts == nil {
+		t.Fatal("token store should exist for copilot backend")
+	}
+
+	testToken := &oauth.TokenData{
+		AccessToken: "test-copilot-token-789",
+		ExpiresAt:   time.Now().Add(1 * time.Hour),
+		ObtainedAt:  time.Now(),
+		Source:      "env:COPILOT_GITHUB_TOKEN",
+	}
+	if err := ts.Save(testToken); err != nil {
+		t.Fatalf("failed to save token: %v", err)
+	}
+
+	// Reload.
+	r.LoadFromConfig(cfg)
+
+	// Token should be preserved.
+	ts2 := r.GetTokenStore("copilot")
+	loaded := ts2.Get()
+	if loaded == nil {
+		t.Fatal("copilot token should be preserved across reload")
+	}
+	if loaded.AccessToken != "test-copilot-token-789" {
+		t.Errorf("copilot token mismatch: got %q, want %q", loaded.AccessToken, "test-copilot-token-789")
+	}
+}
+
+func TestRegistry_HotReload_RemovesTokenStoreForRemovedBackend(t *testing.T) {
+	r := NewRegistry()
+
+	cfg1 := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+			},
+		},
+	}
+	r.LoadFromConfig(cfg1)
+
+	if r.GetTokenStore("codex") == nil {
+		t.Fatal("codex token store should exist")
+	}
+
+	// Reload without codex.
+	cfg2 := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "openrouter",
+				Type:    "openai",
+				BaseURL: "https://openrouter.ai/api/v1",
+				APIKey:  "sk-or-key",
+			},
+		},
+	}
+	r.LoadFromConfig(cfg2)
+
+	if r.GetTokenStore("codex") != nil {
+		t.Error("codex token store should be cleaned up after removal")
+	}
+}
+
+// --- OAuth status tests ---
+
+func TestRegistry_OAuthStatuses_Codex(t *testing.T) {
+	r := NewRegistry()
+
+	cfg := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+			},
+		},
+	}
+	r.LoadFromConfig(cfg)
+
+	// Clear any stale tokens from disk (shared token file path).
+	ts := r.GetTokenStore("codex")
+	if ts != nil {
+		ts.Clear()
+	}
+
+	statuses := r.OAuthStatuses()
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d", len(statuses))
+	}
+
+	s := statuses[0]
+	if s.BackendName != "codex" {
+		t.Errorf("BackendName = %q, want %q", s.BackendName, "codex")
+	}
+	if s.BackendType != "codex" {
+		t.Errorf("BackendType = %q, want %q", s.BackendType, "codex")
+	}
+	if s.Authenticated {
+		t.Error("should not be authenticated without a token")
+	}
+	if !s.NeedsReauth {
+		t.Error("should need re-auth without a token")
+	}
+}
+
+func TestRegistry_OAuthStatuses_CodexWithToken(t *testing.T) {
+	r := NewRegistry()
+
+	cfg := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+			},
+		},
+	}
+	r.LoadFromConfig(cfg)
+
+	// Clean up any stale token files from previous test runs.
+	ts := r.GetTokenStore("codex")
+	ts.Clear()
+
+	// Save a valid token.
+	ts.Save(&oauth.TokenData{
+		AccessToken:  "valid-token",
+		RefreshToken: "refresh-token",
+		ExpiresAt:    time.Now().Add(1 * time.Hour),
+		ObtainedAt:   time.Now(),
+		Source:       "codex_oauth",
+	})
+
+	statuses := r.OAuthStatuses()
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d", len(statuses))
+	}
+
+	s := statuses[0]
+	if !s.Authenticated {
+		t.Error("should be authenticated with a valid token")
+	}
+	if s.NeedsReauth {
+		t.Error("should not need re-auth with a valid token")
+	}
+	if s.TokenSource != "codex_oauth" {
+		t.Errorf("TokenSource = %q, want %q", s.TokenSource, "codex_oauth")
+	}
+	if s.TokenExpiry == "" {
+		t.Error("TokenExpiry should be set")
+	}
+}
+
+func TestRegistry_OAuthStatuses_SkipsNonOAuth(t *testing.T) {
+	r := NewRegistry()
+
+	cfg := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "openrouter",
+				Type:    "openai",
+				BaseURL: "https://openrouter.ai/api/v1",
+				APIKey:  "sk-or-key",
+			},
+		},
+	}
+	r.LoadFromConfig(cfg)
+
+	statuses := r.OAuthStatuses()
+	if len(statuses) != 0 {
+		t.Errorf("expected 0 statuses for non-OAuth backend, got %d", len(statuses))
+	}
+}
+
+func TestRegistry_OAuthStatuses_Mixed(t *testing.T) {
+	r := NewRegistry()
+
+	cfg := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "openrouter",
+				Type:    "openai",
+				BaseURL: "https://openrouter.ai/api/v1",
+				APIKey:  "sk-or-key",
+			},
+			{
+				Name:    "codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+			},
+			{
+				Name:    "copilot",
+				Type:    "copilot",
+				BaseURL: "https://api.githubcopilot.com",
+			},
+		},
+	}
+	r.LoadFromConfig(cfg)
+
+	statuses := r.OAuthStatuses()
+	if len(statuses) != 2 {
+		t.Errorf("expected 2 statuses (codex + copilot), got %d", len(statuses))
+	}
+
+	names := make(map[string]bool)
+	for _, s := range statuses {
+		names[s.BackendName] = true
+	}
+	if !names["codex"] || !names["copilot"] {
+		t.Errorf("expected codex and copilot in statuses, got %v", names)
+	}
+}
+
+func TestRegistry_HotReload_AddsCodexAtRuntime(t *testing.T) {
+	r := NewRegistry()
+
+	// Initial config without codex.
+	cfg1 := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "openrouter",
+				Type:    "openai",
+				BaseURL: "https://openrouter.ai/api/v1",
+				APIKey:  "sk-or-key",
+			},
+		},
+	}
+	r.LoadFromConfig(cfg1)
+
+	if r.Has("codex") {
+		t.Error("codex should not be registered initially")
+	}
+
+	// Simulate SIGHUP with codex added.
+	cfg2 := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "openrouter",
+				Type:    "openai",
+				BaseURL: "https://openrouter.ai/api/v1",
+				APIKey:  "sk-or-key",
+			},
+			{
+				Name:    "codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+			},
+		},
+	}
+	r.LoadFromConfig(cfg2)
+
+	if !r.Has("codex") {
+		t.Error("codex should be registered after hot-reload")
+	}
+
+	// Verify the codex backend works.
+	_, modelID, err := r.Resolve("codex/o4-mini")
+	if err != nil {
+		t.Fatalf("should resolve codex/o4-mini: %v", err)
+	}
+	if modelID != "o4-mini" {
+		t.Errorf("modelID = %q, want %q", modelID, "o4-mini")
+	}
+}
+
+func TestRegistry_HotReload_RemovesCodexAtRuntime(t *testing.T) {
+	r := NewRegistry()
+
+	// Initial config with codex.
+	cfg1 := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "openrouter",
+				Type:    "openai",
+				BaseURL: "https://openrouter.ai/api/v1",
+				APIKey:  "sk-or-key",
+			},
+			{
+				Name:    "codex",
+				Type:    "codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+			},
+		},
+	}
+	r.LoadFromConfig(cfg1)
+
+	if !r.Has("codex") {
+		t.Error("codex should be registered initially")
+	}
+
+	// Simulate SIGHUP with codex removed.
+	// Configure openrouter with explicit models so it doesn't wildcard-match codex models.
+	cfg2 := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "openrouter",
+				Type:    "openai",
+				BaseURL: "https://openrouter.ai/api/v1",
+				APIKey:  "sk-or-key",
+				Models:  []string{"openai/gpt-4o"},
+			},
+		},
+	}
+	r.LoadFromConfig(cfg2)
+
+	if r.Has("codex") {
+		t.Error("codex should be removed after hot-reload")
+	}
+	if !r.Has("openrouter") {
+		t.Error("openrouter should still be registered")
+	}
+
+	// Verify requests to codex backend fail.
+	_, _, err := r.Resolve("codex/o4-mini")
+	if err == nil {
+		t.Error("expected error resolving codex/o4-mini after removal")
 	}
 }

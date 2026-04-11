@@ -293,3 +293,36 @@ func (b *CopilotBackend) rewriteBody(req *ChatCompletionRequest) []byte {
 	data, _ := json.Marshal(m)
 	return data
 }
+
+// --- OAuthStatusProvider interface ---
+
+// OAuthStatus returns the current authentication status of the Copilot backend.
+func (b *CopilotBackend) OAuthStatus() OAuthStatus {
+	status := OAuthStatus{
+		BackendName: b.name,
+		BackendType: "copilot",
+	}
+
+	token := b.tokenStore.Get()
+	if token != nil {
+		status.Authenticated = !token.IsExpired()
+		status.TokenSource = token.Source
+		if !token.ExpiresAt.IsZero() {
+			status.TokenExpiry = token.ExpiresAt.Format(time.RFC3339)
+		}
+	}
+
+	return status
+}
+
+// --- OAuthDisconnectHandler interface ---
+
+// Disconnect clears all stored tokens for the Copilot backend.
+func (b *CopilotBackend) Disconnect() error {
+	return b.tokenStore.Clear()
+}
+
+// GetTokenStore returns the underlying TokenStore (for status checking).
+func (b *CopilotBackend) GetTokenStore() *oauth.TokenStore {
+	return b.tokenStore
+}

@@ -1,0 +1,59 @@
+{{/* HTMX fragment showing OAuth status for all backends */}}
+{{range .}}
+<div class="oauth-backend-status" id="oauth-status-{{.BackendName}}" 
+     hx-get="/ui/oauth/status" 
+     hx-trigger="every 30s" 
+     hx-swap="outerHTML"
+     style="margin-bottom: 12px; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+  <div style="display: flex; align-items: center; justify-content: space-between;">
+    <div>
+      <strong>{{.BackendName}}</strong>
+      <span class="badge" style="margin-left: 8px; padding: 2px 8px; border-radius: 4px; font-size: 0.85em;
+        {{if .Authenticated}}background-color: #d4edda; color: #155724;
+        {{else}}background-color: #f8d7da; color: #721c24;{{end}}">
+        {{if .Authenticated}}✓ Authenticated{{else}}✗ Not authenticated{{end}}
+      </span>
+      <span style="margin-left: 8px; color: #666; font-size: 0.85em;">({{.BackendType}})</span>
+    </div>
+    <div>
+      {{if eq .BackendType "codex"}}
+        {{if .NeedsReauth}}
+          <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-primary" 
+             style="padding: 4px 12px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-size: 0.85em;">
+            Re-authenticate
+          </a>
+        {{else if .Authenticated}}
+          <form method="POST" action="/ui/oauth/disconnect/{{.BackendName}}" style="display: inline;">
+            <button type="submit" class="btn btn-outline" 
+                    style="padding: 4px 12px; border: 1px solid #dc3545; color: #dc3545; background: white; border-radius: 4px; font-size: 0.85em; cursor: pointer;">
+              Disconnect
+            </button>
+          </form>
+        {{else}}
+          <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-primary"
+             style="padding: 4px 12px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-size: 0.85em;">
+            Connect
+          </a>
+        {{end}}
+      {{else if eq .BackendType "copilot"}}
+        {{if .Authenticated}}
+          <form method="POST" action="/ui/oauth/disconnect/{{.BackendName}}" style="display: inline;">
+            <button type="submit" class="btn btn-outline"
+                    style="padding: 4px 12px; border: 1px solid #dc3545; color: #dc3545; background: white; border-radius: 4px; font-size: 0.85em; cursor: pointer;">
+              Clear Token
+            </button>
+          </form>
+        {{end}}
+      {{end}}
+    </div>
+  </div>
+  {{if .TokenSource}}<div style="margin-top: 4px; font-size: 0.8em; color: #666;">Source: {{.TokenSource}}</div>{{end}}
+  {{if .TokenExpiry}}<div style="font-size: 0.8em; color: #666;">Token expires: {{.TokenExpiry}}</div>{{end}}
+  {{if .NeedsReauth}}<div style="font-size: 0.8em; color: #dc3545;">Token expired or missing — re-authentication required</div>{{end}}
+</div>
+{{end}}
+{{if not .}}
+<div style="padding: 10px; color: #666; font-style: italic;">
+  No OAuth backends configured.
+</div>
+{{end}}

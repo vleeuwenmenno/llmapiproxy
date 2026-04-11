@@ -832,3 +832,61 @@ func (b *CodexBackend) doResponsesStream(ctx context.Context, req *ResponsesRequ
 	// Return the raw stream — no translation to chat completion format.
 	return resp.Body, nil
 }
+
+// --- OAuthStatusProvider interface ---
+
+// OAuthStatus returns the current authentication status of the Codex backend.
+func (b *CodexBackend) OAuthStatus() OAuthStatus {
+	status := OAuthStatus{
+		BackendName: b.name,
+		BackendType: "codex",
+	}
+
+	token := b.tokenStore.Get()
+	if token != nil {
+		status.Authenticated = !token.IsExpired()
+		status.TokenSource = token.Source
+		if !token.ExpiresAt.IsZero() {
+			status.TokenExpiry = token.ExpiresAt.Format(time.RFC3339)
+		}
+		status.NeedsReauth = token.IsExpired() && token.RefreshToken == ""
+	} else {
+		status.NeedsReauth = true
+	}
+
+	return status
+}
+
+// --- OAuthLoginHandler interface ---
+
+// InitiateLogin starts the OAuth PKCE flow for Codex authentication.
+// Returns the authorization URL to redirect the user to and a state parameter.
+func (b *CodexBackend) InitiateLogin() (authURL string, state string, err error) {
+	return b.oauthHandler.AuthorizeURL()
+}
+
+// --- OAuthCallbackHandler interface ---
+
+// HandleCallback processes the OAuth callback by exchanging the authorization
+// code for tokens using the stored PKCE verifier.
+func (b *CodexBackend) HandleCallback(ctx context.Context, code string, state string) error {
+	_, err := b.oauthHandler.HandleCallback(ctx, code, state)
+	return err
+}
+
+// --- OAuthDisconnectHandler interface ---
+
+// Disconnect clears all stored tokens for the Codex backend.
+func (b *CodexBackend) Disconnect() error {
+	return b.tokenStore.Clear()
+}
+
+// GetOAuthHandler returns the underlying CodexOAuthHandler (for testing).
+func (b *CodexBackend) GetOAuthHandler() *oauth.CodexOAuthHandler {
+	return b.oauthHandler
+}
+
+// GetTokenStore returns the underlying TokenStore (for status checking).
+func (b *CodexBackend) GetTokenStore() *oauth.TokenStore {
+	return b.tokenStore
+}

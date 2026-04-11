@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
-	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -91,6 +91,12 @@ func main() {
 		r.Post("/settings/clients/delete", ui.DeleteClient)
 		r.Post("/routing/save", ui.SaveRouting)
 
+		// OAuth management endpoints
+		r.Get("/oauth/status", ui.OAuthStatus)
+		r.Get("/oauth/login/{backend}", ui.OAuthLogin)
+		r.Get("/oauth/callback/{backend}", ui.OAuthCallback)
+		r.Post("/oauth/disconnect/{backend}", ui.OAuthDisconnect)
+
 		staticSub, err := fs.Sub(web.StaticFS(), "static")
 		if err != nil {
 			log.Fatalf("failed to create static sub-filesystem: %v", err)
@@ -104,7 +110,26 @@ func main() {
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"status":"ok"}`)
+
+		statuses := registry.OAuthStatuses()
+		allHealthy := true
+		for _, s := range statuses {
+			if s.NeedsReauth {
+				allHealthy = false
+				break
+			}
+		}
+
+		overallStatus := "ok"
+		if !allHealthy {
+			overallStatus = "degraded"
+		}
+
+		resp := map[string]interface{}{
+			"status":   overallStatus,
+			"backends": statuses,
+		}
+		json.NewEncoder(w).Encode(resp)
 	})
 
 	srv := &http.Server{
