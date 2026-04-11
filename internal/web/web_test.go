@@ -648,3 +648,136 @@ func TestOAuthStatus_MultipleBackendsDisplayed(t *testing.T) {
 		t.Error("expected codex source 'codex_oauth'")
 	}
 }
+
+func TestSettingsPage_IncludesHTMX(t *testing.T) {
+	ui, cleanup := createTestUI(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/settings", nil)
+	w := httptest.NewRecorder()
+
+	ui.SettingsPage(w, req)
+
+	body := w.Body.String()
+
+	// Should include HTMX script
+	if !strings.Contains(body, "htmx.min.js") {
+		t.Error("expected HTMX script include in settings page")
+	}
+}
+
+func TestSettingsPage_IncludesOAuthCSS(t *testing.T) {
+	ui, cleanup := createTestUI(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/settings", nil)
+	w := httptest.NewRecorder()
+
+	ui.SettingsPage(w, req)
+
+	body := w.Body.String()
+
+	// Verify all oauth-* CSS classes are defined in the style block
+	cssClasses := []string{
+		".oauth-backend-card",
+		".oauth-backend-header",
+		".oauth-backend-info",
+		".oauth-backend-name-row",
+		".oauth-status-dot",
+		".oauth-status-dot-valid",
+		".oauth-status-dot-expiring",
+		".oauth-status-dot-expired",
+		".oauth-backend-name",
+		".oauth-backend-type-badge",
+		".oauth-backend-details",
+		".oauth-detail-label",
+		".oauth-detail-value",
+		".oauth-text-valid",
+		".oauth-text-expiring",
+		".oauth-text-missing",
+		".oauth-backend-actions",
+		".btn-oauth-primary",
+		".btn-oauth-danger",
+		".oauth-backend-meta",
+		".oauth-meta-item",
+		".oauth-meta-label",
+		".oauth-meta-value",
+		".oauth-meta-warning",
+		".oauth-expiry-valid",
+		".oauth-expiry-expiring",
+		".oauth-expiry-expired",
+		".oauth-empty",
+	}
+
+	for _, cls := range cssClasses {
+		if !strings.Contains(body, cls) {
+			t.Errorf("expected CSS class %s definition in settings page style block", cls)
+		}
+	}
+}
+
+func TestOAuthStatus_CopilotShowsCheckStatusButton(t *testing.T) {
+	ui, cleanup := createTestUI(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/oauth/status", nil)
+	w := httptest.NewRecorder()
+
+	ui.OAuthStatus(w, req)
+
+	body := w.Body.String()
+
+	// Copilot backend should show a Check Status button
+	if !strings.Contains(body, "Check Status") {
+		t.Error("expected 'Check Status' button for Copilot backend")
+	}
+	// The Check Status button should use HTMX to refresh the status
+	if !strings.Contains(body, "btn-oauth-secondary") {
+		t.Error("expected btn-oauth-secondary class for Check Status button")
+	}
+}
+
+func TestOAuthStatus_CheckStatusButtonUsesHTMX(t *testing.T) {
+	ui, cleanup := createTestUI(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/oauth/status", nil)
+	w := httptest.NewRecorder()
+
+	ui.OAuthStatus(w, req)
+
+	body := w.Body.String()
+
+	// The Check Status button should have hx-get for HTMX-driven refresh
+	if !strings.Contains(body, `hx-get="/ui/oauth/status"`) {
+		t.Error("expected hx-get attribute on Check Status button for HTMX auto-refresh")
+	}
+	if !strings.Contains(body, `hx-target="#oauth-status-container"`) {
+		t.Error("expected hx-target attribute pointing to oauth-status-container")
+	}
+}
+
+func TestSettingsPage_OAuthCSSDarkLightMode(t *testing.T) {
+	ui, cleanup := createTestUI(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/settings", nil)
+	w := httptest.NewRecorder()
+
+	ui.SettingsPage(w, req)
+
+	body := w.Body.String()
+
+	// Dark mode colors (CSS variables) should be defined in :root
+	darkModeVars := []string{"--green", "--red", "--amber"}
+	for _, v := range darkModeVars {
+		if !strings.Contains(body, v) {
+			t.Errorf("expected CSS variable %s for dark mode token colors", v)
+		}
+	}
+
+	// Light mode overrides should exist
+	if !strings.Contains(body, "body.light") {
+		t.Error("expected body.light CSS rules for light mode token colors")
+	}
+}
