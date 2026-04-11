@@ -8,11 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/menno/llmapiproxy/internal/backend"
 	"github.com/menno/llmapiproxy/internal/config"
@@ -325,7 +326,7 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 	}
 
 	if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
-		log.Printf("stream scan error: %v", err)
+		log.Error().Err(err).Msg("stream scan error")
 		rec.Error = err.Error()
 	}
 
@@ -595,7 +596,7 @@ func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, e
 	}
 
 	if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
-		log.Printf("race stream scan error: %v", err)
+		log.Error().Err(err).Msg("race stream scan error")
 		rec.Error = err.Error()
 	}
 
@@ -868,7 +869,7 @@ func (h *Handler) handleStaggeredRaceStream(ctx context.Context, w http.Response
 	}
 
 	if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
-		log.Printf("staggered-race stream scan error: %v", err)
+		log.Error().Err(err).Msg("staggered-race stream scan error")
 		rec.Error = err.Error()
 	}
 
@@ -891,7 +892,7 @@ func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 	for _, b := range h.registry.All() {
 		models, err := b.ListModels(r.Context())
 		if err != nil {
-			log.Printf("error listing models from %s: %v", b.Name(), err)
+			log.Warn().Err(err).Str("backend", b.Name()).Msg("error listing models")
 			continue
 		}
 		for _, m := range models {

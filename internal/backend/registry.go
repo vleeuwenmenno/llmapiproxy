@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/menno/llmapiproxy/internal/config"
 )
 
@@ -32,9 +34,11 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 	r.backends = make(map[string]Backend, len(cfg.Backends))
 	for _, bc := range cfg.Backends {
 		if !bc.IsEnabled() {
+			log.Debug().Str("backend", bc.Name).Msg("skipping disabled backend")
 			continue
 		}
 		r.backends[bc.Name] = NewOpenAI(bc, cacheTTL)
+		log.Info().Str("backend", bc.Name).Msg("registered backend")
 	}
 }
 
@@ -137,4 +141,16 @@ func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]R
 	}
 
 	return nil, "", 0, fmt.Errorf("no backend found for model %q", model)
+}
+
+// ClearAllModelCaches clears the model cache for all registered backends.
+func (r *Registry) ClearAllModelCaches() {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, b := range r.backends {
+		if ob, ok := b.(*OpenAIBackend); ok {
+			ob.ClearModelCache()
+		}
+	}
+	log.Info().Msg("cleared model caches for all backends")
 }
