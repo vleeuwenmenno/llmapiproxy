@@ -1,0 +1,100 @@
+{
+  "milestone": "codex-backend",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "go test ./...", "exitCode": 0 },
+    "typecheck": { "passed": true, "command": "go build ./...", "exitCode": 0 },
+    "lint": { "passed": true, "command": "go vet ./...", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
+    {
+      "featureId": "codex-oauth-flow",
+      "severity": "non_blocking",
+      "description": "maskTokenBody only truncates response body to 200 chars but does not mask sensitive token values that could appear in error messages. Low risk since OAuth error responses typically contain error codes, not token values."
+    },
+    {
+      "featureId": "codex-oauth-flow",
+      "severity": "non_blocking",
+      "description": "Background cleanup goroutine in NewCodexOAuthHandler has no stop mechanism. Minor for long-lived handlers but could accumulate if handlers are frequently recreated during hot-reload."
+    },
+    {
+      "featureId": "codex-backend",
+      "severity": "non_blocking",
+      "description": "translateToCodexRequest discards all but the last system message when multiple are present. Could lose information. Consider concatenating with a delimiter."
+    },
+    {
+      "featureId": "codex-backend",
+      "severity": "non_blocking",
+      "description": "doChatCompletionStream creates a new http.Client{} per streaming request without connection pooling. Consider a shared no-timeout streaming client on the struct."
+    },
+    {
+      "featureId": "codex-backend",
+      "severity": "non_blocking",
+      "description": "translateFromCodexResponse could produce multiple choices with Index: 0 if Codex returns multiple assistant output items. Unlikely but subtle."
+    },
+    {
+      "featureId": "codex-backend",
+      "severity": "non_blocking",
+      "description": "TestCodexBackend_Upstream401_Retry doesn't verify the Authorization header changed between first (401) and second (success) request. A stronger test would verify the token actually changed."
+    },
+    {
+      "featureId": "responses-api-endpoint",
+      "severity": "non_blocking",
+      "description": "Responses handler has redundant method check (r.Method != http.MethodPost) since Chi's r.Post() already rejects non-POST with 405. Consistent with existing pattern but still redundant."
+    },
+    {
+      "featureId": "responses-api-endpoint",
+      "severity": "non_blocking",
+      "description": "When iterating routing entries with multiple backends, the Responses handler returns after the first entry that doesn't support ResponsesBackend. Later entries never reached."
+    },
+    {
+      "featureId": "codex-config-hot-reload",
+      "severity": "non_blocking",
+      "description": "If a config hot-reload occurs during an active OAuth PKCE flow, the CodexOAuthHandler's in-memory pending states are discarded. Subsequent callback would fail with 'invalid or expired state parameter'. User would need to re-initiate login."
+    },
+    {
+      "featureId": "codex-config-hot-reload",
+      "severity": "non_blocking",
+      "description": "Per-backend HTMX polling (hx-trigger='every 30s' on each div) means N parallel requests every 30 seconds for N OAuth backends. A single wrapper with one hx-trigger would be more efficient."
+    },
+    {
+      "featureId": "codex-config-hot-reload",
+      "severity": "non_blocking",
+      "description": "CopilotBackend.OAuthStatus() does not set NeedsReauth=true when there is no token, unlike CodexBackend. Inconsistency in health endpoint reporting."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add note about the optional interface pattern for backend capabilities (ResponsesBackend, OAuthStatusProvider, OAuthLoginHandler, etc.). Document that backends can implement these optional interfaces to expose additional capabilities.",
+      "evidence": "Both codex-backend and codex-config-hot-reload reviews noted that optional interfaces (ResponsesBackend, OAuthStatusProvider, etc.) are a key extension pattern but not documented in AGENTS.md.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention note about Chi URL parameters ({backend}) for route registration, which is used in OAuth endpoints. Other routes in the project use query parameters or form values.",
+      "evidence": "codex-config-hot-reload review noted Chi URL params are used but not documented as a pattern in AGENTS.md.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "CodexBackend follows same structural patterns as CopilotBackend (oauthHandler + tokenStore fields, BackendError wrapping).",
+      "reason": "already-documented — codex-backend.md library file and existing code conventions already capture this pattern"
+    },
+    {
+      "observation": "Worker followed go-backend-worker skill procedure correctly.",
+      "reason": "not-actionable — skill compliance is expected, not a knowledge update"
+    }
+  ],
+  "previousRound": null
+}

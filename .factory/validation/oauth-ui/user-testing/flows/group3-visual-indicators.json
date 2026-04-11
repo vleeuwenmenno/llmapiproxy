@@ -1,0 +1,157 @@
+{
+  "groupId": "group3-visual-indicators",
+  "testedAt": "2026-04-11T12:30:00Z",
+  "isolation": {
+    "proxyUrl": "http://localhost:8000",
+    "settingsPage": "http://localhost:8000/ui/settings",
+    "dashboard": "http://localhost:8000/ui/",
+    "health": "http://localhost:8000/health",
+    "browserSession": "eacf7bf789f7__g3",
+    "backends": ["openrouter", "copilot", "codex"]
+  },
+  "toolsUsed": ["agent-browser"],
+  "assertions": [
+    {
+      "id": "VAL-UI-012",
+      "title": "Green indicator for valid tokens",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Navigate to /ui/settings",
+          "expected": "Settings page with OAuth Connections section",
+          "observed": "Settings page loaded with OAuth Connections section showing copilot (Not connected) and codex (Not connected)"
+        },
+        {
+          "action": "Check CSS class definitions for oauth-status-dot-valid",
+          "expected": "Green background color defined for valid state",
+          "observed": "CSS class .oauth-status-dot-valid is defined with background: var(--green) = #34d399 and box-shadow with green glow. Verified by creating synthetic element: computed background rgb(52, 211, 153) matching #34d399."
+        },
+        {
+          "action": "Check if any backend has a valid token (green dot)",
+          "expected": "At least one backend showing green indicator",
+          "observed": "Both copilot and codex backends show TokenState='missing' with class 'oauth-status-dot-missing'. No backend currently has a valid token to verify green indicator runtime behavior."
+        }
+      ],
+      "evidence": {
+        "screenshots": ["oauth-ui/group3/settings-page-full.png", "oauth-ui/group3/settings-oauth-section.png"],
+        "consoleErrors": "none",
+        "cssVerification": "oauth-status-dot-valid has background: var(--green) (#34d399) = rgb(52, 211, 153) confirmed via synthetic element test. box-shadow: rgba(52, 211, 153, 0.5) 0px 0px 6px. Width/height: 10px. Border-radius: 50%."
+      },
+      "issues": "No backend currently has a valid token to verify the green indicator at runtime. CSS definitions are correct and would render green when TokenState='valid'."
+    },
+    {
+      "id": "VAL-UI-013",
+      "title": "Yellow indicator for tokens expiring soon",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Navigate to /ui/settings",
+          "expected": "Settings page with OAuth Connections section",
+          "observed": "Settings page loaded successfully"
+        },
+        {
+          "action": "Check CSS class definitions for oauth-status-dot-expiring",
+          "expected": "Yellow/amber background color defined for expiring state",
+          "observed": "CSS class .oauth-status-dot-expiring is defined with background: var(--amber) = #fbbf24 and box-shadow with amber glow. Verified by creating synthetic element: computed background rgb(251, 191, 36) matching #fbbf24."
+        },
+        {
+          "action": "Check if any backend has an expiring token (yellow dot)",
+          "expected": "At least one backend showing yellow indicator",
+          "observed": "Both backends show TokenState='missing'. Cannot artificially create expiring-soon token state for visual verification."
+        }
+      ],
+      "evidence": {
+        "screenshots": ["oauth-ui/group3/settings-page-full.png"],
+        "consoleErrors": "none",
+        "cssVerification": "oauth-status-dot-expiring has background: var(--amber) (#fbbf24) = rgb(251, 191, 36) confirmed via synthetic element test. box-shadow: rgba(251, 191, 36, 0.5) 0px 0px 6px."
+      },
+      "issues": "Cannot artificially create expiring-soon token state for visual verification. CSS definitions are correct and would render yellow/amber when TokenState='expiring'."
+    },
+    {
+      "id": "VAL-UI-014",
+      "title": "Red indicator for expired or missing tokens",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Navigate to /ui/settings",
+          "expected": "Settings page with OAuth Connections section",
+          "observed": "Settings page loaded with copilot and codex backends showing 'Not connected'"
+        },
+        {
+          "action": "Check CSS class definitions for oauth-status-dot-expired",
+          "expected": "Red background color defined for expired state",
+          "observed": "CSS class .oauth-status-dot-expired is defined with background: var(--red) = #f87171 and box-shadow with red glow. Verified by creating synthetic element: computed background rgb(248, 113, 113) matching #f87171."
+        },
+        {
+          "action": "Check CSS class definitions for oauth-status-dot-missing",
+          "expected": "Some visual indicator for missing token state",
+          "observed": "CSS class .oauth-status-dot-missing has NO explicit CSS definition. The dot renders as a 10px circle with background: rgba(0, 0, 0, 0) (transparent/invisible). The 'Not connected' text is shown via .oauth-text-missing class, but the status dot itself is invisible for missing state."
+        },
+        {
+          "action": "Verify what the UI shows for unauthenticated backends",
+          "expected": "Red or visible indicator for missing tokens",
+          "observed": "Both copilot and codex backends have TokenState='missing' with class 'oauth-status-dot-missing'. The computed background is rgba(0, 0, 0, 0) — the dot is invisible. Only the text 'Not connected' provides status information. No red indicator is shown for missing tokens."
+        }
+      ],
+      "evidence": {
+        "screenshots": ["oauth-ui/group3/settings-page-full.png", "oauth-ui/group3/settings-oauth-section.png"],
+        "consoleErrors": "none",
+        "cssVerification": {
+          "expired": "oauth-status-dot-expired: background: var(--red) (#f87171) = rgb(248, 113, 113). Correctly defined.",
+          "missing": "oauth-status-dot-missing: NO CSS definition exists. Computed background is rgba(0, 0, 0, 0) — dot is invisible. The template applies class 'oauth-status-dot-missing' but no corresponding CSS rule sets a background color for this class."
+        }
+      },
+      "issues": "For the 'expired' state: CSS is correctly defined with red color, but no backend currently has an expired token to verify runtime behavior. For the 'missing' state: the status dot is invisible (no CSS rule for .oauth-status-dot-missing). The text 'Not connected' is shown, but there is no visual dot indicator. This is a partial gap — the 'expired' CSS is correct but the 'missing' state has no visual dot."
+    },
+    {
+      "id": "VAL-TOKEN-032",
+      "title": "Dashboard reflects token status",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Navigate to /ui/ (main dashboard)",
+          "expected": "Dashboard page showing token status for each OAuth backend",
+          "observed": "Dashboard loads at /ui/ with sections: Quota (openrouter - Error 401), Dashboard stats (Requests, Tokens, Avg Latency, Errors), Backends ('No backend activity yet'), Recent Requests ('No requests recorded yet'). No OAuth/token status section exists on the dashboard."
+        },
+        {
+          "action": "Search dashboard content for OAuth, token, copilot, codex references",
+          "expected": "Some token/backend health information displayed",
+          "observed": "Dashboard text contains no references to OAuth, tokens, copilot, codex, or connected status. The 'Backends' section only tracks request activity stats, not authentication/token status."
+        }
+      ],
+      "evidence": {
+        "screenshots": ["oauth-ui/group3/dashboard-main.png"],
+        "consoleErrors": "none",
+        "network": "GET /ui/ -> 200"
+      },
+      "issues": "The main dashboard (/ui/) does not display OAuth token status for any backend. It only shows request statistics and quota information. Token status is only available on the /ui/settings page under 'OAuth Connections'. The assertion states 'the web dashboard at /ui/' should display token status, but this information is not present on the main dashboard."
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The .oauth-status-dot-missing CSS class has no background color definition, making the status dot invisible for unauthenticated backends. Only text ('Not connected') provides the status.",
+      "resolved": false,
+      "resolution": "No resolution possible — this is a CSS gap in the implementation. The dot exists in the DOM but renders transparent.",
+      "affectedAssertions": ["VAL-UI-014"]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "No backend currently has a valid (non-expired) OAuth token, preventing visual verification of the green indicator at runtime. CSS definitions exist and are correct.",
+      "affectedAssertions": ["VAL-UI-012"]
+    },
+    {
+      "description": "Cannot artificially create an expiring-soon token state to verify the yellow/amber indicator at runtime. CSS definitions exist and are correct.",
+      "affectedAssertions": ["VAL-UI-013"]
+    },
+    {
+      "description": "No backend has an expired token (vs missing). The expired state CSS is correctly defined, but cannot be verified at runtime. The missing state has no visual dot indicator (invisible).",
+      "affectedAssertions": ["VAL-UI-014"]
+    },
+    {
+      "description": "The main dashboard (/ui/) does not display OAuth token status for backends. Token status information is only available on the /ui/settings page. The assertion specifically references /ui/ (dashboard), not /ui/settings.",
+      "affectedAssertions": ["VAL-TOKEN-032"]
+    }
+  ],
+  "summary": "Tested 4 assertions: 0 passed, 0 failed, 4 blocked. All visual indicator CSS classes are correctly defined (green=#34d399, amber=#fbbf24, red=#f87171) but no live OAuth backend has a valid/expired token to verify runtime behavior. The missing state (.oauth-status-dot-missing) has no background color, rendering the dot invisible. The main dashboard (/ui/) does not display token status — this info only exists on /ui/settings."
+}

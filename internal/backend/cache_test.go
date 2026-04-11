@@ -14,7 +14,7 @@ import (
 
 // newTestServer creates an httptest.Server that serves the given models from /models.
 // It returns the server and a pointer to an atomic counter that tracks upstream calls.
-func newTestServer(models []Model) (*httptest.Server, *atomic.Int64) {
+func newModelTestServer(models []Model) (*httptest.Server, *atomic.Int64) {
 	var calls atomic.Int64
 	mux := http.NewServeMux()
 	mux.HandleFunc("/models", func(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +50,7 @@ func TestListModels_CacheHit(t *testing.T) {
 		{ID: "gpt-4o", Object: "model", OwnedBy: "openai"},
 		{ID: "gpt-4o-mini", Object: "model", OwnedBy: "openai"},
 	}
-	ts, calls := newTestServer(testModels)
+	ts, calls := newModelTestServer(testModels)
 	defer ts.Close()
 
 	b := NewOpenAI(config.BackendConfig{
@@ -89,7 +89,7 @@ func TestListModels_CacheExpiry(t *testing.T) {
 	testModels := []Model{
 		{ID: "gpt-4o", Object: "model", OwnedBy: "openai"},
 	}
-	ts, calls := newTestServer(testModels)
+	ts, calls := newModelTestServer(testModels)
 	defer ts.Close()
 
 	// Very short TTL so cache expires immediately.
@@ -126,7 +126,7 @@ func TestListModels_StaleWhileError(t *testing.T) {
 	goodModels := []Model{
 		{ID: "gpt-4o", Object: "model", OwnedBy: "openai"},
 	}
-	ts, calls := newTestServer(goodModels)
+	ts, calls := newModelTestServer(goodModels)
 
 	b := NewOpenAI(config.BackendConfig{
 		Name:    "test",
@@ -187,7 +187,7 @@ func TestListModels_CacheDisabled(t *testing.T) {
 	testModels := []Model{
 		{ID: "gpt-4o", Object: "model", OwnedBy: "openai"},
 	}
-	ts, calls := newTestServer(testModels)
+	ts, calls := newModelTestServer(testModels)
 	defer ts.Close()
 
 	// TTL=0 disables caching.
@@ -216,7 +216,7 @@ func TestClearModelCache(t *testing.T) {
 	testModels := []Model{
 		{ID: "gpt-4o", Object: "model", OwnedBy: "openai"},
 	}
-	ts, calls := newTestServer(testModels)
+	ts, calls := newModelTestServer(testModels)
 	defer ts.Close()
 
 	b := NewOpenAI(config.BackendConfig{
@@ -260,7 +260,7 @@ func TestClearModelCache_ThenUpstreamFails(t *testing.T) {
 	testModels := []Model{
 		{ID: "gpt-4o", Object: "model", OwnedBy: "openai"},
 	}
-	ts, _ := newTestServer(testModels)
+	ts, _ := newModelTestServer(testModels)
 
 	b := NewOpenAI(config.BackendConfig{
 		Name:    "test",

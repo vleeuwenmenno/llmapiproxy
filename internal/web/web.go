@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
 	"github.com/menno/llmapiproxy/internal/backend"
 	"github.com/menno/llmapiproxy/internal/chat"
 	"github.com/menno/llmapiproxy/internal/config"
@@ -39,10 +40,7 @@ func init() {
 			return template.JS(b)
 		},
 		"formatTime": func(t time.Time) string {
-			if t.Format("2006-01-02") == time.Now().Format("2006-01-02") {
-				return t.Format("15:04:05")
-			}
-			return t.Format("2006-01-02 15:04:05")
+			return t.Format("15:04:05")
 		},
 		"formatDuration": func(ms int64) string {
 			if ms < 1000 {
@@ -746,14 +744,18 @@ func (u *UI) PlaygroundModels(w http.ResponseWriter, r *http.Request) {
 func (u *UI) PlaygroundPage(w http.ResponseWriter, r *http.Request) {
 	cfg := u.cfgMgr.Get()
 
-	// Find the internal playground client — its API key is embedded in the
-	// page so the user never has to pick one manually.
+	// Find the API key for the playground. Prefer a named "playground"
+	// client, but fall back to the first server.api_keys entry if no
+	// playground client is configured.
 	playgroundAPIKey := ""
 	for _, c := range cfg.Clients {
 		if c.Name == "playground" && c.APIKey != "" {
 			playgroundAPIKey = c.APIKey
 			break
 		}
+	}
+	if playgroundAPIKey == "" && len(cfg.Server.APIKeys) > 0 {
+		playgroundAPIKey = cfg.Server.APIKeys[0]
 	}
 
 	// Collect all models from enabled backends (prefixed backend/model-id).
@@ -785,14 +787,18 @@ func (u *UI) PlaygroundPage(w http.ResponseWriter, r *http.Request) {
 func (u *UI) ChatPage(w http.ResponseWriter, r *http.Request) {
 	cfg := u.cfgMgr.Get()
 
-	// Find the internal playground client — its API key is embedded in the
-	// page so the user never has to pick one manually.
+	// Find the API key for the playground. Prefer a named "playground"
+	// client, but fall back to the first server.api_keys entry if no
+	// playground client is configured.
 	playgroundAPIKey := ""
 	for _, c := range cfg.Clients {
 		if c.Name == "playground" && c.APIKey != "" {
 			playgroundAPIKey = c.APIKey
 			break
 		}
+	}
+	if playgroundAPIKey == "" && len(cfg.Server.APIKeys) > 0 {
+		playgroundAPIKey = cfg.Server.APIKeys[0]
 	}
 
 	// Collect all models from enabled backends (prefixed backend/model-id).
@@ -1338,6 +1344,7 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 		"ServerHost":    cfg.Server.Host,
 		"ServerPort":    cfg.Server.Port,
 		"ModelCacheTTL": cfg.Server.ModelCacheTTL.String(),
+		"OAuthStatuses": u.registry.OAuthStatuses(),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "settings.html", data); err != nil {
@@ -1589,6 +1596,19 @@ func (u *UI) ToggleBackend(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, redirectTo+"?msg=Backend+"+name+"+"+status+".", http.StatusSeeOther)
 }
 
+// --- OAuth management handlers ---
+
+// OAuthStatus returns the authentication status for all OAuth backends as an HTMX fragment.
+// This endpoint is called via HTMX to display live auth status on the settings page.
+func (u *UI) OAuthStatus(w http.ResponseWriter, r *http.Request) {
+	statuses := u.registry.OAuthStatuses()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.ExecuteTemplate(w, "oauth_status.html", statuses); err != nil {
+		log.Printf("template error: %v", err)
+		http.Error(w, "template error", http.StatusInternalServerError)
+	}
+}
+
 // parseStatsFilter builds a StatsFilter from common query parameters.
 // Supported params: window (e.g. "1h","24h","7d","30d"), from, to (ISO 8601),
 // backend, model, client, errors ("1" for errors-only).
@@ -1768,6 +1788,230 @@ func (u *UI) RoutingPage(w http.ResponseWriter, r *http.Request) {
 		log.Printf("template error: %v", err)
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
+}
+
+// OAuthCheckStatus proactively checks and refreshes the OAuth status for a
+// specific backend. Unlike OAuthStatus which only reads cached state, this
+// handler triggers a token refresh/re-exchange for backends that implement
+// OAuthStatusRefresher (e.g., Copilot). Returns an HTMX fragment with the
+// updated status for all backends.
+func (u *UI) OAuthCheckStatus(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	if backendName == "" {
+		http.Error(w, "backend parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	b := u.registry.Get(backendName)
+	if b == nil {
+		http.Error(w, fmt.Sprintf("backend %q not found", backendName), http.StatusNotFound)
+		return
+	}
+
+	// If the backend supports proactive refresh, trigger it.
+	if refresher, ok := b.(backend.OAuthStatusRefresher); ok {
+		if err := refresher.RefreshOAuthStatus(r.Context()); err != nil {
+			log.Printf("oauth check status: refresh failed for %s: %v", backendName, err)
+			// Don't return an error — still render the current status.
+			// The status card will show the error state.
+		} else {
+			log.Printf("oauth check status: refresh succeeded for %s", backendName)
+		}
+	}
+
+	// Return the full OAuth status fragment (HTMX will swap it in).
+	statuses := u.registry.OAuthStatuses()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.ExecuteTemplate(w, "oauth_status.html", statuses); err != nil {
+		log.Printf("template error: %v", err)
+		http.Error(w, "template error", http.StatusInternalServerError)
+	}
+}
+
+// OAuthLogin initiates the OAuth login flow for the specified backend.
+// For Copilot, this initiates a device code flow and renders a page showing
+// the user code and verification URL. For Codex, the user is redirected
+// to the OpenAI authorization URL.
+func (u *UI) OAuthLogin(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	if backendName == "" {
+		http.Error(w, "backend parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	b := u.registry.Get(backendName)
+	if b == nil {
+		http.Error(w, fmt.Sprintf("backend %q not found", backendName), http.StatusNotFound)
+		return
+	}
+
+	loginHandler, ok := b.(backend.OAuthLoginHandler)
+	if !ok {
+		http.Error(w, fmt.Sprintf("backend %q does not support OAuth login", backendName), http.StatusBadRequest)
+		return
+	}
+
+	authURL, state, err := loginHandler.InitiateLogin()
+	if err != nil {
+		log.Printf("oauth login error for %s: %v", backendName, err)
+		http.Error(w, "failed to initiate login: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("oauth: initiated login for backend %s, state=%s", backendName, state)
+
+	// Check if this is a device code flow (Copilot) or redirect flow (Codex).
+	// For Copilot, authURL is JSON containing device code info.
+	// For Codex, authURL is a URL to redirect to.
+	var deviceCodeInfo backend.DeviceCodeLoginInfo
+	if json.Unmarshal([]byte(authURL), &deviceCodeInfo) == nil && deviceCodeInfo.UserCode != "" {
+		// Device code flow: render the device code page.
+		data := map[string]any{
+			"BackendName":    backendName,
+			"UserCode":       deviceCodeInfo.UserCode,
+			"VerificationURI": deviceCodeInfo.VerificationURI,
+			"ExpiresIn":      deviceCodeInfo.ExpiresIn,
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := templates.ExecuteTemplate(w, "device_code.html", data); err != nil {
+			log.Printf("template error: %v", err)
+			http.Error(w, "template error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Redirect flow (Codex PKCE): redirect to the authorization URL.
+	http.Redirect(w, r, authURL, http.StatusFound)
+}
+
+// OAuthCallback handles the OAuth callback for the specified backend.
+// For Codex, it exchanges the authorization code for tokens.
+func (u *UI) OAuthCallback(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	if backendName == "" {
+		http.Error(w, "backend parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	code := r.URL.Query().Get("code")
+	state := r.URL.Query().Get("state")
+	errParam := r.URL.Query().Get("error")
+
+	if errParam != "" {
+		errDesc := r.URL.Query().Get("error_description")
+		log.Printf("oauth callback error for %s: %s: %s", backendName, errParam, errDesc)
+		http.Redirect(w, r, "/ui/settings?msg=OAuth+authentication+failed:+"+errParam, http.StatusSeeOther)
+		return
+	}
+
+	if code == "" || state == "" {
+		http.Error(w, "missing code or state parameter", http.StatusBadRequest)
+		return
+	}
+
+	b := u.registry.Get(backendName)
+	if b == nil {
+		http.Error(w, fmt.Sprintf("backend %q not found", backendName), http.StatusNotFound)
+		return
+	}
+
+	callbackHandler, ok := b.(backend.OAuthCallbackHandler)
+	if !ok {
+		http.Error(w, fmt.Sprintf("backend %q does not support OAuth callbacks", backendName), http.StatusBadRequest)
+		return
+	}
+
+	if err := callbackHandler.HandleCallback(r.Context(), code, state); err != nil {
+		log.Printf("oauth callback error for %s: %v", backendName, err)
+		http.Redirect(w, r, "/ui/settings?msg=OAuth+callback+failed:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		return
+	}
+
+	log.Printf("oauth: successfully authenticated backend %s", backendName)
+	http.Redirect(w, r, "/ui/settings?msg="+backendName+"+authentication+successful!", http.StatusSeeOther)
+}
+
+// OAuthDeviceLogin initiates the device code flow for the specified backend.
+// This is an alternative to the browser-based PKCE flow, designed for headless/SSH
+// environments. It displays a device code and verification URL for the user.
+func (u *UI) OAuthDeviceLogin(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	if backendName == "" {
+		http.Error(w, "backend parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	b := u.registry.Get(backendName)
+	if b == nil {
+		http.Error(w, fmt.Sprintf("backend %q not found", backendName), http.StatusNotFound)
+		return
+	}
+
+	deviceHandler, ok := b.(backend.OAuthDeviceCodeLoginHandler)
+	if !ok {
+		http.Error(w, fmt.Sprintf("backend %q does not support device code login", backendName), http.StatusBadRequest)
+		return
+	}
+
+	authURL, state, err := deviceHandler.InitiateDeviceCodeLogin()
+	if err != nil {
+		log.Printf("oauth device code login error for %s: %v", backendName, err)
+		http.Error(w, "failed to initiate device code login: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("oauth: initiated device code login for backend %s, state=%s", backendName, state)
+
+	// Parse the JSON response to check for device code info.
+	var deviceCodeInfo backend.DeviceCodeLoginInfo
+	if json.Unmarshal([]byte(authURL), &deviceCodeInfo) == nil && deviceCodeInfo.UserCode != "" {
+		// Device code flow: render the device code page.
+		data := map[string]any{
+			"BackendName":     backendName,
+			"UserCode":        deviceCodeInfo.UserCode,
+			"VerificationURI": deviceCodeInfo.VerificationURI,
+			"ExpiresIn":       deviceCodeInfo.ExpiresIn,
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := templates.ExecuteTemplate(w, "device_code.html", data); err != nil {
+			log.Printf("template error: %v", err)
+			http.Error(w, "template error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Fallback: redirect to regular login if device code info is not available.
+	http.Redirect(w, r, "/ui/oauth/login/"+backendName, http.StatusSeeOther)
+}
+
+// OAuthDisconnect clears stored tokens for the specified backend.
+func (u *UI) OAuthDisconnect(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	if backendName == "" {
+		http.Error(w, "backend parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	b := u.registry.Get(backendName)
+	if b == nil {
+		http.Error(w, fmt.Sprintf("backend %q not found", backendName), http.StatusNotFound)
+		return
+	}
+
+	disconnectHandler, ok := b.(backend.OAuthDisconnectHandler)
+	if !ok {
+		http.Error(w, fmt.Sprintf("backend %q does not support disconnect", backendName), http.StatusBadRequest)
+		return
+	}
+
+	if err := disconnectHandler.Disconnect(); err != nil {
+		log.Printf("oauth disconnect error for %s: %v", backendName, err)
+		http.Redirect(w, r, "/ui/settings?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		return
+	}
+
+	log.Printf("oauth: disconnected backend %s", backendName)
+	http.Redirect(w, r, "/ui/settings?msg="+backendName+"+disconnected+successfully.", http.StatusSeeOther)
 }
 
 // RoutingConfigJSON returns the current routing configuration as JSON (used by

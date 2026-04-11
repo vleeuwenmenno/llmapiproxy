@@ -1,0 +1,15 @@
+{
+  "featureId": "fix-oauth-status-ordering",
+  "reviewedAt": "2026-04-11T15:45:00Z",
+  "commitId": "f655d2f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix correctly addresses the non-deterministic ordering of OAuth status cards by adding sort.Slice to the OAuthStatuses() method, sorting alphabetically by BackendName. The implementation is minimal, correct, and well-tested. The worker followed a test-first approach (wrote the failing test, then applied the fix), ran gofmt, and verified with -count=10 to stress-test determinism.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Clean, minimal fix. The OAuthStatuses() method in registry.go now sorts results by BackendName using sort.Slice, ensuring deterministic alphabetical ordering on the settings page. Three new tests cover the multi-backend ordering case (with intentionally misordered names to expose map randomness), single backend, and empty registry edge cases. All tests pass reliably with -count=10. The template (oauth_status.html) already iterates in the order provided, so no template changes were needed. The fix correctly identified the root cause (map iteration is non-deterministic in Go) and applied the simplest possible solution."
+}

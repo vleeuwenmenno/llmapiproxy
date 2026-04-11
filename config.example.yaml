@@ -124,6 +124,39 @@ backends:
       - minimax-m2.5
       - minimax-m2.7
 
+  # ── GitHub Copilot ────────────────────────────────────────
+  # Uses GitHub Device Code Flow for authentication.
+  # Initiate auth via the web UI: http://localhost:8000/ui/settings
+  # The user visits a GitHub URL, enters a code, and authorizes the app.
+  # No api_key required. No dependency on gh CLI or env vars.
+  # Models: copilot/gpt-4o, copilot/gpt-4.1, copilot/o3, etc.
+  # - name: copilot
+  #   type: copilot
+  #   base_url: https://api.githubcopilot.com
+  #   # api_key is NOT needed — authentication uses GitHub Device Code Flow.
+  #   # Optionally override the GitHub OAuth client_id (defaults to Copilot VS Code extension ID):
+  #   # oauth:
+  #   #   client_id: "Iv1.b507a08c87ecfe98"
+
+  # ── OpenAI Codex ──────────────────────────────────────────
+  # Uses OAuth PKCE flow for authentication. No api_key required.
+  # Initiate auth via the web UI: http://localhost:8000/ui/settings
+  # Models: codex/o4-mini, codex/gpt-5.2-codex, etc.
+  # - name: codex
+  #   type: codex
+  #   base_url: https://chatgpt.com/backend-api/codex
+  #   oauth:
+  #     # Optional. Omit this to use the built-in Codex client id.
+  #     # client_id: "app_EMoamEEZ73f0CkXaXp7hrann"
+  #     scopes:
+  #       - "openid"
+  #       - "profile"
+  #       - "email"
+  #       - "offline_access"
+  #     auth_url: "https://auth.openai.com/oauth/authorize"
+  #     token_url: "https://auth.openai.com/oauth/token"
+  #   # api_key is NOT needed — authentication uses OAuth.
+
 # ── Clients ──────────────────────────────────────────────────
 # Named clients each get their own API key. The name shows up in
 # request analytics so you can see which app made which call.

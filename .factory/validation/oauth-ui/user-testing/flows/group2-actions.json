@@ -1,0 +1,174 @@
+{
+  "groupId": "group2",
+  "testedAt": "2026-04-11T04:25:00Z",
+  "isolation": {
+    "proxyUrl": "http://localhost:8000",
+    "settingsPage": "http://localhost:8000/ui/settings",
+    "oauthLogin": "http://localhost:8000/ui/oauth/login/{backend}",
+    "oauthCallback": "http://localhost:8000/ui/oauth/callback/{backend}",
+    "oauthStatus": "http://localhost:8000/ui/oauth/status",
+    "backends": ["openrouter", "copilot", "codex"],
+    "apiAuthKey": "test-proxy-key-12345",
+    "browserSession": "eacf7bf789f7__g2"
+  },
+  "toolsUsed": ["agent-browser", "curl"],
+  "assertions": [
+    {
+      "id": "VAL-UI-006",
+      "title": "Codex backend shows Connect button when not authenticated",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to /ui/settings",
+          "expected": "Settings page loads with OAuth Connections section",
+          "observed": "Settings page loaded successfully with OAuth Connections section visible"
+        },
+        {
+          "action": "Inspect codex backend row for Connect button",
+          "expected": "Connect button/link present for codex backend in not-connected state",
+          "observed": "Codex backend row shows status 'Not connected' with a Connect link (<a href=\"/ui/oauth/login/codex\" class=\"btn btn-oauth-primary\">Connect</a>)"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["oauth-ui/group2/VAL-UI-006-codex-connect-button.png"],
+        "consoleErrors": "none",
+        "htmlSnippet": "<a href=\"/ui/oauth/login/codex\" class=\"btn btn-oauth-primary\">Connect</a>"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-007",
+      "title": "Clicking Connect for Codex opens OAuth login flow",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Click the Connect link on the codex backend row",
+          "expected": "Browser redirects to OpenAI OAuth authorization URL with PKCE parameters",
+          "observed": "Browser redirected to https://auth.openai.com/authorize?client_id=test-codex-client-id&code_challenge=d_vnLvl-PJfwkBnKliBBfv1JBw-SBcO0C2oyhhlBUuk&code_challenge_method=S256&codex_cli_simplified_flow=true&id_token_add_organizations=true&originator=codex_cli_rs&redirect_uri=http%3A%2F%2Flocalhost%3A8000%2Fui%2Foauth%2Fcallback%2Fcodex&response_type=code&scope=openid+profile+email&state=0bde4393-55ce-4dba-9967-1d72ff503d59"
+        },
+        {
+          "action": "Verify OAuth parameters in redirect URL",
+          "expected": "URL contains openai.com, authorize, client_id, code_challenge, redirect_uri, response_type=code, state",
+          "observed": "All expected OAuth PKCE parameters present: domain is auth.openai.com, path includes /authorize, query includes client_id, code_challenge, code_challenge_method=S256, redirect_uri, response_type=code, scope, and state"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["oauth-ui/group2/VAL-UI-007-oauth-redirect-url.png"],
+        "consoleErrors": "none",
+        "network": "GET /ui/oauth/login/codex -> 302 redirect to https://auth.openai.com/authorize?..."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-008",
+      "title": "Successful OAuth callback redirects to settings with success message",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Attempt to navigate to callback endpoint with test code and invalid state",
+          "expected": "Callback endpoint exists and handles the request",
+          "observed": "Navigated to /ui/oauth/callback/codex?code=test&state=invalid — redirected to /ui/settings?msg=OAuth+callback+failed:+codex+oauth+callback:+invalid+or+expired+state+parameter"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["oauth-ui/group2/VAL-UI-008-callback-invalid-state.png"],
+        "consoleErrors": "none",
+        "network": "GET /ui/oauth/callback/codex?code=test&state=invalid -> redirect to /ui/settings?msg=OAuth+callback+failed:..."
+      },
+      "issues": "BLOCKED: Requires real OpenAI OAuth credentials to complete PKCE flow. Callback endpoint exists and correctly validates state parameter (returns error for invalid state), but full success flow cannot be tested without real credentials."
+    },
+    {
+      "id": "VAL-UI-009",
+      "title": "Failed OAuth callback shows error message on settings page",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to /ui/oauth/callback/codex?error=access_denied&error_description=User+denied+access",
+          "expected": "Browser redirected to /ui/settings with error message visible",
+          "observed": "Browser redirected to http://localhost:8000/ui/settings?msg=OAuth+authentication+failed:+access_denied"
+        },
+        {
+          "action": "Check page content for error message",
+          "expected": "Error message describing the failure is displayed on the settings page",
+          "observed": "Page body text contains 'OAuth authentication failed: access_denied' prominently displayed between the Settings heading and STATISTICS section"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["oauth-ui/group2/VAL-UI-009-error-message.png"],
+        "consoleErrors": "none",
+        "network": "GET /ui/oauth/callback/codex?error=access_denied&error_description=User+denied+access -> redirect to /ui/settings?msg=OAuth+authentication+failed:+access_denied"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-010",
+      "title": "Disconnect button clears tokens and updates status",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Check if any backend is connected",
+          "expected": "At least one OAuth backend in connected state to test Disconnect",
+          "observed": "Both copilot and codex backends show 'Not connected' status. Copilot token exchange fails (GitHub Copilot API returns 404 with current gh token). Codex has no OAuth credentials configured."
+        },
+        {
+          "action": "Attempted Check Status on copilot to trigger connection",
+          "expected": "Copilot might connect via gh auth token",
+          "observed": "Copilot remained 'Not connected' after Check Status — Copilot token exchange endpoint returns 404 (no active Copilot subscription)"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["oauth-ui/group2/VAL-UI-010-no-connected-backends.png"],
+        "consoleErrors": "none",
+        "network": "HTMX GET /ui/oauth/status -> 200 (status unchanged)"
+      },
+      "issues": "BLOCKED: Neither backend is connected. Copilot token exchange fails with 404 (no active Copilot subscription). Codex has no real OAuth credentials. Cannot test Disconnect without a connected backend."
+    },
+    {
+      "id": "VAL-UI-011",
+      "title": "Token status auto-refreshes via HTMX",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect HTML for HTMX polling attributes on oauth-status-container",
+          "expected": "hx-get=\"/ui/oauth/status\" and hx-trigger=\"every 30s\" attributes present",
+          "observed": "Confirmed: <div id=\"oauth-status-container\" hx-get=\"/ui/oauth/status\" hx-trigger=\"every 30s\" hx-swap=\"innerHTML\"> — all attributes present and correct"
+        },
+        {
+          "action": "Verify HTMX library is loaded",
+          "expected": "HTMX JavaScript library loaded and functional",
+          "observed": "HTMX version 2.0.4 loaded from /ui/static/htmx.min.js"
+        },
+        {
+          "action": "Verify /ui/oauth/status endpoint returns proper HTMX fragment",
+          "expected": "Endpoint returns HTML fragment with self-referencing HTMX attributes",
+          "observed": "curl to /ui/oauth/status returns HTML with the oauth-status-container div including hx-get, hx-trigger='every 30s', and hx-swap attributes, enabling continuous polling"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["oauth-ui/group2/VAL-UI-011-htmx-auto-refresh.png"],
+        "consoleErrors": "none",
+        "htmlAttributes": {
+          "hx-get": "/ui/oauth/status",
+          "hx-trigger": "every 30s",
+          "hx-swap": "innerHTML",
+          "htmxVersion": "2.0.4"
+        }
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [
+    {
+      "description": "VAL-UI-008: Cannot test successful OAuth callback without real OpenAI OAuth credentials",
+      "affectedAssertions": ["VAL-UI-008"],
+      "quickFixAttempted": "Verified callback endpoint exists by testing with invalid state — endpoint correctly returns error"
+    },
+    {
+      "description": "VAL-UI-010: Cannot test Disconnect button — no backend is connected. Copilot token exchange returns 404 (no active Copilot subscription on the GitHub account). Codex has no real OAuth credentials.",
+      "affectedAssertions": ["VAL-UI-010"],
+      "quickFixAttempted": "Clicked 'Check Status' on copilot to attempt connection — remained Not connected"
+    }
+  ],
+  "summary": "Tested 6 assertions: 4 passed, 0 failed, 2 blocked (VAL-UI-008: requires real OpenAI OAuth credentials; VAL-UI-010: no connected backend to disconnect). All actionable assertions passed successfully."
+}

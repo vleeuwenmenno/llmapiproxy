@@ -1,0 +1,46 @@
+{
+  "featureId": "codex-oauth-flow",
+  "reviewedAt": "2026-04-11T02:25:00Z",
+  "commitId": "73b6d87",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The Codex OAuth PKCE flow implementation is comprehensive, well-structured, and follows good security practices. PKCE S256 code verifier/challenge generation is correct using crypto/rand and SHA-256. The AuthorizeURL correctly constructs the OAuth URL with all required parameters. HandleCallback properly validates CSRF state, implements one-time-use states (replay protection), and exchanges authorization codes for tokens. Token refresh with rotation is correctly implemented. The PKCE verifier is never logged or persisted — GetPendingState returns nil for PKCE. Background cleanup of expired states prevents memory leaks. Concurrent refresh coordination uses TokenStore.StartRefresh(). 28 tests provide thorough coverage.",
+    "issues": [
+      {
+        "file": "internal/oauth/codex_oauth.go",
+        "line": 470,
+        "severity": "non_blocking",
+        "description": "maskTokenBody only truncates the response body to 200 chars but does not mask sensitive fields like access_token or refresh_token values that may appear in error messages. If a token endpoint returns an error that includes partial token values in the body, they could appear in logs. In practice, OAuth error responses typically contain error codes, not token values, so this is a low-risk concern."
+      },
+      {
+        "file": "internal/oauth/codex_oauth.go",
+        "line": 395,
+        "severity": "non_blocking",
+        "description": "parseTokenResponse requires both AccessToken and RefreshToken to be present, returning an error if either is missing. Some OAuth providers may issue access tokens without refresh tokens for certain grant types. However, for the Codex flow (which uses offline_access scope), a refresh token should always be present, so this strict validation is appropriate. If OpenAI ever changes their response format, this may need adjustment."
+      },
+      {
+        "file": "internal/oauth/codex_oauth.go",
+        "line": 230,
+        "severity": "non_blocking",
+        "description": "The background cleanup goroutine started in NewCodexOAuthHandler runs indefinitely with a 1-minute ticker. There's no way to stop it (no context cancellation or stop channel). If many CodexOAuthHandler instances are created and destroyed (e.g., during hot-reload), these goroutines would accumulate. In practice, the handler is long-lived and created once, so this is a minor concern."
+      },
+      {
+        "file": "internal/oauth/codex_oauth.go",
+        "line": 290,
+        "severity": "non_blocking",
+        "description": "RefreshWithRetry uses refreshWaitTimeout and refreshWaitInterval constants from the token_store.go package. These are not defined in codex_oauth.go itself. If they change in token_store.go, the behavior of waitForRefresh would change silently. This coupling is acceptable given they're in the same package, but worth noting."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The Codex OAuth flow uses client ID 'app_EMoamEEZ73f0CkXaXp7hrann' which is the same client ID used by the OpenAI Codex CLI. The redirect URI is hardcoded to 'http://localhost:8000/ui/oauth/callback/codex'. If the proxy is deployed on a different host/port, the redirect URI needs to be overridden via config.",
+      "evidence": "codex_oauth.go lines 26-28 define defaultCodexClientID and defaultCodexRedirectURI"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS — The Codex OAuth PKCE flow implementation is comprehensive and secure. PKCE S256 generation is correct, CSRF state validation with one-time-use states prevents replay attacks, token refresh with rotation works properly, PKCE verifier is never logged or persisted, state cleanup on timeout prevents memory leaks, and concurrent refresh coordination prevents duplicate refresh calls. 28 tests cover all expected behaviors including security edge cases. The only non-blocking issues are: maskTokenBody doesn't fully mask sensitive fields in error messages (low risk), the cleanup goroutine has no stop mechanism (minor for long-lived handlers), and parseTokenResponse strictly requires both access and refresh tokens (appropriate for Codex). No blocking issues found."
+}

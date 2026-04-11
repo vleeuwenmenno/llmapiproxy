@@ -1,0 +1,41 @@
+{
+  "milestone": "oauth-ui",
+  "round": 2,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "go test ./...", "exitCode": 0 },
+    "typecheck": { "passed": true, "command": "go build ./...", "exitCode": 0 },
+    "lint": { "passed": true, "command": "go vet ./...", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
+    {
+      "featureId": "fix-oauth-ui-css-htmx",
+      "severity": "non_blocking",
+      "description": ".oauth-status-dot-missing CSS class has no explicit background color. The status dot is invisible for unauthenticated backends, though 'Not connected' text is shown alongside. A gray default color (e.g., var(--text-dim)) would improve visual consistency."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention: All pages that embed HTMX-powered fragments must include the HTMX library (<script src=\"/ui/static/htmx.min.js\"></script>) in their <head>. When adding new HTMX fragments, verify the parent page loads HTMX. Pages currently loading HTMX: dashboard.html, config.html, models.html, settings.html.",
+      "evidence": "oauth-web-ui feature embedded oauth_status.html (uses hx-get, hx-trigger, hx-swap) into settings.html, which originally didn't load HTMX. This broke the 30-second auto-refresh. Fixed in fix-oauth-ui-css-htmx.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention: When adding CSS class names to HTML templates, ensure the corresponding CSS rules are added to the appropriate <style> block or external stylesheet. The project uses inline <style> blocks in templates (e.g., settings.html has ~460 lines of inline CSS). New classes must have corresponding rules using existing CSS custom properties for dark/light mode support.",
+      "evidence": "oauth-web-ui feature added ~25 CSS class names to oauth_status.html but never added CSS definitions. This is the second time CSS was missed — a pattern suggesting unclear convention. Fixed in fix-oauth-ui-css-htmx by adding ~160 lines of CSS.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/oauth-ui/scrutiny/synthesis.json (round 1)"
+}

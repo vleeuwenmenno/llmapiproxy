@@ -1,0 +1,17 @@
+{
+  "milestone": "oauth-followup",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null,
+  "notes": "The oauth-followup milestone contains two fix features (fix-copilot-check-status, fix-oauth-status-ordering) that do not declare any validation assertions in their fulfills fields. Both fixes were verified to work correctly: (1) Check Status button on Copilot backend now triggers token exchange attempt (logs show 'oauth check status: refresh failed for copilot: ... initiate device code flow'), (2) OAuth status cards render in consistent alphabetical order (codex before copilot). No assertions were tested because none were assigned to this milestone. Previously pending assertions from prior milestones (VAL-TOKEN-032, VAL-CODEX-011, VAL-UI-003-005, VAL-UI-008, VAL-UI-010, VAL-UI-012-014, VAL-CROSS-001-003, VAL-CROSS-005, VAL-CROSS-012-013, VAL-CROSS-017-018, VAL-CROSS-020) remain blocked by the same root causes: no active GitHub Copilot subscription and no real OpenAI OAuth credentials for Codex."
+}

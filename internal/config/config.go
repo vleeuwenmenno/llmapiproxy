@@ -78,6 +78,17 @@ type ServerConfig struct {
 	modelCacheTTLSet bool
 }
 
+// OAuthConfig holds OAuth-related configuration for backends that use
+// OAuth authentication (e.g., GitHub Copilot, OpenAI Codex) instead of
+// static API keys.
+type OAuthConfig struct {
+	ClientID  string   `yaml:"client_id,omitempty"`
+	Scopes    []string `yaml:"scopes,omitempty"`
+	TokenPath string   `yaml:"token_path,omitempty"`
+	AuthURL   string   `yaml:"auth_url,omitempty"`
+	TokenURL  string   `yaml:"token_url,omitempty"`
+}
+
 // ModelConfig specifies a single model with optional metadata overrides.
 // It supports both shorthand string form ("gpt-4o") and object form:
 //
@@ -99,6 +110,7 @@ type BackendConfig struct {
 	ExtraHeaders map[string]string `yaml:"extra_headers,omitempty"`
 	Models       []ModelConfig     `yaml:"models,omitempty"`
 	Enabled      *bool             `yaml:"enabled,omitempty"`
+	OAuth        *OAuthConfig      `yaml:"oauth,omitempty"`
 }
 
 // ModelIDs returns the list of model IDs as plain strings (backward compat).
@@ -224,6 +236,7 @@ func (bc *BackendConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 		ExtraHeaders map[string]string `yaml:"extra_headers,omitempty"`
 		ModelsRaw    interface{}       `yaml:"models,omitempty"`
 		Enabled      *bool             `yaml:"enabled,omitempty"`
+		OAuth        *OAuthConfig      `yaml:"oauth,omitempty"`
 	}
 	var r raw
 	if err := unmarshal(&r); err != nil {
@@ -235,6 +248,7 @@ func (bc *BackendConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	bc.APIKey = r.APIKey
 	bc.ExtraHeaders = r.ExtraHeaders
 	bc.Enabled = r.Enabled
+	bc.OAuth = r.OAuth
 
 	if r.ModelsRaw != nil {
 		models, err := parseModelsField(r.ModelsRaw)
@@ -285,6 +299,18 @@ func parseModelsField(raw interface{}) ([]ModelConfig, error) {
 // IsEnabled returns true unless the backend is explicitly disabled.
 func (b *BackendConfig) IsEnabled() bool {
 	return b.Enabled == nil || *b.Enabled
+}
+
+// IsOAuthBackend returns true if the backend type uses OAuth authentication
+// rather than a static API key. OAuth backends discover tokens at runtime
+// and do not require an api_key in the configuration.
+func (b *BackendConfig) IsOAuthBackend() bool {
+	switch b.Type {
+	case "copilot", "codex":
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Config) Validate() error {
@@ -349,11 +375,14 @@ func (c *Config) Validate() error {
 		if _, err := url.Parse(b.BaseURL); err != nil {
 			return fmt.Errorf("backends[%d].base_url: invalid URL: %w", i, err)
 		}
-		if b.APIKey == "" {
-			return fmt.Errorf("backends[%d].api_key: must not be empty for enabled backend", i)
-		}
+		// Default type to "openai" if not specified.
 		if b.Type == "" {
 			c.Backends[i].Type = "openai"
+		}
+		// OAuth backends (copilot, codex) do not require an api_key.
+		// They authenticate via local token discovery or OAuth flows.
+		if !c.Backends[i].IsOAuthBackend() && b.APIKey == "" {
+			return fmt.Errorf("backends[%d].api_key: must not be empty for enabled backend", i)
 		}
 	}
 	if err := c.Routing.validate(); err != nil {

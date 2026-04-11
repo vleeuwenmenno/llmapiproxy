@@ -1,0 +1,73 @@
+{
+  "featureId": "codex-backend",
+  "reviewedAt": "2026-04-11T02:20:00Z",
+  "commitId": "c9451cf",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The CodexBackend implementation is well-structured, comprehensive, and follows established project conventions. It correctly implements the Backend interface with full ChatCompletion ↔ Responses API format translation. The code handles streaming via a custom codexStreamReader that translates Codex SSE events to ChatCompletion chunks. OAuth token management is properly wired through CodexOAuthHandler with 401 retry and loop prevention. 33 test cases provide thorough coverage of format translation, error handling, concurrency, Unicode, edge cases, and OAuth status interfaces. The implementation coexists cleanly with existing OpenAI backends.",
+    "issues": [
+      {
+        "file": "internal/backend/codex.go",
+        "line": 200,
+        "severity": "non_blocking",
+        "description": "translateToCodexRequest: When there are multiple system/developer messages, only the last one is used as instructions and earlier ones are silently discarded. The feature description says 'metadata is preserved in translation'. While this is a reasonable design choice (Codex API only supports a single instructions field), it could lose information if a user sends multiple system messages with different instructions. A non-blocking note for potential future enhancement — consider concatenating multiple system messages with a delimiter."
+      },
+      {
+        "file": "internal/backend/codex.go",
+        "line": 248,
+        "severity": "non_blocking",
+        "description": "translateToCodexRequest: When there is exactly one conversation message, it is serialized as a plain string (json.Marshal of the Content field) rather than an array. This optimization for single-message requests is valid per the Responses API spec but the test coverage for this specific branch is indirect — the codexTestHelper always sets up a multi-message upstream, so the single-message-as-string path is only tested via the ChatCompletion test which has one user message. This is fine but worth noting."
+      },
+      {
+        "file": "internal/backend/codex.go",
+        "line": 580,
+        "severity": "non_blocking",
+        "description": "codexStreamReader.Read: The mutex lock is held for the entire duration of the Read call, including while scanning from the source and buffering. If the upstream is slow to produce data, concurrent Close() calls could be blocked. In practice this is unlikely to cause issues since the stream reader is typically consumed by a single goroutine, but the lock scope could be narrowed for the buffer read path vs. the scanning path."
+      },
+      {
+        "file": "internal/backend/codex.go",
+        "line": 460,
+        "severity": "non_blocking",
+        "description": "doChatCompletionStream: A new http.Client{} is created for each streaming request without a timeout. This is intentional (streaming connections can be long-lived), but there's no connection pool reuse. The non-streaming path uses b.client (with a 5-minute timeout) which does reuse connections. Consider creating a shared no-timeout streaming client on the struct to enable connection pooling."
+      },
+      {
+        "file": "internal/backend/codex.go",
+        "line": 278,
+        "severity": "non_blocking",
+        "description": "translateFromCodexResponse: The function iterates all output items looking for type='message' and role='assistant' and appends each as a Choice. However, the ChatCompletion API typically returns a single choice. If the Codex API returns multiple assistant messages in the output array, multiple choices would be generated, all with Index: 0. This is unlikely in practice but could be a subtle bug if the upstream ever returns multiple assistant output items."
+      },
+      {
+        "file": "internal/backend/codex_test.go",
+        "line": 564,
+        "severity": "non_blocking",
+        "description": "TestCodexBackend_Upstream401_Retry: This test relies on the mock token server in codexTestHelper returning a successful token refresh response. However, the test doesn't verify that the Authorization header changed between the first (401) and second (success) request. A stronger test would verify that the token actually changed from 'test-access-token' to 'test-access-token-refreshed'."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The worker wrote library documentation to .factory/library/codex-backend.md documenting the CodexBackend architecture, format translation, auth flow, and testing approach. This is good practice for future workers.",
+      "evidence": "Commit fcb3847 added .factory/library/codex-backend.md with comprehensive implementation notes"
+    },
+    {
+      "area": "conventions",
+      "observation": "The CodexBackend follows the same structural patterns as CopilotBackend (oauthHandler + tokenStore fields, BackendError wrapping, similar test helper setup). This consistency is good but not explicitly documented as a convention in AGENTS.md.",
+      "evidence": "Compare internal/backend/codex.go structure to internal/backend/copilot.go — both use oauth handler + token store + http.Client pattern"
+    },
+    {
+      "area": "skills",
+      "observation": "The worker followed the go-backend-worker skill procedure: read mission context, explored existing codebase (Backend interface, registry, copilot backend for patterns), implemented the feature, wrote tests, ran build/vet/test verification. The skill was followed correctly with no significant deviations.",
+      "evidence": "Transcript skeleton shows worker read mission.md, validation-contract.md, features.json, AGENTS.md, services.yaml, architecture.md, backend.go, registry.go, copilot.go, codex_oauth.go, token_store.go, openai.go, copilot_test.go, config.go, config.example.yaml, handler.go — thorough exploration before coding"
+    },
+    {
+      "area": "conventions",
+      "observation": "The ResponsesBackend interface (for native Responses API passthrough) was added to backend.go as part of this feature. This is a new optional interface that extends the Backend concept. The library documentation covers this but AGENTS.md does not mention this interface pattern for optional backend capabilities.",
+      "evidence": "internal/backend/backend.go lines 92-110 define ResponsesBackend interface; codex.go lines 725-830 implement Responses/ResponsesStream methods"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS — The CodexBackend implementation is comprehensive, well-tested (33 tests covering format translation, streaming, error handling, concurrency, Unicode, OAuth status, and edge cases), and follows established project conventions. All expected behaviors from the feature description are implemented: ChatCompletion ↔ Responses API format translation with correct field mapping (system→instructions, max_tokens→max_output_tokens), streaming SSE translation, OAuth token management with 401 retry, empty messages validation, extra field preservation, and proper error propagation for rate limits/404/402/500. The code is thread-safe (CodexBackend uses immutable state, codexStreamReader has mutex). Minor non-blocking issues noted around multiple system message handling, streaming client connection pooling, and output item iteration. No blocking issues found."
+}

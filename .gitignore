@@ -1,3 +1,5 @@
 config.yaml
+stats.db
 *.db
-llmapiproxy
+/llmapiproxy
+tokens/

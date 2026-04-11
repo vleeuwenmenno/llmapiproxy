@@ -1,0 +1,106 @@
+{
+  "groupId": "group5-api-config",
+  "testedAt": "2026-04-11T04:46:00Z",
+  "isolation": {
+    "proxyURL": "http://localhost:8000",
+    "apiEndpoint": "http://localhost:8000/v1/chat/completions",
+    "modelsEndpoint": "http://localhost:8000/v1/models",
+    "healthEndpoint": "http://localhost:8000/health",
+    "apiAuthKey": "test-proxy-key-12345",
+    "configFile": "/Users/aeversil/development/projects/llmapiproxy/config-test-oauth-ui.yaml",
+    "proxyPID": "31324"
+  },
+  "toolsUsed": ["curl", "go run"],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-016",
+      "title": "Config validation with OAuth backends — missing required fields",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create broken config with missing type field for copilot backend",
+          "expected": "Proxy refuses to start with clear error about missing field",
+          "observed": "Proxy exited with code 1: 'validating config: backends[0].api_key: must not be empty for enabled backend' (missing type defaults to openai which requires api_key)"
+        },
+        {
+          "action": "Create broken config with missing base_url for copilot backend (type: copilot specified)",
+          "expected": "Proxy refuses to start with clear error about missing base_url",
+          "observed": "Proxy exited with code 1: 'validating config: backends[0].base_url: must not be empty for enabled backend'"
+        },
+        {
+          "action": "Create config with invalid OAuth auth_url for codex backend",
+          "expected": "Proxy refuses to start or warns about invalid URL",
+          "observed": "Proxy started successfully — OAuth URLs are NOT validated at startup (potential gap)"
+        }
+      ],
+      "evidence": {
+        "files": ["oauth-ui/group5/VAL-CROSS-016-broken-config-missing-type.txt"],
+        "network": "N/A — config validation tests, no API calls"
+      },
+      "issues": "Missing 'type' field defaults to 'openai' silently, so error message references missing 'api_key' rather than missing 'type'. Error is still clear enough to diagnose. OAuth URL fields (auth_url, token_url) are not validated at startup."
+    },
+    {
+      "id": "VAL-CROSS-017",
+      "title": "OAuth backend with streaming — SSE responses proxied correctly",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Attempt streaming request to copilot/gpt-4o with stream:true",
+          "expected": "SSE stream with data: lines and data: [DONE]",
+          "observed": "Error: copilot token exchange failed with 404 — no active Copilot subscription"
+        },
+        {
+          "action": "Attempt streaming request to codex/o4-mini with stream:true",
+          "expected": "SSE stream with data: lines and data: [DONE]",
+          "observed": "Error: Codex authentication required; complete OAuth setup via the web UI"
+        },
+        {
+          "action": "Check health endpoint for OAuth backend status",
+          "expected": "Backends show authentication state",
+          "observed": "Both copilot and codex show authenticated:false, token_state:missing"
+        }
+      ],
+      "evidence": {
+        "files": ["oauth-ui/group5/VAL-CROSS-017-streaming-sse-test.txt"],
+        "network": "POST /v1/chat/completions -> 502 (copilot: token exchange 404), POST /v1/chat/completions -> 502 (codex: no token)"
+      },
+      "issues": "Neither OAuth backend has valid authentication. Copilot token exchange returns 404 (no active Copilot subscription for this GitHub account). Codex has no OAuth token (PKCE flow not completed). Cannot verify SSE streaming behavior."
+    },
+    {
+      "id": "VAL-CROSS-018",
+      "title": "Multiple clients with different OAuth backends — per-client access",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Inspect test config (config-test-oauth-ui.yaml) for client-specific configuration",
+          "expected": "Clients section with per-client backend_keys or access scopes",
+          "observed": "Config only has server.api_keys with a single shared key. No clients[] section exists."
+        }
+      ],
+      "evidence": {
+        "files": ["oauth-ui/group5/VAL-CROSS-018-multi-client-test.txt"],
+        "network": "N/A — config inspection only"
+      },
+      "issues": "No client-specific access control configured in test config. Cannot test per-client routing/access control without multiple client configurations defined."
+    }
+  ],
+  "frictions": [],
+  "blockers": [
+    {
+      "description": "No active GitHub Copilot subscription — Copilot token exchange endpoint returns 404",
+      "affectedAssertions": ["VAL-CROSS-017"],
+      "quickFixAttempted": "Tried codex backend as fallback, also blocked due to missing OAuth token"
+    },
+    {
+      "description": "No Codex OAuth token — PKCE flow not completed, no stored token file",
+      "affectedAssertions": ["VAL-CROSS-017"],
+      "quickFixAttempted": "Checked both backends, both unauthenticated"
+    },
+    {
+      "description": "No client-specific configuration (no clients[] section with backend_keys) in test config",
+      "affectedAssertions": ["VAL-CROSS-018"],
+      "quickFixAttempted": "Inspected config — only server.api_keys present, no per-client scoping"
+    }
+  ],
+  "summary": "Tested 3 assertions: 1 passed (VAL-CROSS-016: config validation catches missing required fields), 2 blocked (VAL-CROSS-017: no OAuth tokens available for streaming test; VAL-CROSS-018: no client-specific access control in test config)."
+}

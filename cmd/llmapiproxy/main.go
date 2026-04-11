@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -18,6 +19,7 @@ import (
 	"github.com/menno/llmapiproxy/internal/backend"
 	"github.com/menno/llmapiproxy/internal/chat"
 	"github.com/menno/llmapiproxy/internal/config"
+	"github.com/menno/llmapiproxy/internal/oauth"
 	"github.com/menno/llmapiproxy/internal/proxy"
 	"github.com/menno/llmapiproxy/internal/stats"
 	"github.com/menno/llmapiproxy/internal/web"
@@ -72,6 +74,8 @@ func main() {
 	}
 	log.Printf("chat database: %s", cfg.Server.ChatDBPath)
 
+	appBaseURL := oauth.DeriveLocalServerBaseURL(cfg.Server.Listen)
+
 	ui := web.NewUI(cfgMgr, collector, registry, store, chatStore)
 
 	r := chi.NewRouter()
@@ -82,6 +86,7 @@ func main() {
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(proxy.AuthMiddleware(cfgMgr))
 		r.Post("/chat/completions", proxyHandler.ChatCompletions)
+		r.Post("/responses", proxyHandler.Responses)
 		r.Get("/models", proxyHandler.ListModels)
 	})
 
@@ -131,6 +136,14 @@ func main() {
 		r.Post("/settings/server", ui.UpdateServerAddr)
 		r.Post("/routing/save", ui.SaveRouting)
 
+		// OAuth management endpoints
+		r.Get("/oauth/status", ui.OAuthStatus)
+		r.Get("/oauth/login/{backend}", ui.OAuthLogin)
+		r.Get("/oauth/device-login/{backend}", ui.OAuthDeviceLogin)
+		r.Get("/oauth/callback/{backend}", ui.OAuthCallback)
+		r.Post("/oauth/disconnect/{backend}", ui.OAuthDisconnect)
+		r.Post("/oauth/check-status/{backend}", ui.OAuthCheckStatus)
+
 		staticSub, err := fs.Sub(web.StaticFS(), "static")
 		if err != nil {
 			log.Fatalf("failed to create static sub-filesystem: %v", err)
@@ -144,12 +157,36 @@ func main() {
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"status":"ok"}`)
+
+		statuses := registry.OAuthStatuses()
+		allHealthy := true
+		for _, s := range statuses {
+			if s.NeedsReauth {
+				allHealthy = false
+				break
+			}
+		}
+
+		overallStatus := "ok"
+		if !allHealthy {
+			overallStatus = "degraded"
+		}
+
+		resp := map[string]interface{}{
+			"status":   overallStatus,
+			"backends": statuses,
+		}
+		json.NewEncoder(w).Encode(resp)
 	})
 
 	srv := &http.Server{
 		Addr:              cfg.Server.Listen,
 		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	codexLoopbackSrv := &http.Server{
+		Addr:              codexLoopbackListenAddr,
+		Handler:           newCodexLoopbackHandler(registry, appBaseURL),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -178,6 +215,12 @@ func main() {
 			log.Fatalf("server error: %v", err)
 		}
 	}()
+	go func() {
+		log.Printf("starting Codex OAuth loopback callback server on %s", codexLoopbackListenAddr)
+		if err := codexLoopbackSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("codex loopback callback server error: %v", err)
+		}
+	}()
 
 	<-ctx.Done()
 	log.Println("shutting down...")
@@ -187,6 +230,9 @@ func main() {
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("shutdown error: %v", err)
+	}
+	if err := codexLoopbackSrv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("codex loopback shutdown error: %v", err)
 	}
 	if store != nil {
 		store.Close()

@@ -1,0 +1,35 @@
+{
+  "milestone": "oauth-foundation",
+  "round": 2,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 65,
+    "passed": 65,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-TOKEN-001", "VAL-TOKEN-002", "VAL-TOKEN-003", "VAL-TOKEN-004",
+    "VAL-TOKEN-005", "VAL-TOKEN-006", "VAL-TOKEN-007", "VAL-TOKEN-008",
+    "VAL-TOKEN-009", "VAL-TOKEN-010", "VAL-TOKEN-011", "VAL-TOKEN-012",
+    "VAL-TOKEN-013", "VAL-TOKEN-014", "VAL-TOKEN-015", "VAL-TOKEN-016",
+    "VAL-TOKEN-017", "VAL-TOKEN-018", "VAL-TOKEN-019",
+    "VAL-TOKEN-023", "VAL-TOKEN-024", "VAL-TOKEN-025", "VAL-TOKEN-026",
+    "VAL-TOKEN-027", "VAL-TOKEN-028", "VAL-TOKEN-029", "VAL-TOKEN-030",
+    "VAL-TOKEN-031", "VAL-TOKEN-033", "VAL-TOKEN-034", "VAL-TOKEN-035",
+    "VAL-TOKEN-036", "VAL-TOKEN-037", "VAL-TOKEN-038", "VAL-TOKEN-040",
+    "VAL-COPILOT-001", "VAL-COPILOT-002", "VAL-COPILOT-003", "VAL-COPILOT-004",
+    "VAL-COPILOT-005", "VAL-COPILOT-006", "VAL-COPILOT-007", "VAL-COPILOT-008",
+    "VAL-COPILOT-009", "VAL-COPILOT-010", "VAL-COPILOT-011",
+    "VAL-COPILOT-012", "VAL-COPILOT-013",
+    "VAL-COPILOT-014", "VAL-COPILOT-015", "VAL-COPILOT-016", "VAL-COPILOT-017",
+    "VAL-COPILOT-018", "VAL-COPILOT-019", "VAL-COPILOT-020", "VAL-COPILOT-021",
+    "VAL-COPILOT-022", "VAL-COPILOT-023", "VAL-COPILOT-024", "VAL-COPILOT-025",
+    "VAL-COPILOT-026", "VAL-COPILOT-027", "VAL-COPILOT-028", "VAL-COPILOT-029",
+    "VAL-COPILOT-030"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": ".factory/validation/oauth-foundation/user-testing/synthesis.json"
+}

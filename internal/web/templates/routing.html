@@ -463,12 +463,7 @@
         return n.toFixed(1) + '%';
     }
     function fmtTime(iso) {
-        var d = new Date(iso);
-        var now = new Date();
-        if (d.toDateString() === now.toDateString()) {
-            return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-        }
-        return d.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit'});
+        return new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
     }
     function fmtNum(n) {
         if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';

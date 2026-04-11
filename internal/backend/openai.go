@@ -50,8 +50,8 @@ func (b *OpenAIBackend) SupportsModel(modelID string) bool {
 	if len(b.models) == 0 {
 		// No static model list configured — verify against actual upstream catalog.
 		models := b.getCachedOrFetchModels()
-		if models == nil {
-			return true // can't verify; assume supported
+		if len(models) == 0 {
+			return true // can't verify (fetch failed or upstream returned empty list); assume supported
 		}
 		for _, m := range models {
 			if m.ID == modelID {
