@@ -2,7 +2,7 @@
 
 > All your LLM providers in one central place.
 
-A lightweight, self-hosted proxy that aggregates multiple LLM provider APIs (Z.ai, OpenRouter, OpenCode Zen, Codex, and any OpenAI-compatible endpoint) behind a single unified API. Keep one API key in your tools, track token usage across all providers, and manage everything from a built-in web dashboard.
+A lightweight, self-hosted proxy that aggregates multiple LLM provider APIs (Z.ai, OpenRouter, OpenCode Zen, GitHub Copilot, OpenAI Codex, and any OpenAI-compatible endpoint) behind a single unified API. Keep one API key in your tools, track token usage across all providers, and manage everything from a built-in web dashboard.
 
 ---
 
@@ -20,11 +20,13 @@ If you have subscriptions at several LLM providers, you end up juggling:
 
 ## Features
 
-- **Unified OpenAI-compatible API** — `/v1/chat/completions` and `/v1/models` work exactly like OpenAI's API, so any OpenAI-compatible client works out of the box.
+- **Unified OpenAI-compatible API** — `/v1/chat/completions`, `/v1/models`, and `/v1/responses` work exactly like OpenAI's API, so any OpenAI-compatible client works out of the box.
 - **Multi-backend routing** — route to different providers based on model name prefix (e.g. `zai/glm-5.1`, `openrouter/anthropic/claude-sonnet-4`).
 - **Streaming support** — SSE streaming is fully proxied to clients.
+- **OAuth backends** — use GitHub Copilot and OpenAI Codex without managing API keys. Copilot reuses your local GitHub authentication; Codex uses an OAuth PKCE flow managed through the web UI.
+- **Native Responses API** — Codex backends support the native `/v1/responses` endpoint for passthrough to the OpenAI Responses API.
 - **Token & latency tracking** — every request is recorded with prompt tokens, completion tokens, latency, backend, and model. Stats persist to SQLite across restarts.
-- **Web dashboard** — live stats, request history, per-backend token breakdown, backend management, and an in-browser config editor.
+- **Web dashboard** — live stats, request history, per-backend token breakdown, backend management, OAuth status, and an in-browser config editor.
 - **Hot reload** — edit and save your config from the UI; backends reload without restarting the server.
 - **Single binary** — SQLite for persistent stats, no external dependencies. Just a YAML config file.
 - **Backend toggling** — enable or disable backends from the UI without deleting them from config.
@@ -35,13 +37,15 @@ If you have subscriptions at several LLM providers, you end up juggling:
 
 Any OpenAI-compatible HTTP API works. The example config includes:
 
-| Provider                            | Backend type | Notes                                                |
-| ----------------------------------- | ------------ | ---------------------------------------------------- |
-| [Z.ai](https://z.ai)                | `openai`     | GLM models; separate general & coding plan endpoints |
-| [OpenRouter](https://openrouter.ai) | `openai`     | 200+ models from many providers                      |
-| [OpenCode Zen](https://opencode.ai) | `openai`     | Curated coding models, pay-as-you-go                 |
-| [OpenCode Go](https://opencode.ai)  | `openai`     | Subscription tier for coding models                  |
-| Any OpenAI-compatible API           | `openai`     | Self-hosted, Azure OpenAI, etc.                      |
+| Provider                            | Backend type | Auth method                  | Notes                                                |
+| ----------------------------------- | ------------ | ---------------------------- | ---------------------------------------------------- |
+| [Z.ai](https://z.ai)                | `openai`     | API key                      | GLM models; separate general & coding plan endpoints |
+| [OpenRouter](https://openrouter.ai) | `openai`     | API key                      | 200+ models from many providers                      |
+| [OpenCode Zen](https://opencode.ai) | `openai`     | API key                      | Curated coding models, pay-as-you-go                 |
+| [OpenCode Go](https://opencode.ai)  | `openai`     | API key                      | Subscription tier for coding models                  |
+| [GitHub Copilot](https://github.com/features/copilot) | `copilot` | Local GitHub auth | Reuses `GH_TOKEN` env, `gh` CLI, or `~/.config/gh/hosts.yml` |
+| [OpenAI Codex](https://openai.com/codex/) | `codex` | OAuth PKCE flow       | Web-based login flow managed through the settings UI |
+| Any OpenAI-compatible API           | `openai`     | API key                      | Self-hosted, Azure OpenAI, etc.                      |
 
 ---
 
@@ -111,6 +115,8 @@ zai/glm-5.1
 zai-coding/glm-5-turbo
 openrouter/anthropic/claude-sonnet-4
 zen/kimi-k2.5
+copilot/gpt-4o
+codex/o4-mini
 ```
 
 ### Example — curl
@@ -122,6 +128,20 @@ curl http://localhost:8080/v1/chat/completions \
   -d '{
     "model": "zai/glm-5.1",
     "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+```
+
+### Example — Codex Responses API
+
+The `/v1/responses` endpoint passes requests through natively to Codex backends:
+
+```bash
+curl http://localhost:8080/v1/responses \
+  -H "Authorization: Bearer my-secret-proxy-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "codex/o4-mini",
+    "input": "Write a function that reverses a linked list."
   }'
 ```
 
@@ -138,6 +158,76 @@ Set the API base URL to `http://localhost:8080/v1` and the API key to your proxy
 
 ---
 
+## OAuth Backends
+
+LLM API Proxy supports two special backend types that authenticate via OAuth instead of static API keys. This lets you use subscription-based services (GitHub Copilot, OpenAI Codex) without manually managing credentials.
+
+### GitHub Copilot (`copilot`)
+
+The Copilot backend reuses your **local GitHub authentication** — no API key or login flow required. It automatically discovers tokens from the following sources in order:
+
+1. **Environment variables**: `GH_TOKEN`, `GITHUB_TOKEN`, or `COPILOT_TOKEN`
+2. **`gh` CLI**: runs `gh auth token` to get the current token
+3. **Token files**: reads `~/.config/gh/hosts.yml` for stored GitHub credentials
+
+The discovered GitHub token is exchanged for a short-lived Copilot API token automatically. Tokens are refreshed before expiry.
+
+**Configuration:**
+
+```yaml
+backends:
+  - name: copilot
+    type: copilot
+    base_url: https://api.githubcopilot.com
+    # No api_key needed — uses local GitHub auth.
+```
+
+**Prerequisites:**
+- A GitHub account with Copilot access (Individual, Business, or Enterprise)
+- At least one local GitHub auth source (e.g., `gh auth login`)
+
+### OpenAI Codex (`codex`)
+
+The Codex backend uses an **OAuth PKCE flow** for authentication. You initiate the login from the web UI and the proxy handles token storage and refresh automatically.
+
+**Configuration:**
+
+```yaml
+backends:
+  - name: codex
+    type: codex
+    base_url: https://chatgpt.com/backend-api/codex
+    oauth:
+      client_id: "your-codex-client-id"
+      scopes:
+        - "openid"
+        - "profile"
+        - "email"
+      auth_url: "https://auth.openai.com/authorize"
+      token_url: "https://auth.openai.com/oauth/token"
+    # No api_key needed — uses OAuth.
+```
+
+**OAuth config fields:**
+
+| Field        | Description                                         |
+| ------------ | --------------------------------------------------- |
+| `client_id`  | OAuth client identifier                             |
+| `scopes`     | List of OAuth scopes to request                     |
+| `auth_url`   | Authorization endpoint URL                          |
+| `token_url`  | Token exchange endpoint URL                         |
+| `token_path` | *(optional)* Directory to store tokens (default: `tokens/`) |
+
+**To authenticate:**
+1. Navigate to **Settings** in the web dashboard (`/ui/settings`)
+2. Find the Codex backend in the OAuth section
+3. Click **Connect** to start the OAuth login flow
+4. Complete authentication in the browser — the proxy stores the token
+
+Tokens are persisted to disk and refreshed automatically. You can disconnect a backend from the same settings page to clear stored tokens.
+
+---
+
 ## Web Dashboard
 
 Navigate to [http://localhost:8080/ui/](http://localhost:8080/ui/) to access the dashboard.
@@ -146,7 +236,7 @@ Navigate to [http://localhost:8080/ui/](http://localhost:8080/ui/) to access the
 | --------- | -------------- | --------------------------------------------------------------------- |
 | Dashboard | `/ui/`         | Live request feed, token totals, per-backend breakdown, latency stats |
 | Models    | `/ui/models`   | Browse models, enable/disable backends, quick-connect setup guides    |
-| Settings  | `/ui/settings` | API key management, raw config editor, stats, appearance              |
+| Settings  | `/ui/settings` | API key management, OAuth status & login, raw config editor, stats, appearance |
 
 Stats persist to SQLite across server restarts. The dashboard auto-refreshes every 10 seconds.
 
@@ -174,9 +264,9 @@ server:
 
 backends:
   - name: my-backend # used as the model prefix
-    type: openai # only supported type currently
+    type: openai # backend type: openai, copilot, or codex
     base_url: https://... # provider API base URL
-    api_key: "..." # your provider API key
+    api_key: "..." # your provider API key (not needed for copilot/codex)
 
     # Optional: set to false to disable this backend without removing it from config
     # enabled: true
@@ -189,7 +279,36 @@ backends:
     # Optional: additional HTTP headers forwarded to the backend
     extra_headers:
       HTTP-Referer: "https://my-app.example.com"
+
+    # Optional: OAuth configuration (codex backend only)
+    # oauth:
+    #   client_id: "your-client-id"
+    #   scopes:
+    #     - "openid"
+    #   auth_url: "https://auth.example.com/authorize"
+    #   token_url: "https://auth.example.com/oauth/token"
+    #   token_path: "tokens/"
 ```
+
+---
+
+## API Endpoints
+
+| Endpoint                | Method | Description                                       |
+| ----------------------- | ------ | ------------------------------------------------- |
+| `/v1/chat/completions`  | POST   | OpenAI-compatible chat completions (all backends)  |
+| `/v1/responses`         | POST   | Native Responses API passthrough (Codex backends)  |
+| `/v1/models`            | GET    | List available models across all backends           |
+| `/health`               | GET    | Health check with OAuth backend status              |
+
+### OAuth Management Endpoints
+
+| Endpoint                       | Method | Description                               |
+| ------------------------------ | ------ | ----------------------------------------- |
+| `/ui/oauth/status`             | GET    | OAuth status for all OAuth backends       |
+| `/ui/oauth/login/{backend}`    | GET    | Initiate OAuth login for a backend        |
+| `/ui/oauth/callback/{backend}` | GET    | OAuth callback handler                    |
+| `/ui/oauth/disconnect/{backend}` | POST | Clear stored tokens for a backend         |
 
 ---
 
@@ -198,6 +317,7 @@ backends:
 - Bind to `localhost` (or a private network) when possible. The web UI does not require authentication unless `admin_key` is set.
 - Never commit `config.yaml` with real API keys to version control — use `config.example.yaml` as a template.
 - API keys are validated on every request to `/v1/*` endpoints.
+- OAuth tokens are stored locally on disk in the `tokens/` directory. Ensure this directory is not publicly accessible.
 
 ---
 
@@ -206,9 +326,10 @@ backends:
 ```
 cmd/llmapiproxy/    — main entry point, server setup, routing
 internal/
-  backend/          — Backend interface, OpenAI HTTP client, registry & model routing
+  backend/          — Backend interface, OpenAI/Copilot/Codex implementations, registry & model routing
   config/           — YAML config loading, validation, hot-reload manager
-  proxy/            — HTTP handler (chat completions, model listing), auth middleware
+  oauth/            — OAuth token storage, GitHub Copilot token exchange, Codex PKCE flow
+  proxy/            — HTTP handler (chat completions, responses, model listing), auth middleware
   stats/            — In-memory collector + SQLite persistent storage
   web/              — Dashboard, Models, Settings UI (HTMX + Go templates)
 ```
