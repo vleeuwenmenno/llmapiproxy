@@ -9,14 +9,14 @@ Environment variables, external dependencies, and setup notes.
 
 ## Environment Variables
 
-### GitHub Token Discovery (Copilot)
-The proxy discovers GitHub tokens in this priority order:
-1. `COPILOT_GITHUB_TOKEN` — Copilot-specific override
-2. `GH_TOKEN` — Standard GitHub CLI variable
-3. `GITHUB_TOKEN` — CI/CD standard
-4. `gh auth token` command — Requires `gh` CLI installed and authenticated
-5. `~/.config/gh/hosts.yml` — Persistent gh credentials
-6. Persisted token file — From previous OAuth flow
+### GitHub Copilot Device Code Flow
+- Client ID: Iv1.b507a08c87ecfe98 (VS Code Copilot extension)
+- Device code endpoint: POST https://github.com/login/device/code
+- Token endpoint: POST https://github.com/login/oauth/access_token
+- Scope: read:user
+- Copilot token exchange: GET https://api.github.com/copilot_internal/v2/token
+- Requires active GitHub Copilot subscription
+- Token is long-lived, validated on-demand (no auto-refresh)
 
 ### OpenAI Codex OAuth
 - Uses public client ID `app_EMoamEEZ73f0CkXaXp7hrann`
@@ -24,6 +24,12 @@ The proxy discovers GitHub tokens in this priority order:
 - Scopes: `openid profile email offline_access`
 - Auth endpoint: `https://auth.openai.com/oauth/authorize`
 - Token endpoint: `https://auth.openai.com/oauth/token`
+
+### OpenAI Codex Device Code Flow (Alternative)
+- Same client_id as PKCE flow: app_EMoamEEZ73f0CkXaXp7hrann
+- Device code endpoint: POST https://auth.openai.com/oauth/device/code
+- Token endpoint: POST https://auth.openai.com/oauth/token
+- For headless/SSH environments where browser callback won't work
 
 ## External Dependencies
 
