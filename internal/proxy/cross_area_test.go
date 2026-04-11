@@ -106,9 +106,8 @@ func copilotTestEnv(t *testing.T, opts ...func(*copilotTestOpts)) (*backend.Copi
 		Source:      "test",
 	})
 
-	// Use a discoverer with the token store as fallback.
-	discoverer := oauth.NewDiscoverer(oauth.WithTokenStore(tokenStore))
-	exchanger := oauth.NewCopilotExchanger(tokenStore, oauth.WithCopilotAPIURL(githubAPI.URL))
+	// Use device code handler with mock exchange URL.
+	deviceCodeHandler := oauth.NewDeviceCodeHandler(tokenStore, oauth.WithCopilotExchangerURL(githubAPI.URL))
 
 	b := backend.NewCopilotBackend(
 		config.BackendConfig{
@@ -117,7 +116,7 @@ func copilotTestEnv(t *testing.T, opts ...func(*copilotTestOpts)) (*backend.Copi
 			BaseURL: copilotUpstream.URL,
 			Models:  o.models,
 		},
-		discoverer, exchanger, tokenStore,
+		deviceCodeHandler, tokenStore,
 	)
 
 	cleanup := func() {
@@ -560,11 +559,10 @@ func TestCrossArea_TokenPersistenceAcrossRestarts(t *testing.T) {
 		Source:      "test:persistence",
 	})
 
-	disc1 := oauth.NewDiscoverer(oauth.WithTokenStore(ts1))
-	exch1 := oauth.NewCopilotExchanger(ts1, oauth.WithCopilotAPIURL(githubAPI.URL))
+	dch1 := oauth.NewDeviceCodeHandler(ts1, oauth.WithCopilotExchangerURL(githubAPI.URL))
 	b1 := backend.NewCopilotBackend(
 		config.BackendConfig{Name: "copilot", Type: "copilot", BaseURL: upstream.URL},
-		disc1, exch1, ts1,
+		dch1, ts1,
 	)
 
 	req := &backend.ChatCompletionRequest{
@@ -601,11 +599,10 @@ func TestCrossArea_TokenPersistenceAcrossRestarts(t *testing.T) {
 		t.Errorf("loaded source = %q, want %q", token.Source, "test:persistence")
 	}
 
-	disc2 := oauth.NewDiscoverer(oauth.WithTokenStore(ts2))
-	exch2 := oauth.NewCopilotExchanger(ts2, oauth.WithCopilotAPIURL(githubAPI.URL))
+	dch2 := oauth.NewDeviceCodeHandler(ts2, oauth.WithCopilotExchangerURL(githubAPI.URL))
 	b2 := backend.NewCopilotBackend(
 		config.BackendConfig{Name: "copilot", Type: "copilot", BaseURL: upstream.URL},
-		disc2, exch2, ts2,
+		dch2, ts2,
 	)
 
 	resp2, err := b2.ChatCompletion(context.Background(), req)
@@ -677,12 +674,11 @@ func TestCrossArea_NoGitHubToken(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	// Discoverer with no sources (no env vars, no CLI, no token store fallback).
-	discoverer := oauth.NewDiscoverer()
-	exchanger := oauth.NewCopilotExchanger(ts)
+	// Device code handler with no token (no device code flow completed).
+	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
 	b := backend.NewCopilotBackend(
 		config.BackendConfig{Name: "copilot", Type: "copilot", BaseURL: upstream.URL},
-		discoverer, exchanger, ts,
+		deviceCodeHandler, ts,
 	)
 
 	req := &backend.ChatCompletionRequest{
@@ -1078,11 +1074,10 @@ func TestCrossArea_OAuthStreaming(t *testing.T) {
 		Source:      "test",
 	})
 
-	disc := oauth.NewDiscoverer(oauth.WithTokenStore(ts))
-	exch := oauth.NewCopilotExchanger(ts)
+	dch := oauth.NewDeviceCodeHandler(ts)
 	b := backend.NewCopilotBackend(
 		config.BackendConfig{Name: "copilot", Type: "copilot", BaseURL: sseUpstream.URL},
-		disc, exch, ts,
+		dch, ts,
 	)
 
 	req := &backend.ChatCompletionRequest{
@@ -1204,7 +1199,7 @@ func TestCrossArea_HealthCheckReflectsOAuthStatus(t *testing.T) {
 
 	expiredB := backend.NewCopilotBackend(
 		config.BackendConfig{Name: "expired-copilot", Type: "copilot", BaseURL: "https://api.githubcopilot.com"},
-		oauth.NewDiscoverer(), oauth.NewCopilotExchanger(expiredTS), expiredTS,
+		oauth.NewDeviceCodeHandler(expiredTS), expiredTS,
 	)
 
 	expiredStatus := expiredB.OAuthStatus()
@@ -1255,18 +1250,23 @@ func TestCrossArea_OAuthDisconnectAndReauth(t *testing.T) {
 		t.Errorf("state = %q, want %q", status.TokenState, "missing")
 	}
 
-	// Re-auth: make another request.
-	resp, err := copilotB.ChatCompletion(context.Background(), req)
-	if err != nil {
-		t.Fatalf("re-auth error: %v", err)
-	}
-	if resp.Choices[0].Message.Content != "Hello from Copilot!" {
-		t.Errorf("re-auth response = %q", resp.Choices[0].Message.Content)
+	// With device code flow, after disconnect, the user needs to re-initiate
+	// the device code flow via the web UI. Automatic re-auth is not possible
+	// since the GitHub token is also cleared.
+	// This is the expected behavior — the old discoverer-based flow could
+	// re-discover from env vars, but device code flow requires explicit re-auth.
+	_, err = copilotB.ChatCompletion(context.Background(), req)
+	if err == nil {
+		t.Error("expected error after disconnect (device code flow requires re-auth via UI)")
 	}
 
+	// Verify disconnect clears everything (no stale tokens).
 	status = copilotB.OAuthStatus()
-	if !status.Authenticated {
-		t.Error("expected re-authenticated after new request")
+	if status.Authenticated {
+		t.Error("should not be authenticated after failed re-auth")
+	}
+	if !status.NeedsReauth {
+		t.Error("NeedsReauth should be true after disconnect")
 	}
 }
 

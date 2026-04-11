@@ -105,8 +105,8 @@ func tokenStorePath(bc config.BackendConfig) string {
 	return tokenPath
 }
 
-// createCopilotBackend creates a CopilotBackend, reusing the existing token store
-// if provided.
+// createCopilotBackend creates a CopilotBackend with device code flow support,
+// reusing the existing token store if provided.
 func (r *Registry) createCopilotBackend(bc config.BackendConfig, existingTS *oauth.TokenStore) (*CopilotBackend, *oauth.TokenStore, error) {
 	tokenPath := tokenStorePath(bc)
 
@@ -119,10 +119,16 @@ func (r *Registry) createCopilotBackend(bc config.BackendConfig, existingTS *oau
 		}
 	}
 
-	discoverer := oauth.NewDiscoverer(oauth.WithTokenStore(ts))
-	exchanger := oauth.NewCopilotExchanger(ts)
+	// Build device code handler with optional config overrides.
+	var deviceCodeOpts []oauth.DeviceCodeHandlerOption
+	if bc.OAuth != nil {
+		if bc.OAuth.ClientID != "" {
+			deviceCodeOpts = append(deviceCodeOpts, oauth.WithDeviceCodeClientID(bc.OAuth.ClientID))
+		}
+	}
+	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts, deviceCodeOpts...)
 
-	return NewCopilotBackend(bc, discoverer, exchanger, ts), ts, nil
+	return NewCopilotBackend(bc, deviceCodeHandler, ts), ts, nil
 }
 
 // createCodexBackend creates a CodexBackend, reusing the existing token store

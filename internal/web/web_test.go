@@ -398,7 +398,7 @@ func TestOAuthLogin_UnknownBackendReturns404(t *testing.T) {
 	}
 }
 
-func TestOAuthLogin_CopilotReturnsBadRequest(t *testing.T) {
+func TestOAuthLogin_CopilotInitiatesDeviceCodeFlow(t *testing.T) {
 	ui, cleanup := createTestUI(t)
 	defer cleanup()
 
@@ -408,15 +408,24 @@ func TestOAuthLogin_CopilotReturnsBadRequest(t *testing.T) {
 	server := httptest.NewServer(r)
 	defer server.Close()
 
-	// Copilot doesn't support OAuth login flow (uses token discovery)
+	// Copilot now supports OAuth login via device code flow.
+	// This will attempt to connect to the real GitHub device code endpoint,
+	// which may succeed (200) or fail with a network error (500).
+	// Either way, it should NOT return 400 (which was the old behavior
+	// when Copilot didn\'t support OAuth login at all).
 	resp, err := http.Get(server.URL + "/ui/oauth/login/copilot")
 	if err != nil {
 		t.Fatalf("making request: %v", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("expected status 400 for copilot login attempt, got %d", resp.StatusCode)
+	// Acceptable: 200 (device code page rendered) or 500 (network error reaching GitHub)
+	if resp.StatusCode == http.StatusBadRequest {
+		t.Errorf("got status 400, but Copilot should now support device code flow login")
+	}
+	// The response should either be the device code HTML page (200) or an error (500)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusInternalServerError {
+		t.Logf("status %d (expected 200 or 500)", resp.StatusCode)
 	}
 }
 

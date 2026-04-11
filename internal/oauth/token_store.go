@@ -27,6 +27,7 @@ type TokenData struct {
 	RefreshIn    int       `json:"refresh_in,omitempty"` // seconds until proactive refresh
 	ObtainedAt   time.Time `json:"obtained_at"`
 	Source       string    `json:"source,omitempty"` // e.g., "env:GH_TOKEN", "gh_cli", "hosts.yml"
+	GitHubToken  string    `json:"github_token,omitempty"` // stored GitHub token for Copilot re-exchange
 }
 
 // IsExpired returns true if the token has expired, applying a safety margin

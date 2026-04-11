@@ -97,13 +97,18 @@ backends:
       - minimax-m2.7
 
   # ── GitHub Copilot ────────────────────────────────────────
-  # Uses local GitHub authentication (env vars, gh CLI, token files)
-  # to exchange for Copilot API tokens. No api_key required.
+  # Uses GitHub Device Code Flow for authentication.
+  # Initiate auth via the web UI: http://localhost:8000/ui/settings
+  # The user visits a GitHub URL, enters a code, and authorizes the app.
+  # No api_key required. No dependency on gh CLI or env vars.
   # Models: copilot/gpt-4o, copilot/gpt-4.1, copilot/o3, etc.
   # - name: copilot
   #   type: copilot
   #   base_url: https://api.githubcopilot.com
-  #   # api_key is NOT needed — authentication uses local GitHub tokens.
+  #   # api_key is NOT needed — authentication uses GitHub Device Code Flow.
+  #   # Optionally override the GitHub OAuth client_id (defaults to Copilot VS Code extension ID):
+  #   # oauth:
+  #   #   client_id: "Iv1.b507a08c87ecfe98"
 
   # ── OpenAI Codex ──────────────────────────────────────────
   # Uses OAuth PKCE flow for authentication. No api_key required.

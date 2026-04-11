@@ -35,34 +35,35 @@ const (
 )
 
 // CopilotBackend implements the Backend interface for GitHub Copilot.
-// It discovers GitHub tokens from the local environment, exchanges them for
-// Copilot API tokens, and forwards requests to api.githubcopilot.com (or
-// Business/Enterprise variants) with the required Copilot headers.
+// It uses the GitHub Device Code Flow to authenticate users and obtain Copilot
+// API tokens. The user visits a GitHub URL, enters a code, and authorizes the
+// application. The resulting GitHub token is exchanged for a Copilot API token
+// via copilot_internal/v2/token. The subscription is validated immediately
+// after login. Tokens are long-lived and validated on-demand (no proactive
+// refresh).
 //
 // Supports Individual, Business, and Enterprise base URL variants.
 // Upstream 401 responses trigger re-authentication with a single retry and
 // loop prevention (max one retry).
 type CopilotBackend struct {
-	name       string
-	baseURL    string
-	models     []string
-	client     *http.Client
-	discoverer *oauth.Discoverer
-	exchanger  *oauth.CopilotExchanger
-	tokenStore *oauth.TokenStore
+	name               string
+	baseURL            string
+	models             []string
+	client             *http.Client
+	deviceCodeHandler  *oauth.DeviceCodeHandler
+	tokenStore         *oauth.TokenStore
 }
 
 // NewCopilotBackend creates a new CopilotBackend from the given configuration,
-// token discoverer, token exchanger, and token store.
-func NewCopilotBackend(cfg config.BackendConfig, discoverer *oauth.Discoverer, exchanger *oauth.CopilotExchanger, tokenStore *oauth.TokenStore) *CopilotBackend {
+// device code handler, and token store.
+func NewCopilotBackend(cfg config.BackendConfig, deviceCodeHandler *oauth.DeviceCodeHandler, tokenStore *oauth.TokenStore) *CopilotBackend {
 	return &CopilotBackend{
-		name:       cfg.Name,
-		baseURL:    strings.TrimRight(cfg.BaseURL, "/"),
-		models:     cfg.Models,
-		client:     &http.Client{Timeout: 5 * time.Minute},
-		discoverer: discoverer,
-		exchanger:  exchanger,
-		tokenStore: tokenStore,
+		name:              cfg.Name,
+		baseURL:           strings.TrimRight(cfg.BaseURL, "/"),
+		models:            cfg.Models,
+		client:            &http.Client{Timeout: 5 * time.Minute},
+		deviceCodeHandler: deviceCodeHandler,
+		tokenStore:        tokenStore,
 	}
 }
 
@@ -90,7 +91,7 @@ func (b *CopilotBackend) SupportsModel(modelID string) bool {
 }
 
 // ChatCompletion sends a non-streaming chat completion request to the Copilot API.
-// It discovers or refreshes the Copilot token, sets required headers, and forwards
+// It obtains or validates the Copilot token, sets required headers, and forwards
 // the request. If the upstream returns 401, it re-authenticates and retries once.
 func (b *CopilotBackend) ChatCompletion(ctx context.Context, req *ChatCompletionRequest) (*ChatCompletionResponse, error) {
 	return b.doChatCompletion(ctx, req, 0)
@@ -119,8 +120,9 @@ func (b *CopilotBackend) doChatCompletion(ctx context.Context, req *ChatCompleti
 
 	// Handle 401 with re-auth retry.
 	if resp.StatusCode == http.StatusUnauthorized && retryCount < maxAuthRetries {
-		// Force a token refresh by clearing the cached token.
-		b.tokenStore.Clear()
+		// Force a token refresh by expiring the Copilot token but preserving
+		// the GitHub token so GetCopilotToken can re-exchange.
+		b.forceExpireToken()
 		return b.doChatCompletion(ctx, req, retryCount+1)
 	}
 
@@ -171,7 +173,9 @@ func (b *CopilotBackend) doChatCompletionStream(ctx context.Context, req *ChatCo
 	// Handle 401 with re-auth retry.
 	if resp.StatusCode == http.StatusUnauthorized && retryCount < maxAuthRetries {
 		resp.Body.Close()
-		b.tokenStore.Clear()
+		// Force a token refresh by expiring the Copilot token but preserving
+		// the GitHub token so GetCopilotToken can re-exchange.
+		b.forceExpireToken()
 		return b.doChatCompletionStream(ctx, req, retryCount+1)
 	}
 
@@ -227,39 +231,32 @@ func (b *CopilotBackend) ListModels(ctx context.Context) ([]Model, error) {
 	return models, nil
 }
 
-// getCopilotToken returns a valid Copilot API token. It first checks the token
-// store for a cached token, then falls back to discovering a GitHub token and
-// exchanging it for a Copilot token. Returns an error if no token can be obtained.
+// getCopilotToken returns a valid Copilot API token. It uses the device code handler
+// to get a cached token or re-validate an expired token. Returns an error if no
+// token can be obtained (e.g., user has not completed device code flow).
 func (b *CopilotBackend) getCopilotToken(ctx context.Context) (string, error) {
-	// Check for a valid cached token.
-	cached := b.tokenStore.ValidToken()
-	if cached != nil {
-		return cached.AccessToken, nil
-	}
+	return b.deviceCodeHandler.GetCopilotToken(ctx)
+}
 
-	// Discover a GitHub token.
-	githubToken, source, err := b.discoverer.DiscoverGitHubToken()
-	if err != nil {
-		return "", fmt.Errorf("GitHub token discovery failed: %w", err)
+// forceExpireToken marks the current Copilot token as expired while preserving
+// the GitHub token for re-exchange. This is used when a 401 response is received
+// from the upstream Copilot API, indicating the current token is no longer valid.
+func (b *CopilotBackend) forceExpireToken() {
+	token := b.tokenStore.Get()
+	if token != nil {
+		// Preserve the GitHub token, expire the Copilot token.
+		b.tokenStore.Save(&oauth.TokenData{
+			GitHubToken: token.GitHubToken,
+			ExpiresAt:   time.Now().Add(-1 * time.Hour), // expired
+			ObtainedAt:  time.Now().Add(-2 * time.Hour),
+			Source:      token.Source,
+		})
 	}
-	if githubToken == "" {
-		return "", fmt.Errorf("no GitHub token found for Copilot authentication; set COPILOT_GITHUB_TOKEN, GH_TOKEN, or GITHUB_TOKEN env var, or authenticate with gh CLI")
-	}
-
-	log.Printf("copilot backend %s: discovered GitHub token from %s", b.name, source)
-
-	// Exchange GitHub token for Copilot token.
-	tokenData, err := b.exchanger.GetOrRefresh(ctx, githubToken)
-	if err != nil {
-		return "", fmt.Errorf("Copilot token exchange failed: %w", err)
-	}
-
-	return tokenData.AccessToken, nil
 }
 
 // setHeaders sets all required Copilot headers on the HTTP request.
 // The APIKeyOverride parameter is intentionally ignored for Copilot backends
-// because Copilot uses local GitHub authentication, not configurable API keys.
+// because Copilot uses device code authentication, not configurable API keys.
 func (b *CopilotBackend) setHeaders(httpReq *http.Request, copilotToken string) {
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+copilotToken)
@@ -302,6 +299,7 @@ func (b *CopilotBackend) OAuthStatus() OAuthStatus {
 		BackendName: b.name,
 		BackendType: "copilot",
 		TokenState:  "missing",
+		NeedsReauth: true,
 	}
 
 	token := b.tokenStore.Get()
@@ -319,14 +317,78 @@ func (b *CopilotBackend) OAuthStatus() OAuthStatus {
 		// Compute visual indicator state.
 		if token.IsExpired() {
 			status.TokenState = "expired"
+			// If we have a GitHub token, we can re-validate automatically
+			if token.GitHubToken != "" {
+				status.NeedsReauth = false // Can auto-revalidate
+			}
 		} else if token.ExpiresAt.Sub(time.Now()) < 5*time.Minute {
 			status.TokenState = "expiring"
+			status.NeedsReauth = false
 		} else {
 			status.TokenState = "valid"
+			status.NeedsReauth = false
 		}
 	}
 
 	return status
+}
+
+// --- OAuthLoginHandler interface ---
+
+// DeviceCodeLoginInfo holds the device code flow information returned to the UI.
+type DeviceCodeLoginInfo struct {
+	DeviceCode      string `json:"device_code"`
+	UserCode        string `json:"user_code"`
+	VerificationURI string `json:"verification_uri"`
+	ExpiresIn       int    `json:"expires_in"`
+}
+
+// InitiateLogin initiates the GitHub Device Code Flow for Copilot authentication.
+// This implements the OAuthLoginHandler interface. Unlike PKCE-based flows,
+// the device code flow does NOT return a redirect URL. Instead, it returns a
+// JSON string containing the user_code and verification_uri that the UI should
+// display to the user.
+//
+// The returned authURL is a JSON-encoded DeviceCodeLoginInfo that the web
+// handler can parse and display in the UI.
+func (b *CopilotBackend) InitiateLogin() (authURL string, state string, err error) {
+	resp, err := b.deviceCodeHandler.InitiateDeviceCode(context.Background())
+	if err != nil {
+		return "", "", fmt.Errorf("copilot device code flow: %w", err)
+	}
+
+	// Return JSON-encoded device code info as the "auth URL" (the web handler
+	// will parse this and display it differently than a redirect).
+	info := DeviceCodeLoginInfo{
+		DeviceCode:      resp.DeviceCode,
+		UserCode:        resp.UserCode,
+		VerificationURI: resp.VerificationURI,
+		ExpiresIn:       resp.ExpiresIn,
+	}
+
+	infoJSON, err := json.Marshal(info)
+	if err != nil {
+		return "", "", fmt.Errorf("encoding device code info: %w", err)
+	}
+
+	// Use the device_code as the state (for tracking the pending flow).
+	state = resp.DeviceCode
+	authURL = string(infoJSON)
+
+	log.Printf("copilot backend %s: device code flow initiated, user_code=%s", b.name, resp.UserCode)
+
+	// Start polling in the background — the result will be stored automatically.
+	go func() {
+		bgCtx := context.Background()
+		_, pollErr := b.deviceCodeHandler.WaitForDeviceAuthorization(bgCtx, resp)
+		if pollErr != nil {
+			log.Printf("copilot backend %s: device code authorization failed: %v", b.name, pollErr)
+		} else {
+			log.Printf("copilot backend %s: device code authorization completed successfully", b.name)
+		}
+	}()
+
+	return authURL, state, nil
 }
 
 // --- OAuthDisconnectHandler interface ---
@@ -339,4 +401,9 @@ func (b *CopilotBackend) Disconnect() error {
 // GetTokenStore returns the underlying TokenStore (for status checking).
 func (b *CopilotBackend) GetTokenStore() *oauth.TokenStore {
 	return b.tokenStore
+}
+
+// GetDeviceCodeHandler returns the device code handler (for testing/status).
+func (b *CopilotBackend) GetDeviceCodeHandler() *oauth.DeviceCodeHandler {
+	return b.deviceCodeHandler
 }

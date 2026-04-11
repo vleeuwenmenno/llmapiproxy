@@ -498,8 +498,7 @@ func TestCopilotProxy_BackendKeyOverrideIgnoredForCopilot(t *testing.T) {
 		Source:      "test",
 	})
 
-	discoverer := oauth.NewDiscoverer()
-	exchanger := oauth.NewCopilotExchanger(tokenStore, oauth.WithCopilotAPIURL(githubAPI.URL))
+	deviceCodeHandler := oauth.NewDeviceCodeHandler(tokenStore, oauth.WithCopilotExchangerURL(githubAPI.URL))
 
 	copilotBackend := backend.NewCopilotBackend(
 		config.BackendConfig{
@@ -507,7 +506,7 @@ func TestCopilotProxy_BackendKeyOverrideIgnoredForCopilot(t *testing.T) {
 			Type:    "copilot",
 			BaseURL: copilotUpstream.URL,
 		},
-		discoverer, exchanger, tokenStore,
+		deviceCodeHandler, tokenStore,
 	)
 
 	// Client with backend_keys override for copilot (should be ignored).

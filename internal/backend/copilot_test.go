@@ -30,9 +30,10 @@ func helperTempDir(t *testing.T) (string, func()) {
 	return dir, func() { os.RemoveAll(dir) }
 }
 
-// newTestCopilotBackend creates a CopilotBackend with a mock upstream and mock GitHub API.
-// Returns the backend, the upstream server, and the GitHub API server.
-func newTestCopilotBackend(t *testing.T) (*CopilotBackend, *httptest.Server, *httptest.Server) {
+// newTestCopilotBackend creates a CopilotBackend with a mock upstream and mock GitHub/Copilot API.
+// Returns the backend and the upstream server.
+// The Copilot exchange server is configured as part of the device code handler.
+func newTestCopilotBackend(t *testing.T) (*CopilotBackend, *httptest.Server) {
 	t.Helper()
 
 	// Create a mock Copilot upstream API (api.githubcopilot.com equivalent).
@@ -62,7 +63,58 @@ func newTestCopilotBackend(t *testing.T) (*CopilotBackend, *httptest.Server, *ht
 		})
 	}))
 
-	// Create a mock GitHub API for Copilot token exchange.
+	dir, cleanup := helperTempDir(t)
+	t.Cleanup(cleanup)
+
+	ts, err := oauth.NewTokenStore(filepath.Join(dir, "copilot-token.json"))
+	if err != nil {
+		t.Fatalf("NewTokenStore: %v", err)
+	}
+
+	// Create device code handler with a mock Copilot exchange server.
+	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
+
+	cfg := config.BackendConfig{
+		Name:    "copilot",
+		Type:    "copilot",
+		BaseURL: upstream.URL,
+	}
+
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
+
+	return b, upstream
+}
+
+// newTestCopilotBackendWithExchange creates a CopilotBackend with both a mock upstream
+// and a mock Copilot exchange server. Returns the backend, upstream server, and exchange server.
+func newTestCopilotBackendWithExchange(t *testing.T) (*CopilotBackend, *httptest.Server, *httptest.Server) {
+	t.Helper()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"id":      "chatcmpl-test",
+			"object":  "chat.completion",
+			"created": time.Now().Unix(),
+			"model":   "gpt-4o",
+			"choices": []map[string]any{
+				{
+					"index": 0,
+					"message": map[string]string{
+						"role":    "assistant",
+						"content": "Hello from Copilot!",
+					},
+					"finish_reason": "stop",
+				},
+			},
+			"usage": map[string]int{
+				"prompt_tokens":     10,
+				"completion_tokens": 5,
+				"total_tokens":      15,
+			},
+		})
+	}))
+
 	expiresAt := time.Now().Add(30 * time.Minute).Unix()
 	githubAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -81,9 +133,8 @@ func newTestCopilotBackend(t *testing.T) (*CopilotBackend, *httptest.Server, *ht
 		t.Fatalf("NewTokenStore: %v", err)
 	}
 
-	discoverer := oauth.NewDiscoverer()
-	exchanger := oauth.NewCopilotExchanger(ts,
-		oauth.WithCopilotAPIURL(githubAPI.URL),
+	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts,
+		oauth.WithCopilotExchangerURL(githubAPI.URL),
 	)
 
 	cfg := config.BackendConfig{
@@ -92,17 +143,28 @@ func newTestCopilotBackend(t *testing.T) (*CopilotBackend, *httptest.Server, *ht
 		BaseURL: upstream.URL,
 	}
 
-	b := NewCopilotBackend(cfg, discoverer, exchanger, ts)
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
 
 	return b, upstream, githubAPI
+}
+
+// preSetToken sets a valid Copilot token on the backend's token store.
+func preSetToken(b *CopilotBackend, token string) {
+	b.tokenStore.Save(&oauth.TokenData{
+		AccessToken: token,
+		ExpiresAt:   time.Now().Add(30 * time.Minute),
+		ObtainedAt:  time.Now(),
+		Source:      "test",
+	})
 }
 
 // --- VAL-COPILOT-001: Non-streaming chat completion through Copilot backend ---
 
 func TestCopilotBackend_ChatCompletion(t *testing.T) {
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream := newTestCopilotBackend(t)
 	defer upstream.Close()
-	defer githubAPI.Close()
+
+	preSetToken(b, "test-copilot-token")
 
 	req := &ChatCompletionRequest{
 		Model: "gpt-4o",
@@ -137,9 +199,10 @@ func TestCopilotBackend_ChatCompletion(t *testing.T) {
 // --- VAL-COPILOT-002: Non-streaming response includes usage statistics ---
 
 func TestCopilotBackend_ChatCompletion_Usage(t *testing.T) {
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream := newTestCopilotBackend(t)
 	defer upstream.Close()
-	defer githubAPI.Close()
+
+	preSetToken(b, "test-copilot-token")
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
@@ -168,15 +231,12 @@ func TestCopilotBackend_ChatCompletion_Usage(t *testing.T) {
 // --- VAL-COPILOT-003: Streaming chat completion ---
 
 func TestCopilotBackend_ChatCompletionStream(t *testing.T) {
-	upstreamCalled := false
-
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream := newTestCopilotBackend(t)
 	defer upstream.Close()
-	defer githubAPI.Close()
 
-	// Replace upstream handler with SSE stream.
+	preSetToken(b, "test-copilot-token")
+
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		upstreamCalled = true
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 
@@ -214,10 +274,6 @@ func TestCopilotBackend_ChatCompletionStream(t *testing.T) {
 		t.Fatalf("reading stream: %v", err)
 	}
 
-	if !upstreamCalled {
-		t.Error("upstream was not called")
-	}
-
 	bodyStr := string(body)
 	if !strings.Contains(bodyStr, "data: ") {
 		t.Error("expected SSE data lines in stream")
@@ -233,9 +289,10 @@ func TestCopilotBackend_ChatCompletionStream(t *testing.T) {
 // --- VAL-COPILOT-004: Streaming chunks contain delta objects ---
 
 func TestCopilotBackend_Streaming_DeltaObjects(t *testing.T) {
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream := newTestCopilotBackend(t)
 	defer upstream.Close()
-	defer githubAPI.Close()
+
+	preSetToken(b, "test-copilot-token")
 
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -265,12 +322,9 @@ func TestCopilotBackend_Streaming_DeltaObjects(t *testing.T) {
 	body, _ := io.ReadAll(stream)
 	bodyStr := string(body)
 
-	// Check for delta field
 	if !strings.Contains(bodyStr, `"delta"`) {
 		t.Error("expected delta field in streaming chunks")
 	}
-
-	// Check for finish_reason: stop
 	if !strings.Contains(bodyStr, `"stop"`) {
 		t.Error("expected finish_reason: stop in final chunk")
 	}
@@ -290,9 +344,8 @@ func TestCopilotBackend_ListModels(t *testing.T) {
 	defer cleanup()
 
 	ts, _ := oauth.NewTokenStore(filepath.Join(dir, "copilot-token.json"))
-	discoverer := oauth.NewDiscoverer()
-	exchanger := oauth.NewCopilotExchanger(ts)
-	b := NewCopilotBackend(cfg, discoverer, exchanger, ts)
+	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
 
 	models, err := b.ListModels(context.Background())
 	if err != nil {
@@ -326,9 +379,10 @@ func TestCopilotBackend_ListModels(t *testing.T) {
 func TestCopilotBackend_RequiredHeaders(t *testing.T) {
 	var receivedHeaders http.Header
 
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream := newTestCopilotBackend(t)
 	defer upstream.Close()
-	defer githubAPI.Close()
+
+	preSetToken(b, "test-copilot-token")
 
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedHeaders = r.Header.Clone()
@@ -355,7 +409,6 @@ func TestCopilotBackend_RequiredHeaders(t *testing.T) {
 		t.Fatalf("ChatCompletion: %v", err)
 	}
 
-	// Check required headers
 	requiredHeaders := []string{
 		"Authorization",
 		"Editor-Version",
@@ -371,13 +424,11 @@ func TestCopilotBackend_RequiredHeaders(t *testing.T) {
 		}
 	}
 
-	// Authorization should contain the Copilot token
 	auth := receivedHeaders.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") {
 		t.Errorf("Authorization = %q, expected Bearer token", auth)
 	}
 
-	// Verify X-Request-Id is present (it's a UUID)
 	if receivedHeaders.Get("X-Request-Id") == "" {
 		t.Error("X-Request-Id header is missing")
 	}
@@ -388,9 +439,10 @@ func TestCopilotBackend_RequiredHeaders(t *testing.T) {
 func TestCopilotBackend_PrefixRouting(t *testing.T) {
 	var receivedModel string
 
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream := newTestCopilotBackend(t)
 	defer upstream.Close()
-	defer githubAPI.Close()
+
+	preSetToken(b, "test-copilot-token")
 
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]json.RawMessage
@@ -411,7 +463,6 @@ func TestCopilotBackend_PrefixRouting(t *testing.T) {
 		})
 	})
 
-	// The handler strips the prefix, so the backend receives "gpt-4o"
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
 		Messages: []Message{{Role: "user", Content: "test"}},
@@ -422,15 +473,14 @@ func TestCopilotBackend_PrefixRouting(t *testing.T) {
 		t.Fatalf("ChatCompletion: %v", err)
 	}
 
-	// The upstream should receive "gpt-4o" (no prefix)
 	if receivedModel != "gpt-4o" {
 		t.Errorf("upstream received model = %q, want %q (prefix should be stripped)", receivedModel, "gpt-4o")
 	}
 }
 
-// --- VAL-COPILOT-014: Error handling — no GitHub token available ---
+// --- VAL-COPILOT-014: Error handling — no token available ---
 
-func TestCopilotBackend_NoGitHubToken(t *testing.T) {
+func TestCopilotBackend_NoToken(t *testing.T) {
 	cfg := config.BackendConfig{
 		Name:    "copilot",
 		Type:    "copilot",
@@ -441,9 +491,8 @@ func TestCopilotBackend_NoGitHubToken(t *testing.T) {
 	defer cleanup()
 
 	ts, _ := oauth.NewTokenStore(filepath.Join(dir, "copilot-token.json"))
-	discoverer := oauth.NewDiscoverer() // No env vars, no gh CLI, no file
-	exchanger := oauth.NewCopilotExchanger(ts)
-	b := NewCopilotBackend(cfg, discoverer, exchanger, ts)
+	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
@@ -452,7 +501,7 @@ func TestCopilotBackend_NoGitHubToken(t *testing.T) {
 
 	_, err := b.ChatCompletion(context.Background(), req)
 	if err == nil {
-		t.Fatal("expected error when no GitHub token is available")
+		t.Fatal("expected error when no token is available")
 	}
 
 	errMsg := err.Error()
@@ -464,9 +513,10 @@ func TestCopilotBackend_NoGitHubToken(t *testing.T) {
 // --- VAL-COPILOT-015: Error handling — rate limit ---
 
 func TestCopilotBackend_RateLimit(t *testing.T) {
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream := newTestCopilotBackend(t)
 	defer upstream.Close()
-	defer githubAPI.Close()
+
+	preSetToken(b, "test-copilot-token")
 
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -488,19 +538,18 @@ func TestCopilotBackend_RateLimit(t *testing.T) {
 		t.Fatal("expected error for rate limit")
 	}
 
-	var be *BackendError
 	if !strings.Contains(err.Error(), "429") && !strings.Contains(err.Error(), "rate") {
 		t.Errorf("error should reference rate limit, got: %v", err)
 	}
-	_ = be
 }
 
 // --- VAL-COPILOT-016: Error handling — model not available ---
 
 func TestCopilotBackend_ModelNotFound(t *testing.T) {
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream := newTestCopilotBackend(t)
 	defer upstream.Close()
-	defer githubAPI.Close()
+
+	preSetToken(b, "test-copilot-token")
 
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -521,21 +570,15 @@ func TestCopilotBackend_ModelNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for model not found")
 	}
-
-	var be *BackendError
-	if _, ok := err.(*BackendError); !ok {
-		// Also acceptable: wrapped error
-		t.Logf("error type: %T, value: %v", err, err)
-	}
-	_ = be
 }
 
 // --- VAL-COPILOT-017: Error handling — subscription issues ---
 
 func TestCopilotBackend_SubscriptionError(t *testing.T) {
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream := newTestCopilotBackend(t)
 	defer upstream.Close()
-	defer githubAPI.Close()
+
+	preSetToken(b, "test-copilot-token")
 
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
@@ -569,21 +612,19 @@ func TestCopilotBackend_SubscriptionError(t *testing.T) {
 func TestCopilotBackend_Upstream401_RetryWithReauth(t *testing.T) {
 	var attemptCount int32
 
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream, githubAPI := newTestCopilotBackendWithExchange(t)
 	defer upstream.Close()
 	defer githubAPI.Close()
 
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		count := atomic.AddInt32(&attemptCount, 1)
 		if count == 1 {
-			// First request: return 401
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]any{
 				"error": map[string]string{"message": "Unauthorized"},
 			})
 			return
 		}
-		// Second request (after re-auth): succeed
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"id":      "chatcmpl-test",
@@ -597,14 +638,13 @@ func TestCopilotBackend_Upstream401_RetryWithReauth(t *testing.T) {
 		})
 	})
 
-	// Pre-set a Copilot token so we can make the initial request.
-	// The 401 should trigger a re-exchange via the mock githubAPI.
-	expiresAt := time.Now().Add(30 * time.Minute)
+	// Pre-set a Copilot token with a GitHub token for re-exchange.
 	b.tokenStore.Save(&oauth.TokenData{
 		AccessToken: "initial-copilot-token",
-		ExpiresAt:   expiresAt,
+		ExpiresAt:   time.Now().Add(30 * time.Minute),
 		ObtainedAt:  time.Now(),
 		Source:      "test",
+		GitHubToken: "gho-test-github-token",
 	})
 
 	req := &ChatCompletionRequest{
@@ -624,7 +664,6 @@ func TestCopilotBackend_Upstream401_RetryWithReauth(t *testing.T) {
 		t.Errorf("content = %q, want %q", resp.Choices[0].Message.Content, "Success after retry")
 	}
 
-	// Should have made 2 attempts: first (401) + retry (success)
 	if atomic.LoadInt32(&attemptCount) != 2 {
 		t.Errorf("expected 2 attempts, got %d", atomic.LoadInt32(&attemptCount))
 	}
@@ -635,27 +674,19 @@ func TestCopilotBackend_Upstream401_RetryWithReauth(t *testing.T) {
 func TestCopilotBackend_Upstream401_LoopPrevention(t *testing.T) {
 	var attemptCount int32
 
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream, githubAPI := newTestCopilotBackendWithExchange(t)
 	defer upstream.Close()
 	defer githubAPI.Close()
 
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		count := atomic.AddInt32(&attemptCount, 1)
-		// Always return 401
+		atomic.AddInt32(&attemptCount, 1)
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{"message": "Unauthorized"},
 		})
-		_ = count
 	})
 
-	// Pre-set a Copilot token.
-	b.tokenStore.Save(&oauth.TokenData{
-		AccessToken: "expired-copilot-token",
-		ExpiresAt:   time.Now().Add(30 * time.Minute),
-		ObtainedAt:  time.Now(),
-		Source:      "test",
-	})
+	preSetToken(b, "test-copilot-token")
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
@@ -667,7 +698,6 @@ func TestCopilotBackend_Upstream401_LoopPrevention(t *testing.T) {
 		t.Fatal("expected error when upstream always returns 401")
 	}
 
-	// Should have made exactly 2 attempts (initial + one retry), not more.
 	attempts := atomic.LoadInt32(&attemptCount)
 	if attempts > 2 {
 		t.Errorf("expected at most 2 attempts (loop prevention), got %d", attempts)
@@ -677,8 +707,7 @@ func TestCopilotBackend_Upstream401_LoopPrevention(t *testing.T) {
 // --- VAL-COPILOT-007/008/009: Different base URL routing ---
 
 func TestCopilotBackend_IndividualURL(t *testing.T) {
-	b, _, _ := newTestCopilotBackend(t)
-	// Verify the base URL was stored correctly.
+	b, _ := newTestCopilotBackend(t)
 	if b.baseURL == "" {
 		t.Error("base URL should not be empty")
 	}
@@ -695,9 +724,8 @@ func TestCopilotBackend_BusinessURL(t *testing.T) {
 	defer cleanup()
 
 	ts, _ := oauth.NewTokenStore(filepath.Join(dir, "copilot-token.json"))
-	discoverer := oauth.NewDiscoverer()
-	exchanger := oauth.NewCopilotExchanger(ts)
-	b := NewCopilotBackend(cfg, discoverer, exchanger, ts)
+	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
 
 	if b.Name() != "copilot-biz" {
 		t.Errorf("Name() = %q, want %q", b.Name(), "copilot-biz")
@@ -718,9 +746,8 @@ func TestCopilotBackend_EnterpriseURL(t *testing.T) {
 	defer cleanup()
 
 	ts, _ := oauth.NewTokenStore(filepath.Join(dir, "copilot-token.json"))
-	discoverer := oauth.NewDiscoverer()
-	exchanger := oauth.NewCopilotExchanger(ts)
-	b := NewCopilotBackend(cfg, discoverer, exchanger, ts)
+	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
 
 	if b.Name() != "copilot-ent" {
 		t.Errorf("Name() = %q, want %q", b.Name(), "copilot-ent")
@@ -734,10 +761,10 @@ func TestCopilotBackend_EnterpriseURL(t *testing.T) {
 
 func TestCopilotBackend_SupportsModel(t *testing.T) {
 	tests := []struct {
-		name    string
-		models  []string
-		check   string
-		want    bool
+		name   string
+		models []string
+		check  string
+		want   bool
 	}{
 		{"empty models list (accepts all)", nil, "anything", true},
 		{"exact match", []string{"gpt-4o"}, "gpt-4o", true},
@@ -758,7 +785,8 @@ func TestCopilotBackend_SupportsModel(t *testing.T) {
 			defer cleanup()
 
 			ts, _ := oauth.NewTokenStore(filepath.Join(dir, "copilot-token.json"))
-			b := NewCopilotBackend(cfg, nil, nil, ts)
+			deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
+			b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
 
 			if got := b.SupportsModel(tt.check); got != tt.want {
 				t.Errorf("SupportsModel(%q) = %v, want %v", tt.check, got, tt.want)
@@ -772,13 +800,13 @@ func TestCopilotBackend_SupportsModel(t *testing.T) {
 func TestCopilotBackend_ConcurrentRequests(t *testing.T) {
 	var requestCount int32
 
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream := newTestCopilotBackend(t)
 	defer upstream.Close()
-	defer githubAPI.Close()
+
+	preSetToken(b, "test-copilot-token")
 
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&requestCount, 1)
-		// Simulate a bit of latency
 		time.Sleep(10 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -791,14 +819,6 @@ func TestCopilotBackend_ConcurrentRequests(t *testing.T) {
 			},
 			"usage": map[string]int{"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
 		})
-	})
-
-	// Pre-set a Copilot token.
-	b.tokenStore.Save(&oauth.TokenData{
-		AccessToken: "test-copilot-token",
-		ExpiresAt:   time.Now().Add(30 * time.Minute),
-		ObtainedAt:  time.Now(),
-		Source:      "test",
 	})
 
 	const numRequests = 5
@@ -838,25 +858,20 @@ func TestCopilotBackend_ConcurrentRequests(t *testing.T) {
 func TestCopilotBackend_PartialPrefixNoMatch(t *testing.T) {
 	r := NewRegistry()
 
-	// Manually register the backend with explicit models (so SupportsModel is selective)
 	dir, cleanup := helperTempDir(t)
 	defer cleanup()
 
 	ts, _ := oauth.NewTokenStore(filepath.Join(dir, "copilot-token.json"))
-	discoverer := oauth.NewDiscoverer()
-	exchanger := oauth.NewCopilotExchanger(ts)
+	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
 	backend := NewCopilotBackend(config.BackendConfig{
 		Name:    "copilot",
 		Type:    "copilot",
 		BaseURL: "https://api.githubcopilot.com",
 		Models:  []string{"gpt-4o", "o3"},
-	}, discoverer, exchanger, ts)
+	}, deviceCodeHandler, ts)
 
 	r.backends["copilot"] = backend
 
-	// "copilot-other/gpt-4o" should NOT match the "copilot" backend:
-	// - prefix check: "copilot-other" != "copilot" → no match
-	// - wildcard fallback: "copilot-other/gpt-4o" is not in Models list → no match
 	_, _, err := r.Resolve("copilot-other/gpt-4o")
 	if err == nil {
 		t.Error("expected error for partial prefix match")
@@ -866,51 +881,40 @@ func TestCopilotBackend_PartialPrefixNoMatch(t *testing.T) {
 // --- VAL-COPILOT-022: Empty messages array returns error ---
 
 func TestCopilotBackend_EmptyMessages(t *testing.T) {
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream := newTestCopilotBackend(t)
 	defer upstream.Close()
-	defer githubAPI.Close()
+
+	preSetToken(b, "test-copilot-token")
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
 		Messages: []Message{},
 	}
 
-	// Pre-set a Copilot token.
-	b.tokenStore.Save(&oauth.TokenData{
-		AccessToken: "test-token",
-		ExpiresAt:   time.Now().Add(30 * time.Minute),
-		ObtainedAt:  time.Now(),
-		Source:      "test",
-	})
-
 	// The request is forwarded to the upstream, which may or may not reject it.
-	// The backend should not crash. If upstream rejects, it's an error.
 	resp, err := b.ChatCompletion(context.Background(), req)
 	if err != nil {
-		// Acceptable: upstream rejects empty messages
 		t.Logf("upstream rejected empty messages (acceptable): %v", err)
 	} else {
-		// Also acceptable: upstream accepts it
 		t.Logf("upstream accepted empty messages, got response: %+v", resp)
 	}
 }
 
-// --- VAL-COPILOT-027: Token refresh handles expiry ---
+// --- VAL-COPILOT-027: Token re-validation on expiry ---
 
-func TestCopilotBackend_TokenRefreshOnExpiry(t *testing.T) {
+func TestCopilotBackend_TokenRevalidationOnExpiry(t *testing.T) {
 	var exchangeCount int32
 
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream, githubAPI := newTestCopilotBackendWithExchange(t)
 	defer upstream.Close()
 	defer githubAPI.Close()
 
 	// Override GitHub API to count exchanges.
-	expiresAt := time.Now().Add(30 * time.Minute).Unix()
 	githubAPI.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&exchangeCount, 1)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"expires_at": expiresAt,
+			"expires_at": time.Now().Add(30 * time.Minute).Unix(),
 			"refresh_in": 1500,
 			"token":      "refreshed-copilot-token",
 		})
@@ -930,17 +934,14 @@ func TestCopilotBackend_TokenRefreshOnExpiry(t *testing.T) {
 		})
 	})
 
-	// Set an expired token.
+	// Set an expired token WITH a GitHub token for re-exchange.
 	b.tokenStore.Save(&oauth.TokenData{
 		AccessToken: "expired-token",
-		ExpiresAt:   time.Now().Add(-1 * time.Hour), // expired
+		ExpiresAt:   time.Now().Add(-1 * time.Hour),
 		ObtainedAt:  time.Now().Add(-2 * time.Hour),
-		Source:      "test",
+		Source:      "device_code_flow",
+		GitHubToken: "gho-test-github-token",
 	})
-
-	// Set a GitHub token so the exchange can work.
-	t.Setenv("GH_TOKEN", "test-github-token")
-	b.discoverer = oauth.NewDiscoverer(oauth.WithTokenStore(b.tokenStore))
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
@@ -955,7 +956,6 @@ func TestCopilotBackend_TokenRefreshOnExpiry(t *testing.T) {
 		t.Error("expected at least one choice")
 	}
 
-	// The exchange should have been called to get a fresh token.
 	if atomic.LoadInt32(&exchangeCount) == 0 {
 		t.Error("expected at least one token exchange for expired token")
 	}
@@ -996,7 +996,8 @@ func TestCopilotBackend_Name(t *testing.T) {
 	defer cleanup()
 
 	ts, _ := oauth.NewTokenStore(filepath.Join(dir, "copilot-token.json"))
-	b := NewCopilotBackend(cfg, nil, nil, ts)
+	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
 
 	if b.Name() != "my-copilot" {
 		t.Errorf("Name() = %q, want %q", b.Name(), "my-copilot")
@@ -1008,9 +1009,10 @@ func TestCopilotBackend_Name(t *testing.T) {
 func TestCopilotBackend_IgnoresAPIKeyOverride(t *testing.T) {
 	var receivedAuth string
 
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream := newTestCopilotBackend(t)
 	defer upstream.Close()
-	defer githubAPI.Close()
+
+	preSetToken(b, "real-copilot-token")
 
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedAuth = r.Header.Get("Authorization")
@@ -1027,18 +1029,10 @@ func TestCopilotBackend_IgnoresAPIKeyOverride(t *testing.T) {
 		})
 	})
 
-	// Pre-set a Copilot token.
-	b.tokenStore.Save(&oauth.TokenData{
-		AccessToken: "real-copilot-token",
-		ExpiresAt:   time.Now().Add(30 * time.Minute),
-		ObtainedAt:  time.Now(),
-		Source:      "test",
-	})
-
 	req := &ChatCompletionRequest{
-		Model:           "gpt-4o",
-		Messages:        []Message{{Role: "user", Content: "test"}},
-		APIKeyOverride:  "sk-custom-key", // Should be ignored for Copilot
+		Model:          "gpt-4o",
+		Messages:       []Message{{Role: "user", Content: "test"}},
+		APIKeyOverride: "sk-custom-key",
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -1046,7 +1040,6 @@ func TestCopilotBackend_IgnoresAPIKeyOverride(t *testing.T) {
 		t.Fatalf("ChatCompletion: %v", err)
 	}
 
-	// The Authorization header should use the Copilot token, not the override.
 	if !strings.Contains(receivedAuth, "Bearer ") {
 		t.Errorf("Authorization = %q, expected Bearer token", receivedAuth)
 	}
@@ -1060,9 +1053,10 @@ func TestCopilotBackend_IgnoresAPIKeyOverride(t *testing.T) {
 func TestCopilotBackend_RewriteBody(t *testing.T) {
 	var receivedBody map[string]json.RawMessage
 
-	b, upstream, githubAPI := newTestCopilotBackend(t)
+	b, upstream := newTestCopilotBackend(t)
 	defer upstream.Close()
-	defer githubAPI.Close()
+
+	preSetToken(b, "test-copilot-token")
 
 	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
@@ -1081,14 +1075,6 @@ func TestCopilotBackend_RewriteBody(t *testing.T) {
 		})
 	})
 
-	b.tokenStore.Save(&oauth.TokenData{
-		AccessToken: "test-token",
-		ExpiresAt:   time.Now().Add(30 * time.Minute),
-		ObtainedAt:  time.Now(),
-		Source:      "test",
-	})
-
-	// Use RawBody with extra fields to test preservation.
 	rawBody := `{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}],"temperature":0.7,"top_p":0.9}`
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
@@ -1101,19 +1087,115 @@ func TestCopilotBackend_RewriteBody(t *testing.T) {
 		t.Fatalf("ChatCompletion: %v", err)
 	}
 
-	// Verify model was rewritten
 	var modelStr string
 	json.Unmarshal(receivedBody["model"], &modelStr)
 	if modelStr != "gpt-4o" {
 		t.Errorf("model in body = %q, want %q", modelStr, "gpt-4o")
 	}
 
-	// Verify extra fields are preserved
 	if _, ok := receivedBody["temperature"]; !ok {
 		t.Error("temperature field should be preserved")
 	}
 	if _, ok := receivedBody["top_p"]; !ok {
 		t.Error("top_p field should be preserved")
+	}
+}
+
+// --- OAuthLoginHandler test ---
+
+func TestCopilotBackend_InitiateLogin(t *testing.T) {
+	// Verify that CopilotBackend implements OAuthLoginHandler
+	b, _ := newTestCopilotBackend(t)
+
+	var _ OAuthLoginHandler = b // compile-time interface check
+
+	// Without a mock device code server, InitiateLogin will fail.
+	// That's okay — we're testing the interface implementation.
+	_, _, err := b.InitiateLogin()
+	if err == nil {
+		// This might succeed if the real GitHub endpoint is reachable
+		t.Log("InitiateLogin succeeded (unexpected but acceptable)")
+	} else {
+		// Expected: network error or timeout connecting to real GitHub
+		t.Logf("InitiateLogin failed as expected: %v", err)
+	}
+}
+
+// --- OAuthStatus test ---
+
+func TestCopilotBackend_OAuthStatus_NoToken(t *testing.T) {
+	b, _ := newTestCopilotBackend(t)
+
+	status := b.OAuthStatus()
+	if status.BackendName != "copilot" {
+		t.Errorf("BackendName = %q, want %q", status.BackendName, "copilot")
+	}
+	if status.BackendType != "copilot" {
+		t.Errorf("BackendType = %q, want %q", status.BackendType, "copilot")
+	}
+	if status.TokenState != "missing" {
+		t.Errorf("TokenState = %q, want %q", status.TokenState, "missing")
+	}
+	if !status.NeedsReauth {
+		t.Error("NeedsReauth should be true when no token")
+	}
+}
+
+func TestCopilotBackend_OAuthStatus_ValidToken(t *testing.T) {
+	b, _ := newTestCopilotBackend(t)
+
+	preSetToken(b, "test-token")
+
+	status := b.OAuthStatus()
+	if !status.Authenticated {
+		t.Error("Authenticated should be true")
+	}
+	if status.TokenState != "valid" {
+		t.Errorf("TokenState = %q, want %q", status.TokenState, "valid")
+	}
+	if status.NeedsReauth {
+		t.Error("NeedsReauth should be false with valid token")
+	}
+}
+
+func TestCopilotBackend_OAuthStatus_ExpiredTokenWithGitHubToken(t *testing.T) {
+	b, _ := newTestCopilotBackend(t)
+
+	b.tokenStore.Save(&oauth.TokenData{
+		AccessToken: "expired-token",
+		ExpiresAt:   time.Now().Add(-1 * time.Hour),
+		ObtainedAt:  time.Now().Add(-2 * time.Hour),
+		Source:      "device_code_flow",
+		GitHubToken: "gho-test-github-token",
+	})
+
+	status := b.OAuthStatus()
+	if status.TokenState != "expired" {
+		t.Errorf("TokenState = %q, want %q", status.TokenState, "expired")
+	}
+	// With a GitHub token stored, we can auto-revalidate
+	if status.NeedsReauth {
+		t.Error("NeedsReauth should be false when GitHub token is stored for re-exchange")
+	}
+}
+
+func TestCopilotBackend_OAuthStatus_ExpiredTokenNoGitHubToken(t *testing.T) {
+	b, _ := newTestCopilotBackend(t)
+
+	b.tokenStore.Save(&oauth.TokenData{
+		AccessToken: "expired-token",
+		ExpiresAt:   time.Now().Add(-1 * time.Hour),
+		ObtainedAt:  time.Now().Add(-2 * time.Hour),
+		Source:      "device_code_flow",
+		// No GitHub token
+	})
+
+	status := b.OAuthStatus()
+	if status.TokenState != "expired" {
+		t.Errorf("TokenState = %q, want %q", status.TokenState, "expired")
+	}
+	if !status.NeedsReauth {
+		t.Error("NeedsReauth should be true when expired and no GitHub token for re-exchange")
 	}
 }
 

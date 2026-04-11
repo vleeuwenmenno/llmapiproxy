@@ -736,7 +736,8 @@ func (u *UI) OAuthStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // OAuthLogin initiates the OAuth login flow for the specified backend.
-// Currently supports Codex (PKCE flow). For Codex, the user is redirected
+// For Copilot, this initiates a device code flow and renders a page showing
+// the user code and verification URL. For Codex, the user is redirected
 // to the OpenAI authorization URL.
 func (u *UI) OAuthLogin(w http.ResponseWriter, r *http.Request) {
 	backendName := chi.URLParam(r, "backend")
@@ -765,6 +766,28 @@ func (u *UI) OAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("oauth: initiated login for backend %s, state=%s", backendName, state)
+
+	// Check if this is a device code flow (Copilot) or redirect flow (Codex).
+	// For Copilot, authURL is JSON containing device code info.
+	// For Codex, authURL is a URL to redirect to.
+	var deviceCodeInfo backend.DeviceCodeLoginInfo
+	if json.Unmarshal([]byte(authURL), &deviceCodeInfo) == nil && deviceCodeInfo.UserCode != "" {
+		// Device code flow: render the device code page.
+		data := map[string]any{
+			"BackendName":    backendName,
+			"UserCode":       deviceCodeInfo.UserCode,
+			"VerificationURI": deviceCodeInfo.VerificationURI,
+			"ExpiresIn":      deviceCodeInfo.ExpiresIn,
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := templates.ExecuteTemplate(w, "device_code.html", data); err != nil {
+			log.Printf("template error: %v", err)
+			http.Error(w, "template error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Redirect flow (Codex PKCE): redirect to the authorization URL.
 	http.Redirect(w, r, authURL, http.StatusFound)
 }
 
