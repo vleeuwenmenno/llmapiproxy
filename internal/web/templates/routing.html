@@ -109,6 +109,7 @@
         .strategy-priority { background: rgba(34,211,238,0.15); color: var(--accent); border: 1px solid rgba(34,211,238,0.3); }
         .strategy-round-robin { background: rgba(52,211,153,0.15); color: var(--green); border: 1px solid rgba(52,211,153,0.3); }
         .strategy-race { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.3); }
+        .strategy-staggered-race { background: rgba(52,211,153,0.15); color: #34d399; border: 1px solid rgba(52,211,153,0.3); }
         .model-meta { font-size: 0.8rem; color: var(--text-dim); margin-left: auto; display: flex; gap: 1rem; }
 
         .backend-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
@@ -146,7 +147,14 @@
         .strat-btn.sp { background: var(--accent-dim); color: var(--accent); }
         .strat-btn.sr { background: rgba(52,211,153,.15); color: var(--green); }
         .strat-btn.sa { background: rgba(251,191,36,.15); color: var(--amber); }
+        .strat-btn.ss { background: rgba(52,211,153,.15); color: #34d399; }
         .strategy-hint { font-size: 0.8rem; color: var(--text-dim); margin-top: 0.6rem; }
+        .stagger-delay-row { display: none; align-items: center; gap: 0.5rem; margin-top: 0.75rem; padding: 0.4rem 0.7rem; background: rgba(52,211,153,0.05); border-radius: 6px; border: 1px solid rgba(52,211,153,0.2); }
+        .stagger-delay-row.visible { display: flex; }
+        .stagger-delay-row label { font-size: 0.75rem; color: var(--text-dim); white-space: nowrap; }
+        .stagger-delay-row input[type=number] { width: 5rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 0.25rem 0.45rem; font-size: 0.82rem; font-family: var(--mono); outline: none; transition: border-color .15s; }
+        .stagger-delay-row input[type=number]:focus { border-color: #34d399; }
+        .stagger-delay-row span { font-size: 0.75rem; color: var(--text-dim); }
         .cfg-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
         .cfg-table th { text-align: left; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); }
         .cfg-table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: middle; }
@@ -240,6 +248,12 @@
                     <button class="strat-btn" data-s="priority" onclick="setGlobalStrategy('priority')">&#8595; Priority</button>
                     <button class="strat-btn" data-s="round-robin" onclick="setGlobalStrategy('round-robin')">&#8634; Round-Robin</button>
                     <button class="strat-btn" data-s="race" onclick="setGlobalStrategy('race')">&#9889; Race</button>
+                    <button class="strat-btn" data-s="staggered-race" onclick="setGlobalStrategy('staggered-race')">&#9201; Staggered Race</button>
+                </div>
+                <div class="stagger-delay-row" id="globalStaggerDelayRow">
+                    <label for="globalStaggerDelayInput">Delay between launches:</label>
+                    <input type="number" id="globalStaggerDelayInput" min="0" max="30000" step="50" value="500">
+                    <span>ms</span>
                 </div>
                 <p class="strategy-hint" id="globalHint"></p>
             </div>
@@ -307,10 +321,11 @@
 
 
     const STRAT_DESCS = {
-        '':            'Applies the priority strategy by default.',
-        'priority':    'Try backends in order. Fall back to the next on error.',
-        'round-robin': 'Rotate requests evenly across all configured backends.',
-        'race':        'Send to all backends simultaneously; the fastest success wins. May increase cost.'
+        '':               'Applies the priority strategy by default.',
+        'priority':       'Try backends in order. Fall back to the next on error.',
+        'round-robin':    'Rotate requests evenly across all configured backends.',
+        'race':           'Send to all backends simultaneously; the fastest success wins. May increase cost.',
+        'staggered-race': 'Launch backends in priority order with a configurable delay. Balances cost and speed.'
     };
 
     // ── Theme ──────────────────────────────────────────────────────
@@ -344,6 +359,7 @@
     function stratActiveClass(s) {
         if (s === 'round-robin') return 'sr';
         if (s === 'race') return 'sa';
+        if (s === 'staggered-race') return 'ss';
         return 'sp';
     }
     function setGlobalStrategy(s) {
@@ -358,6 +374,15 @@
             btn.className = 'strat-btn' + (ds === effective ? ' ' + stratActiveClass(ds) : '');
         });
         document.getElementById('globalHint').textContent = STRAT_DESCS[s] || STRAT_DESCS[''];
+        // Show/hide stagger delay row
+        const delayRow = document.getElementById('globalStaggerDelayRow');
+        if (effective === 'staggered-race') {
+            delayRow.classList.add('visible');
+            const saved = configState.stagger_delay_ms || 500;
+            document.getElementById('globalStaggerDelayInput').value = saved;
+        } else {
+            delayRow.classList.remove('visible');
+        }
     }
 
     // ── Config: Save global strategy only ────────────────────────
@@ -369,13 +394,18 @@
             // Fetch current config to preserve per-model entries
             const cfgRes = await fetch('/ui/routing/config');
             const cfg = cfgRes.ok ? await cfgRes.json() : {};
-            const payload = { strategy: configState.strategy || '', models: cfg.models || [] };
+            const strat = configState.strategy || '';
+            const delayMs = (strat === 'staggered-race')
+                ? (parseInt(document.getElementById('globalStaggerDelayInput').value, 10) || 500)
+                : 0;
+            const payload = { strategy: strat, stagger_delay_ms: delayMs, models: cfg.models || [] };
             const res = await fetch('/ui/routing/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
             if (!res.ok) { const t = await res.text(); throw new Error(t); }
+            configState.stagger_delay_ms = delayMs;
             msg.style.color = 'var(--green)';
             msg.textContent = '\u2713 Saved.';
         } catch (e) {
@@ -414,11 +444,13 @@
     function strategyClass(s) {
         if (s === 'round-robin') return 'strategy-round-robin';
         if (s === 'race') return 'strategy-race';
+        if (s === 'staggered-race') return 'strategy-staggered-race';
         return 'strategy-priority';
     }
     function strategyLabel(s) {
         if (s === 'round-robin') return '\u27F3 Round-Robin';
         if (s === 'race') return '\u26A1 Race';
+        if (s === 'staggered-race') return '\u23F1 Staggered Race';
         return '\u2193 Priority';
     }
     function fmtPct(n) {

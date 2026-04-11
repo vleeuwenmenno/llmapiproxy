@@ -58,7 +58,7 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries, strategy, err := h.registry.ResolveRoute(req.Model, h.cfgMgr.Get().Routing)
+	entries, strategy, staggerDelayMs, err := h.registry.ResolveRoute(req.Model, h.cfgMgr.Get().Routing)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -79,6 +79,16 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 			h.handleRaceStream(r.Context(), w, entries, &req, originalModel, start, clientName, cl)
 		} else {
 			h.handleRaceNonStream(r.Context(), w, entries, &req, originalModel, start, clientName, cl)
+		}
+	case config.StrategyStaggeredRace:
+		delay := time.Duration(staggerDelayMs) * time.Millisecond
+		if delay <= 0 {
+			delay = 500 * time.Millisecond
+		}
+		if req.Stream {
+			h.handleStaggeredRaceStream(r.Context(), w, entries, &req, originalModel, start, clientName, cl, delay)
+		} else {
+			h.handleStaggeredRaceNonStream(r.Context(), w, entries, &req, originalModel, start, clientName, cl, delay)
 		}
 	default: // priority and round-robin both use the ordered fallback loop
 		if req.Stream {
@@ -555,6 +565,273 @@ func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, e
 
 	if err := scanner.Err(); err != nil {
 		log.Printf("race stream scan error: %v", err)
+		rec.Error = err.Error()
+	}
+
+	rec.LatencyMs = time.Since(start).Milliseconds()
+	rec.StatusCode = http.StatusOK
+	h.collector.Record(rec)
+}
+
+// handleStaggeredRaceNonStream fires backends in priority order with `delay` between each launch.
+// The first successful response wins; remaining in-flight requests are cancelled.
+func (h *Handler) handleStaggeredRaceNonStream(ctx context.Context, w http.ResponseWriter, entries []backend.RouteEntry, req *backend.ChatCompletionRequest, originalModel string, start time.Time, clientName string, cl *config.ClientConfig, delay time.Duration) {
+	attempted := attemptedBackends(entries)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	resultCh := make(chan raceResult, len(entries))
+	var wg sync.WaitGroup
+	for i, entry := range entries {
+		wg.Add(1)
+		e := entry
+		sleepDur := time.Duration(i) * delay
+		go func() {
+			defer wg.Done()
+			if sleepDur > 0 {
+				timer := time.NewTimer(sleepDur)
+				select {
+				case <-timer.C:
+				case <-ctx.Done():
+					timer.Stop()
+					resultCh <- raceResult{err: ctx.Err(), be: e.Backend}
+					return
+				}
+			}
+			reqCopy := *req
+			reqCopy.Model = e.ModelID
+			if cl != nil && cl.BackendKeys != nil {
+				if k, ok := cl.BackendKeys[e.Backend.Name()]; ok {
+					reqCopy.APIKeyOverride = k
+				}
+			}
+			resp, err := e.Backend.ChatCompletion(ctx, &reqCopy)
+			rr := raceResult{resp: resp, be: e.Backend, err: err}
+			errors.As(err, &rr.beErr)
+			resultCh <- rr
+		}()
+	}
+	go func() { wg.Wait(); close(resultCh) }()
+
+	var lastErr error
+	var lastBE *backend.BackendError
+	var lastBEName string
+	received := 0
+	for rr := range resultCh {
+		received++
+		if rr.err == nil {
+			cancel()
+			latency := time.Since(start).Milliseconds()
+			rec := stats.Record{
+				Timestamp:         start,
+				Backend:           rr.be.Name(),
+				Model:             originalModel,
+				LatencyMs:         latency,
+				StatusCode:        http.StatusOK,
+				Stream:            false,
+				Client:            clientName,
+				Strategy:          config.StrategyStaggeredRace,
+				AttemptedBackends: attempted,
+			}
+			if rr.resp.Usage != nil {
+				rec.PromptTokens = rr.resp.Usage.PromptTokens
+				rec.CompletionTokens = rr.resp.Usage.CompletionTokens
+				rec.TotalTokens = rr.resp.Usage.TotalTokens
+			}
+			h.collector.Record(rec)
+			rr.resp.Model = originalModel
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(rr.resp)
+			return
+		}
+		lastErr = rr.err
+		lastBEName = rr.be.Name()
+		if rr.beErr != nil {
+			lastBE = rr.beErr
+		}
+		if received == len(entries) {
+			break
+		}
+	}
+
+	latency := time.Since(start).Milliseconds()
+	errMsg := "all backends failed"
+	if lastErr != nil {
+		errMsg = lastErr.Error()
+	}
+	rec := stats.Record{
+		Timestamp:         start,
+		Backend:           lastBEName,
+		Model:             originalModel,
+		LatencyMs:         latency,
+		StatusCode:        http.StatusBadGateway,
+		Error:             errMsg,
+		Stream:            false,
+		Client:            clientName,
+		Strategy:          config.StrategyStaggeredRace,
+		AttemptedBackends: attempted,
+	}
+	if lastBE != nil {
+		rec.ResponseBody = lastBE.Body
+	}
+	h.collector.Record(rec)
+	writeError(w, http.StatusBadGateway, "backend error: "+errMsg)
+}
+
+// handleStaggeredRaceStream is the streaming variant of handleStaggeredRaceNonStream.
+func (h *Handler) handleStaggeredRaceStream(ctx context.Context, w http.ResponseWriter, entries []backend.RouteEntry, req *backend.ChatCompletionRequest, originalModel string, start time.Time, clientName string, cl *config.ClientConfig, delay time.Duration) {
+	attempted := attemptedBackends(entries)
+	parentCtx, parentCancel := context.WithCancel(ctx)
+	defer parentCancel()
+
+	type streamAttempt struct {
+		result raceStreamResult
+		err    error
+	}
+
+	resultCh := make(chan streamAttempt, len(entries))
+	var wg sync.WaitGroup
+	for i, entry := range entries {
+		wg.Add(1)
+		e := entry
+		bCtx, bCancel := context.WithCancel(parentCtx)
+		_ = bCancel // cancelled via parentCancel when a winner is found
+		sleepDur := time.Duration(i) * delay
+		go func() {
+			defer wg.Done()
+			if sleepDur > 0 {
+				timer := time.NewTimer(sleepDur)
+				select {
+				case <-timer.C:
+				case <-bCtx.Done():
+					timer.Stop()
+					resultCh <- streamAttempt{err: bCtx.Err()}
+					return
+				}
+			}
+			reqCopy := *req
+			reqCopy.Model = e.ModelID
+			if cl != nil && cl.BackendKeys != nil {
+				if k, ok := cl.BackendKeys[e.Backend.Name()]; ok {
+					reqCopy.APIKeyOverride = k
+				}
+			}
+			stream, err := e.Backend.ChatCompletionStream(bCtx, &reqCopy)
+			if err != nil {
+				resultCh <- streamAttempt{err: err}
+				return
+			}
+			buf := make([]byte, 4096)
+			n, readErr := stream.Read(buf)
+			if readErr != nil && n == 0 {
+				stream.Close()
+				resultCh <- streamAttempt{err: fmt.Errorf("stream read failed: %w", readErr)}
+				return
+			}
+			resultCh <- streamAttempt{result: raceStreamResult{
+				stream:   stream,
+				buffered: buf[:n],
+				be:       e.Backend,
+			}}
+		}()
+	}
+	go func() { wg.Wait(); close(resultCh) }()
+
+	var winner *raceStreamResult
+	var lastErr error
+	received := 0
+	for attempt := range resultCh {
+		received++
+		if attempt.err == nil && winner == nil {
+			parentCancel()
+			res := attempt.result
+			winner = &res
+			if received == len(entries) {
+				break
+			}
+			continue
+		}
+		if attempt.err != nil && winner == nil {
+			lastErr = attempt.err
+		}
+		if received == len(entries) {
+			break
+		}
+	}
+
+	if winner == nil {
+		if lastErr == nil {
+			lastErr = fmt.Errorf("all backends failed to stream")
+		}
+		rec := stats.Record{
+			Timestamp:         start,
+			Backend:           "",
+			Model:             originalModel,
+			LatencyMs:         time.Since(start).Milliseconds(),
+			StatusCode:        http.StatusBadGateway,
+			Error:             lastErr.Error(),
+			Stream:            true,
+			Client:            clientName,
+			Strategy:          config.StrategyStaggeredRace,
+			AttemptedBackends: attempted,
+		}
+		h.collector.Record(rec)
+		writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())
+		return
+	}
+	defer winner.stream.Close()
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	rec := stats.Record{
+		Timestamp:         start,
+		Backend:           winner.be.Name(),
+		Model:             originalModel,
+		Stream:            true,
+		Client:            clientName,
+		Strategy:          config.StrategyStaggeredRace,
+		AttemptedBackends: attempted,
+	}
+
+	fullStream := io.MultiReader(bytes.NewReader(winner.buffered), winner.stream)
+	scanner := bufio.NewScanner(fullStream)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if ctx.Err() != nil {
+			break
+		}
+		if strings.HasPrefix(line, "data: ") && line != "data: [DONE]" {
+			data := line[6:]
+			rewritten, usage := rewriteStreamChunk(data, originalModel)
+			if usage != nil {
+				rec.PromptTokens = usage.PromptTokens
+				rec.CompletionTokens = usage.CompletionTokens
+				rec.TotalTokens = usage.TotalTokens
+			}
+			fmt.Fprintf(w, "data: %s\n\n", rewritten)
+		} else if line != "" {
+			fmt.Fprintf(w, "%s\n", line)
+			if line == "data: [DONE]" {
+				fmt.Fprint(w, "\n")
+			}
+		} else {
+			fmt.Fprint(w, "\n")
+		}
+		flusher.Flush()
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("staggered-race stream scan error: %v", err)
 		rec.Error = err.Error()
 	}
 

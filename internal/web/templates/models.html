@@ -678,10 +678,11 @@
             margin-bottom: 0.3rem;
             letter-spacing: 0.03em;
         }
-        .overlap-chip .strat-priority   { background: rgba(34,211,238,0.12); color: var(--accent); }
-        .overlap-chip .strat-round-robin { background: rgba(167,139,250,0.15); color: #a78bfa; }
-        .overlap-chip .strat-race        { background: rgba(251,191,36,0.15);  color: var(--amber); }
-        .overlap-chip .strat-global      { background: rgba(148,163,184,0.10); color: var(--text-dim); border: 1px dashed rgba(148,163,184,0.25); }
+        .overlap-chip .strat-priority        { background: rgba(34,211,238,0.12); color: var(--accent); }
+        .overlap-chip .strat-round-robin      { background: rgba(167,139,250,0.15); color: #a78bfa; }
+        .overlap-chip .strat-race             { background: rgba(251,191,36,0.15);  color: var(--amber); }
+        .overlap-chip .strat-staggered-race   { background: rgba(52,211,153,0.15);  color: #34d399; }
+        .overlap-chip .strat-global           { background: rgba(148,163,184,0.10); color: var(--text-dim); border: 1px dashed rgba(148,163,184,0.25); }
 
         /* ── Connect section ─────────────────────────────────── */
         .connect-buttons {
@@ -831,19 +832,30 @@
         .strat-option .strat-desc { font-size: 0.72rem; color: var(--text-dim); line-height: 1.45; }
 
         /* ── Strategy-specific colours ────────────────────────── */
-        .strat-option.so-default   { border-left-color: var(--text-dim); }
-        .strat-option.so-priority  { border-left-color: #22d3ee; }
-        .strat-option.so-roundrobin { border-left-color: #a78bfa; }
-        .strat-option.so-race      { border-left-color: #fbbf24; }
+        .strat-option.so-default       { border-left-color: var(--text-dim); }
+        .strat-option.so-priority      { border-left-color: #22d3ee; }
+        .strat-option.so-roundrobin    { border-left-color: #a78bfa; }
+        .strat-option.so-race          { border-left-color: #fbbf24; }
+        .strat-option.so-staggeredrace { border-left-color: #34d399; }
 
-        .strat-option.so-default:has(input:checked)   { border-color: var(--text-dim); border-left-color: var(--text-dim); background: rgba(148,163,184,0.06); }
-        .strat-option.so-priority:has(input:checked)   { border-color: rgba(34,211,238,0.35); border-left-color: #22d3ee; background: rgba(34,211,238,0.06); box-shadow: 0 0 0 1px rgba(34,211,238,0.12); }
-        .strat-option.so-roundrobin:has(input:checked)  { border-color: rgba(167,139,250,0.35); border-left-color: #a78bfa; background: rgba(167,139,250,0.06); box-shadow: 0 0 0 1px rgba(167,139,250,0.12); }
-        .strat-option.so-race:has(input:checked)        { border-color: rgba(251,191,36,0.35); border-left-color: #fbbf24; background: rgba(251,191,36,0.06); box-shadow: 0 0 0 1px rgba(251,191,36,0.12); }
+        .strat-option.so-default:has(input:checked)       { border-color: var(--text-dim); border-left-color: var(--text-dim); background: rgba(148,163,184,0.06); }
+        .strat-option.so-priority:has(input:checked)      { border-color: rgba(34,211,238,0.35); border-left-color: #22d3ee; background: rgba(34,211,238,0.06); box-shadow: 0 0 0 1px rgba(34,211,238,0.12); }
+        .strat-option.so-roundrobin:has(input:checked)    { border-color: rgba(167,139,250,0.35); border-left-color: #a78bfa; background: rgba(167,139,250,0.06); box-shadow: 0 0 0 1px rgba(167,139,250,0.12); }
+        .strat-option.so-race:has(input:checked)          { border-color: rgba(251,191,36,0.35); border-left-color: #fbbf24; background: rgba(251,191,36,0.06); box-shadow: 0 0 0 1px rgba(251,191,36,0.12); }
+        .strat-option.so-staggeredrace:has(input:checked) { border-color: rgba(52,211,153,0.35); border-left-color: #34d399; background: rgba(52,211,153,0.06); box-shadow: 0 0 0 1px rgba(52,211,153,0.12); }
 
-        .strat-option.so-priority input:checked  { border-color: #22d3ee; }
-        .strat-option.so-roundrobin input:checked { border-color: #a78bfa; }
-        .strat-option.so-race input:checked      { border-color: #fbbf24; }
+        .strat-option.so-priority input:checked      { border-color: #22d3ee; }
+        .strat-option.so-roundrobin input:checked    { border-color: #a78bfa; }
+        .strat-option.so-race input:checked          { border-color: #fbbf24; }
+        .strat-option.so-staggeredrace input:checked { border-color: #34d399; }
+
+        /* Stagger delay inline input */
+        .stagger-delay-row { display: none; align-items: center; gap: 0.5rem; margin-top: 0.5rem; padding: 0.4rem 0.7rem; background: rgba(52,211,153,0.05); border-radius: 6px; border: 1px solid rgba(52,211,153,0.2); }
+        .stagger-delay-row.visible { display: flex; }
+        .stagger-delay-row label { font-size: 0.75rem; color: var(--text-dim); white-space: nowrap; }
+        .stagger-delay-row input[type=number] { width: 5rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 0.25rem 0.45rem; font-size: 0.82rem; font-family: var(--mono); outline: none; transition: border-color .15s; }
+        .stagger-delay-row input[type=number]:focus { border-color: #34d399; }
+        .stagger-delay-row span { font-size: 0.75rem; color: var(--text-dim); }
 
         /* Fallback :checked style for browsers without :has */
         .strat-option:has(input:checked) .strat-label { color: var(--text); }
@@ -1309,6 +1321,19 @@
                                 <span class="strat-desc" style="color:var(--amber);margin-top:0.15rem">&#x26A0; All backends process the request — you may be charged by every provider.</span>
                             </span>
                         </label>
+                        <label class="strat-option so-staggeredrace">
+                            <input type="radio" name="routing-strategy" value="staggered-race">
+                            <span class="strat-icon">&#9201;</span>
+                            <span class="strat-text">
+                                <span class="strat-label">Staggered Race</span>
+                                <span class="strat-desc">Launch backends in priority order with a delay between each. Reduces cost vs. full Race while still providing fast fallback.</span>
+                            </span>
+                        </label>
+                    </div>
+                    <div class="stagger-delay-row" id="stagger-delay-row">
+                        <label for="stagger-delay-input">Delay between launches:</label>
+                        <input type="number" id="stagger-delay-input" min="0" max="30000" step="50" value="500">
+                        <span>ms</span>
                     </div>
                 </div>
                 <p>Backend priority order. The proxy tries the first backend; on failure it falls back down the list.</p>
@@ -1571,12 +1596,34 @@
 
             document.getElementById('routing-model-name').textContent = modelID;
             document.getElementById('routing-save-msg').textContent = '';
-            var radio = document.querySelector('input[name="routing-strategy"][value="' + (saved.strategy || '') + '"]');
+            var strategy = saved.strategy || '';
+            var radio = document.querySelector('input[name="routing-strategy"][value="' + strategy + '"]');
             if (radio) radio.checked = true;
             else document.querySelector('input[name="routing-strategy"][value=""]').checked = true;
+            // Restore stagger delay
+            var delayInput = document.getElementById('stagger-delay-input');
+            delayInput.value = saved.stagger_delay_ms || 500;
+            updateStaggerDelayVisibility();
             renderBackendList();
             openModal('modal-routing');
         }
+
+        function updateStaggerDelayVisibility() {
+            var checked = document.querySelector('input[name="routing-strategy"]:checked');
+            var row = document.getElementById('stagger-delay-row');
+            if (checked && checked.value === 'staggered-race') {
+                row.classList.add('visible');
+            } else {
+                row.classList.remove('visible');
+            }
+        }
+
+        // Show/hide stagger delay row when strategy changes
+        document.addEventListener('change', function(e) {
+            if (e.target && e.target.name === 'routing-strategy') {
+                updateStaggerDelayVisibility();
+            }
+        });
 
         function renderBackendList() {
             var ul = document.getElementById('routing-backend-list');
@@ -1604,7 +1651,10 @@
         function saveRouting() {
             var checked = document.querySelector('input[name="routing-strategy"]:checked');
             var strategy = checked ? checked.value : '';
-            routingData[currentRoutingModel] = { backends: currentBackends.slice(), strategy: strategy };
+            var delayMs = parseInt(document.getElementById('stagger-delay-input').value, 10) || 500;
+            var entry = { backends: currentBackends.slice(), strategy: strategy };
+            if (strategy === 'staggered-race') entry.stagger_delay_ms = delayMs;
+            routingData[currentRoutingModel] = entry;
             recomputeOverlaps();
             var msg = document.getElementById('routing-save-msg');
             msg.style.color = 'var(--text-dim)';
@@ -1620,12 +1670,13 @@
                         var d = routingData[m];
                         var obj = { model: m, backends: d.backends || [] };
                         if (d.strategy) obj.strategy = d.strategy;
+                        if (d.stagger_delay_ms) obj.stagger_delay_ms = d.stagger_delay_ms;
                         return obj;
                     });
                     return fetch('/ui/routing/save', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ strategy: cfg.strategy || '', models: models })
+                        body: JSON.stringify({ strategy: cfg.strategy || '', stagger_delay_ms: cfg.stagger_delay_ms || 0, models: models })
                     });
                 })
                 .then(function(r) {
@@ -1744,7 +1795,7 @@
                 var ordered = saved.filter(function(b) { return entry.backends.indexOf(b) !== -1; });
                 entry.backends.forEach(function(b) { if (ordered.indexOf(b) === -1) ordered.push(b); });
 
-                var strategyLabels = { 'priority': '&#8595; Priority', 'round-robin': '&#8634; Round-Robin', 'race': '&#9889; Race' };
+                var strategyLabels = { 'priority': '&#8595; Priority', 'round-robin': '&#8634; Round-Robin', 'race': '&#9889; Race', 'staggered-race': '&#9201; Staggered Race' };
                 html += '<div class="overlap-chip" data-model="' + escHtml(canonicalID) + '" data-backends="' + escHtml(JSON.stringify(ordered)) + '">';
                 html += '<span class="mid">' + escHtml(canonicalID) + '</span>';
                 if (savedEntry.strategy && strategyLabels[savedEntry.strategy]) {

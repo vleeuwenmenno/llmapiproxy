@@ -76,8 +76,9 @@ func (r *Registry) All() []Backend {
 
 // ResolveRoute returns an ordered list of RouteEntry values for the given model,
 // consulting the explicit routing config first and falling back to prefix/wildcard resolution.
-// It also returns the resolved routing strategy ("priority", "round-robin", or "race").
-func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]RouteEntry, string, error) {
+// It also returns the resolved routing strategy and the stagger delay in milliseconds
+// (only relevant for the "staggered-race" strategy; 0 means use the default of 500ms).
+func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]RouteEntry, string, int, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -97,10 +98,14 @@ func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]R
 				if strategy == "" {
 					strategy = config.StrategyPriority
 				}
+				staggerDelayMs := mr.StaggerDelayMs
+				if staggerDelayMs == 0 {
+					staggerDelayMs = routing.StaggerDelayMs
+				}
 				if strategy == config.StrategyRoundRobin {
 					entries = r.rrTracker.Next(model, entries)
 				}
-				return entries, strategy, nil
+				return entries, strategy, staggerDelayMs, nil
 			}
 		}
 	}
@@ -110,16 +115,16 @@ func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]R
 		if b, ok := r.backends[parts[0]]; ok {
 			modelID := parts[1]
 			if b.SupportsModel(modelID) {
-				return []RouteEntry{{Backend: b, ModelID: modelID}}, config.StrategyPriority, nil
+				return []RouteEntry{{Backend: b, ModelID: modelID}}, config.StrategyPriority, 0, nil
 			}
 		}
 	}
 
 	for _, b := range r.backends {
 		if b.SupportsModel(model) {
-			return []RouteEntry{{Backend: b, ModelID: model}}, config.StrategyPriority, nil
+			return []RouteEntry{{Backend: b, ModelID: model}}, config.StrategyPriority, 0, nil
 		}
 	}
 
-	return nil, "", fmt.Errorf("no backend found for model %q", model)
+	return nil, "", 0, fmt.Errorf("no backend found for model %q", model)
 }

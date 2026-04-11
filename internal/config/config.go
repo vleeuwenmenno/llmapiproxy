@@ -32,24 +32,31 @@ type ClientConfig struct {
 
 // Valid routing strategy values.
 const (
-	StrategyPriority   = "priority"
-	StrategyRoundRobin = "round-robin"
-	StrategyRace       = "race"
+	StrategyPriority       = "priority"
+	StrategyRoundRobin     = "round-robin"
+	StrategyRace           = "race"
+	StrategyStaggeredRace  = "staggered-race"
 )
 
 type ModelRoutingConfig struct {
 	Model    string   `yaml:"model"`
 	Backends []string `yaml:"backends"`
 	// Strategy overrides the global routing strategy for this model.
-	// Valid values: "priority", "round-robin", "race". Empty = use global default.
+	// Valid values: "priority", "round-robin", "race", "staggered-race". Empty = use global default.
 	Strategy string `yaml:"strategy,omitempty"`
+	// StaggerDelayMs is the delay between backend launches for the staggered-race strategy.
+	// Defaults to 500ms when 0.
+	StaggerDelayMs int `yaml:"stagger_delay_ms,omitempty" json:"stagger_delay_ms,omitempty"`
 }
 
 type RoutingConfig struct {
 	Models []ModelRoutingConfig `yaml:"models,omitempty"`
 	// Strategy sets the default routing strategy when a model has multiple backends.
-	// Valid values: "priority" (default), "round-robin", "race".
+	// Valid values: "priority" (default), "round-robin", "race", "staggered-race".
 	Strategy string `yaml:"strategy,omitempty"`
+	// StaggerDelayMs is the default delay between backend launches for the staggered-race strategy.
+	// Defaults to 500ms when 0.
+	StaggerDelayMs int `yaml:"stagger_delay_ms,omitempty" json:"stagger_delay_ms,omitempty"`
 }
 
 type ServerConfig struct {
