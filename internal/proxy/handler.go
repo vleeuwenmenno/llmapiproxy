@@ -279,6 +279,8 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 		writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())
 		log.Error().Str("model", originalModel).Str("backend", lastBackend).Int64("latency_ms", rec.LatencyMs).Bool("stream", true).Str("client", clientName).Msg("completion failed: all backends error")
 		return
+	}
+	defer stream.Close()
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -338,6 +340,8 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 	h.collector.Record(rec)
 	log.Info().Str("model", originalModel).Str("backend", lastBackend).Int64("latency_ms", rec.LatencyMs).Bool("fallback", winnerIdx > 0).Bool("stream", true).Str("client", clientName).Msg("completion complete")
 }
+
+// raceResult holds the outcome of a single backend attempt in race mode.
 type raceResult struct {
 	resp  *backend.ChatCompletionResponse
 	be    backend.Backend
