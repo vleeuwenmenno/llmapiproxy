@@ -46,12 +46,12 @@ const (
 // Upstream 401 responses trigger re-authentication with a single retry and
 // loop prevention (max one retry).
 type CopilotBackend struct {
-	name               string
-	baseURL            string
-	models             []string
-	client             *http.Client
-	deviceCodeHandler  *oauth.DeviceCodeHandler
-	tokenStore         *oauth.TokenStore
+	name              string
+	baseURL           string
+	models            []string
+	client            *http.Client
+	deviceCodeHandler *oauth.DeviceCodeHandler
+	tokenStore        *oauth.TokenStore
 }
 
 // NewCopilotBackend creates a new CopilotBackend from the given configuration,

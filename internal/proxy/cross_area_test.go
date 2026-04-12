@@ -180,7 +180,7 @@ func openaiTestEnv(t *testing.T) (backend.Backend, func()) {
 		Type:    "openai",
 		BaseURL: upstream.URL,
 		APIKey:  "test-or-key",
-		Models: []config.ModelConfig{{ID: "openai/gpt-4o"}, {ID: "anthropic/claude-sonnet-4"}},
+		Models:  []config.ModelConfig{{ID: "openai/gpt-4o"}, {ID: "anthropic/claude-sonnet-4"}},
 	}, 0)
 
 	return b, upstream.Close
@@ -270,7 +270,7 @@ func TestCrossArea_CopilotTokenRefreshDuringUse(t *testing.T) {
 		if err != nil {
 			t.Fatalf("request %d error: %v", i+1, err)
 		}
-	if string(resp.Choices[0].Message.Content) != "\"Hello from Copilot!\"" {
+		if string(resp.Choices[0].Message.Content) != "\"Hello from Copilot!\"" {
 			t.Errorf("request %d response = %q", i+1, resp.Choices[0].Message.Content)
 		}
 	}

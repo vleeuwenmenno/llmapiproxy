@@ -1072,7 +1072,7 @@ func TestOAuthCheckStatus_TriggersTokenRefreshForCopilot(t *testing.T) {
 		Name:    "copilot",
 		Type:    "copilot",
 		BaseURL: "https://api.githubcopilot.com",
-		Models: []config.ModelConfig{{ID: "gpt-4o"}},
+		Models:  []config.ModelConfig{{ID: "gpt-4o"}},
 	}
 	mockBackend := backend.NewCopilotBackend(cfg, deviceCodeHandler, mockStore)
 	ui.registry.RegisterBackend("copilot", mockBackend)
