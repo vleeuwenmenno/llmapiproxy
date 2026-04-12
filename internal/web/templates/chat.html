@@ -825,6 +825,23 @@
         }
         .gear-btn:hover { border-color: var(--accent); color: var(--text); background: var(--accent-dim); }
 
+        .mode-toggle-btn {
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 0.22rem 0.65rem;
+            color: var(--text-dim);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            transition: all 0.15s;
+            font-size: 0.75rem;
+            font-family: var(--sans);
+        }
+        .mode-toggle-btn:hover { border-color: var(--accent); color: var(--text); background: var(--accent-dim); }
+        .mode-toggle-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+        .mode-toggle-label { white-space: nowrap; }
+
         .params-drawer {
             display: none;
             padding: 0.75rem 0 0.25rem;
@@ -1192,6 +1209,11 @@
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                     </button>
 
+                    <!-- Model listing mode toggle -->
+                    <button class="mode-toggle-btn" id="mode-toggle-btn" onclick="toggleModelMode()" title="Switch between simplified and internal (backend-prefixed) model listing">
+                        <span class="mode-toggle-label" id="mode-toggle-label">Show Internal Models</span>
+                    </button>
+
                     <!-- Model combo popover -->
                     <div class="model-combo-popover" id="model-popover">
                         <input type="text" id="model-search" placeholder="Search models…" autocomplete="off">
@@ -1327,6 +1349,7 @@ var currentSessionTitle = '';
 var allModels = {{json .Models}};
 var titleModel = {{json .TitleModel}};
 var defaultModel = {{json .DefaultModel}};
+var modelModeFlat = true; // start in flat (simplified) mode
 
 // retryVersions: one entry per assistant turn (indexed by pair index = position in chatHistory / 2)
 // Each entry: { versions: [{content, model, meta}], active: 0 }
@@ -1487,10 +1510,45 @@ document.addEventListener('click', function(e) {
     }
 });
 
+// === MODEL MODE TOGGLE ===
+function toggleModelMode() {
+    modelModeFlat = !modelModeFlat;
+    var btn = document.getElementById('mode-toggle-btn');
+    var label = document.getElementById('mode-toggle-label');
+    if (modelModeFlat) {
+        label.textContent = 'Show Internal Models';
+        btn.classList.remove('active');
+    } else {
+        label.textContent = 'Hide Internal Models';
+        btn.classList.add('active');
+    }
+    // Reload models from server in the new mode.
+    (async function() {
+        try {
+            var resp = await fetch('/ui/chat/models?mode=' + (modelModeFlat ? 'flat' : 'raw'));
+            if (!resp.ok) throw new Error(resp.status);
+            var data = await resp.json();
+            allModels = data || [];
+            if (allModels.length > 0) {
+                // Try to keep current model selected if it still exists in the new list.
+                var found = allModels.some(function(m) { return modelID(m) === currentModel; });
+                if (!found) {
+                    selectModel(modelID(allModels[0]));
+                }
+            } else {
+                modelPillText.textContent = 'No models available';
+            }
+            updateDefaultModelBtn();
+        } catch(e) {
+            console.error('Failed to reload models:', e);
+        }
+    })();
+}
+
 // === FETCH MODELS ON LOAD ===
 (async function() {
     try {
-        var resp = await fetch('/ui/chat/models');
+        var resp = await fetch('/ui/chat/models?mode=' + (modelModeFlat ? 'flat' : 'raw'));
         if (!resp.ok) throw new Error(resp.status);
         var data = await resp.json();
         allModels = data || [];

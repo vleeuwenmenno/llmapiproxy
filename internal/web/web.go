@@ -725,14 +725,27 @@ func (u *UI) RefreshBackendModels(w http.ResponseWriter, r *http.Request) {
 
 // playgroundModel is a compact model descriptor sent to the playground JS.
 type playgroundModel struct {
-	ID              string `json:"id"`
-	ContextLength   *int64 `json:"context_length,omitempty"`
-	MaxOutputTokens *int64 `json:"max_output_tokens,omitempty"`
+	ID                string   `json:"id"`
+	ContextLength     *int64   `json:"context_length,omitempty"`
+	MaxOutputTokens   *int64   `json:"max_output_tokens,omitempty"`
+	DisplayName       string   `json:"display_name,omitempty"`
+	AvailableBackends []string `json:"available_backends,omitempty"`
+	RoutingStrategy   string   `json:"routing_strategy,omitempty"`
 }
 
 // PlaygroundModels returns a JSON list of all models from enabled backends with metadata.
 // Used by the playground JS to populate the model combobox.
+// Supports ?mode=raw (default, backend-prefixed IDs) and ?mode=flat (deduplicated with routing).
 func (u *UI) PlaygroundModels(w http.ResponseWriter, r *http.Request) {
+	mode := r.URL.Query().Get("mode")
+	if mode == "flat" {
+		u.playgroundModelsFlat(w, r)
+		return
+	}
+	u.playgroundModelsRaw(w, r)
+}
+
+func (u *UI) playgroundModelsRaw(w http.ResponseWriter, r *http.Request) {
 	var models []playgroundModel
 	for _, b := range u.registry.All() {
 		list, err := b.ListModels(r.Context())
@@ -741,12 +754,100 @@ func (u *UI) PlaygroundModels(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		for _, m := range list {
+			id := m.ID
+			if !strings.HasPrefix(id, b.Name()+"/") {
+				id = b.Name() + "/" + id
+			}
 			models = append(models, playgroundModel{
-				ID:              b.Name() + "/" + m.ID,
+				ID:              id,
 				ContextLength:   m.ContextLength,
 				MaxOutputTokens: m.MaxOutputTokens,
 			})
 		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(models)
+}
+
+func (u *UI) playgroundModelsFlat(w http.ResponseWriter, r *http.Request) {
+	routing := u.cfgMgr.Get().Routing
+
+	type modelEntry struct {
+		model    backend.Model
+		backends []string
+	}
+	seen := make(map[string]*modelEntry)
+	var order []string
+
+	for _, b := range u.registry.All() {
+		list, err := b.ListModels(r.Context())
+		if err != nil {
+			log.Warn().Err(err).Str("backend", b.Name()).Msg("playground: error listing models")
+			continue
+		}
+		for _, m := range list {
+			baseID := strings.TrimPrefix(m.ID, b.Name()+"/")
+
+			if existing, ok := seen[baseID]; ok {
+				if m.ContextLength != nil && (existing.model.ContextLength == nil || *m.ContextLength > *existing.model.ContextLength) {
+					existing.model.ContextLength = m.ContextLength
+				}
+				if m.MaxOutputTokens != nil && (existing.model.MaxOutputTokens == nil || *m.MaxOutputTokens > *existing.model.MaxOutputTokens) {
+					existing.model.MaxOutputTokens = m.MaxOutputTokens
+				}
+				capSet := make(map[string]bool, len(existing.model.Capabilities))
+				for _, c := range existing.model.Capabilities {
+					capSet[c] = true
+				}
+				for _, c := range m.Capabilities {
+					if !capSet[c] {
+						existing.model.Capabilities = append(existing.model.Capabilities, c)
+					}
+				}
+				existing.backends = append(existing.backends, b.Name())
+			} else {
+				mCopy := m
+				mCopy.ID = baseID
+				if mCopy.OwnedBy == "" {
+					mCopy.OwnedBy = b.Name()
+				}
+				seen[baseID] = &modelEntry{
+					model:    mCopy,
+					backends: []string{b.Name()},
+				}
+				order = append(order, baseID)
+			}
+		}
+	}
+
+	strategy := routing.Strategy
+	if strategy == "" {
+		strategy = config.StrategyPriority
+	}
+
+	var models []playgroundModel
+	for _, id := range order {
+		entry := seen[id]
+		m := entry.model
+
+		routedBackends := entry.backends
+		entries, resolvedStrategy, _, err := u.registry.ResolveRoute(id, routing)
+		if err == nil && len(entries) > 0 {
+			routedBackends = make([]string, 0, len(entries))
+			for _, re := range entries {
+				routedBackends = append(routedBackends, re.Backend.Name())
+			}
+			strategy = resolvedStrategy
+		}
+
+		models = append(models, playgroundModel{
+			ID:                m.ID,
+			ContextLength:     m.ContextLength,
+			MaxOutputTokens:   m.MaxOutputTokens,
+			DisplayName:       m.DisplayName,
+			AvailableBackends: routedBackends,
+			RoutingStrategy:   strategy,
+		})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(models)
@@ -839,7 +940,17 @@ func (u *UI) ChatPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // ChatModels returns a JSON list of all models from enabled backends with metadata.
+// Supports ?mode=raw (default, backend-prefixed IDs) and ?mode=flat (deduplicated with routing).
 func (u *UI) ChatModels(w http.ResponseWriter, r *http.Request) {
+	mode := r.URL.Query().Get("mode")
+	if mode == "flat" {
+		u.chatModelsFlat(w, r)
+		return
+	}
+	u.chatModelsRaw(w, r)
+}
+
+func (u *UI) chatModelsRaw(w http.ResponseWriter, r *http.Request) {
 	var models []playgroundModel
 	for _, b := range u.registry.All() {
 		list, err := b.ListModels(r.Context())
@@ -848,12 +959,100 @@ func (u *UI) ChatModels(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		for _, m := range list {
+			id := m.ID
+			if !strings.HasPrefix(id, b.Name()+"/") {
+				id = b.Name() + "/" + id
+			}
 			models = append(models, playgroundModel{
-				ID:              b.Name() + "/" + m.ID,
+				ID:              id,
 				ContextLength:   m.ContextLength,
 				MaxOutputTokens: m.MaxOutputTokens,
 			})
 		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(models)
+}
+
+func (u *UI) chatModelsFlat(w http.ResponseWriter, r *http.Request) {
+	routing := u.cfgMgr.Get().Routing
+
+	type modelEntry struct {
+		model    backend.Model
+		backends []string
+	}
+	seen := make(map[string]*modelEntry)
+	var order []string
+
+	for _, b := range u.registry.All() {
+		list, err := b.ListModels(r.Context())
+		if err != nil {
+			log.Warn().Err(err).Str("backend", b.Name()).Msg("chat: error listing models")
+			continue
+		}
+		for _, m := range list {
+			baseID := strings.TrimPrefix(m.ID, b.Name()+"/")
+
+			if existing, ok := seen[baseID]; ok {
+				if m.ContextLength != nil && (existing.model.ContextLength == nil || *m.ContextLength > *existing.model.ContextLength) {
+					existing.model.ContextLength = m.ContextLength
+				}
+				if m.MaxOutputTokens != nil && (existing.model.MaxOutputTokens == nil || *m.MaxOutputTokens > *existing.model.MaxOutputTokens) {
+					existing.model.MaxOutputTokens = m.MaxOutputTokens
+				}
+				capSet := make(map[string]bool, len(existing.model.Capabilities))
+				for _, c := range existing.model.Capabilities {
+					capSet[c] = true
+				}
+				for _, c := range m.Capabilities {
+					if !capSet[c] {
+						existing.model.Capabilities = append(existing.model.Capabilities, c)
+					}
+				}
+				existing.backends = append(existing.backends, b.Name())
+			} else {
+				mCopy := m
+				mCopy.ID = baseID
+				if mCopy.OwnedBy == "" {
+					mCopy.OwnedBy = b.Name()
+				}
+				seen[baseID] = &modelEntry{
+					model:    mCopy,
+					backends: []string{b.Name()},
+				}
+				order = append(order, baseID)
+			}
+		}
+	}
+
+	strategy := routing.Strategy
+	if strategy == "" {
+		strategy = config.StrategyPriority
+	}
+
+	var models []playgroundModel
+	for _, id := range order {
+		entry := seen[id]
+		m := entry.model
+
+		routedBackends := entry.backends
+		entries, resolvedStrategy, _, err := u.registry.ResolveRoute(id, routing)
+		if err == nil && len(entries) > 0 {
+			routedBackends = make([]string, 0, len(entries))
+			for _, re := range entries {
+				routedBackends = append(routedBackends, re.Backend.Name())
+			}
+			strategy = resolvedStrategy
+		}
+
+		models = append(models, playgroundModel{
+			ID:                m.ID,
+			ContextLength:     m.ContextLength,
+			MaxOutputTokens:   m.MaxOutputTokens,
+			DisplayName:       m.DisplayName,
+			AvailableBackends: routedBackends,
+			RoutingStrategy:   strategy,
+		})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(models)

@@ -890,13 +890,24 @@ func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ?mode=raw returns backend-prefixed model IDs without deduplication,
+	// giving the caller full control over which backend handles each request.
+	// Default (no mode or mode=flat) returns deduplicated/flattened models
+	// with routing metadata so the proxy picks the best backend automatically.
+	if r.URL.Query().Get("mode") == "raw" {
+		h.listModelsRaw(w, r)
+		return
+	}
+
+	h.listModelsFlat(w, r)
+}
+
+// listModelsFlat returns deduplicated models with routing metadata.
+// When multiple backends serve the same base model, their metadata is
+// merged and the proxy's routing system determines which backend to use.
+func (h *Handler) listModelsFlat(w http.ResponseWriter, r *http.Request) {
 	routing := h.cfgMgr.Get().Routing
 
-	// Collect models from all backends and deduplicate by base model ID.
-	// When multiple backends serve the same base model, merge metadata
-	// (largest context/output windows, union of capabilities) and track
-	// which backends are available. After collection, resolve routing to
-	// determine the effective strategy and priority order.
 	type modelEntry struct {
 		model    backend.Model
 		backends []string // backends that serve this model (insertion order)
@@ -911,19 +922,15 @@ func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		for _, m := range models {
-			// Strip any backend prefix the model ID might already contain,
-			// then use the bare model ID as the dedup key.
 			baseID := strings.TrimPrefix(m.ID, b.Name()+"/")
 
 			if existing, ok := seen[baseID]; ok {
-				// Merge: keep largest context_length and max_output_tokens.
 				if m.ContextLength != nil && (existing.model.ContextLength == nil || *m.ContextLength > *existing.model.ContextLength) {
 					existing.model.ContextLength = m.ContextLength
 				}
 				if m.MaxOutputTokens != nil && (existing.model.MaxOutputTokens == nil || *m.MaxOutputTokens > *existing.model.MaxOutputTokens) {
 					existing.model.MaxOutputTokens = m.MaxOutputTokens
 				}
-				// Union capabilities.
 				capSet := make(map[string]bool, len(existing.model.Capabilities))
 				for _, c := range existing.model.Capabilities {
 					capSet[c] = true
@@ -933,7 +940,6 @@ func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 						existing.model.Capabilities = append(existing.model.Capabilities, c)
 					}
 				}
-				// Track this backend as a source.
 				existing.backends = append(existing.backends, b.Name())
 			} else {
 				mCopy := m
@@ -950,22 +956,16 @@ func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Resolve routing for each model to determine effective strategy and
-	// priority-ordered backend list.
 	allModels := make([]backend.Model, 0, len(order))
 	for _, id := range order {
 		entry := seen[id]
 		m := entry.model
 
-		// Determine effective routing strategy.
 		strategy := routing.Strategy
 		if strategy == "" {
 			strategy = config.StrategyPriority
 		}
 
-		// Try to resolve routing to get ordered backends.
-		// If a route is configured, use its backend order and strategy.
-		// Otherwise fall back to first-seen order with the global strategy.
 		routedBackends := entry.backends
 		entries, resolvedStrategy, _, err := h.registry.ResolveRoute(id, routing)
 		if err == nil && len(entries) > 0 {
@@ -979,13 +979,45 @@ func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 		m.AvailableBackends = routedBackends
 		m.RoutingStrategy = strategy
 
-		// Set OwnedBy to first backend name for single-backend models,
-		// or keep existing value for multi-backend models.
 		if len(routedBackends) > 1 {
 			m.OwnedBy = routedBackends[0]
 		}
 
 		allModels = append(allModels, m)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(backend.ModelList{
+		Object: "list",
+		Data:   allModels,
+	})
+}
+
+// listModelsRaw returns all models from all backends with backend-prefixed
+// IDs (e.g. "openrouter/gpt-4o"). No deduplication or routing metadata is
+// applied — the caller selects the exact backend and model.
+func (h *Handler) listModelsRaw(w http.ResponseWriter, r *http.Request) {
+	var allModels []backend.Model
+
+	for _, b := range h.registry.All() {
+		models, err := b.ListModels(r.Context())
+		if err != nil {
+			log.Warn().Err(err).Str("backend", b.Name()).Msg("error listing models")
+			continue
+		}
+		for _, m := range models {
+			mCopy := m
+			// Ensure the ID is backend-prefixed for raw mode.
+			if !strings.HasPrefix(mCopy.ID, b.Name()+"/") {
+				mCopy.ID = b.Name() + "/" + mCopy.ID
+			}
+			if mCopy.OwnedBy == "" {
+				mCopy.OwnedBy = b.Name()
+			}
+			mCopy.AvailableBackends = []string{b.Name()}
+			mCopy.RoutingStrategy = "direct"
+			allModels = append(allModels, mCopy)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

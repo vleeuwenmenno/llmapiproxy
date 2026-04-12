@@ -56,21 +56,62 @@ curl http://localhost:8080/v1/models \
   -H "Authorization: Bearer your-key"
 ```
 
-**Response:**
+**Query Parameters:**
+
+| Parameter | Type   | Default    | Description                                                                                           |
+| --------- | ------ | ---------- | ----------------------------------------------------------------------------------------------------- |
+| `mode`    | string | `flat`     | `flat` — deduplicated models with routing metadata (default). `raw` — all models with backend prefix. |
+
+**Response (default / `?mode=flat`):**
+
+Models from multiple backends are deduplicated by base ID and merged. When the same model is available on multiple backends, the response includes `available_backends` (routing priority order) and `routing_strategy` so the proxy can automatically select the best backend.
 
 ```json
 {
+  "object": "list",
   "data": [
     {
-      "id": "openrouter/gpt-4o",
+      "id": "gpt-4o",
       "object": "model",
-      "owned_by": "openrouter"
+      "owned_by": "openrouter",
+      "display_name": "GPT-4o",
+      "available_backends": ["openrouter", "copilot"],
+      "routing_strategy": "priority"
     }
   ]
 }
 ```
 
-Models from multiple backends are deduplicated by ID and merged.
+**Response (`?mode=raw`):**
+
+Each model is listed per-backend with a backend-prefixed ID (e.g. `openrouter/gpt-4o`). No deduplication is performed — the caller selects the exact backend and model. Each entry includes `available_backends` (single element) and `routing_strategy: "direct"`.
+
+```bash
+curl "http://localhost:8080/v1/models?mode=raw" \
+  -H "Authorization: Bearer your-key"
+```
+
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "openrouter/gpt-4o",
+      "object": "model",
+      "owned_by": "openrouter",
+      "available_backends": ["openrouter"],
+      "routing_strategy": "direct"
+    },
+    {
+      "id": "copilot/gpt-4o",
+      "object": "model",
+      "owned_by": "copilot",
+      "available_backends": ["copilot"],
+      "routing_strategy": "direct"
+    }
+  ]
+}
+```
 
 ## Dashboard API
 

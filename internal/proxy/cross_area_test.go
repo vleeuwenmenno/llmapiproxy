@@ -26,6 +26,7 @@ import (
 // config, stats) together to validate end-to-end cross-area flows.
 // ============================================================================
 
+
 // copilotTestEnv sets up a Copilot backend with mock GitHub API and mock
 // Copilot upstream. Returns backend, cleanup function, and upstream tracker.
 // It sets COPILOT_GITHUB_TOKEN env var for token discovery.
@@ -1404,4 +1405,127 @@ func TestCrossArea_ConcurrentRequests(t *testing.T) {
 	if len(collector.Recent(10)) != 5 {
 		t.Errorf("expected 5 records, got %d", len(collector.Recent(10)))
 	}
+}
+
+// --- VAL-CROSS-022: ListModels mode=raw vs mode=flat ---
+
+func TestCrossArea_ListModelsRawMode(t *testing.T) {
+	b1 := &mockBackend{
+		name:   "openrouter",
+		models: []string{"gpt-4o", "claude-sonnet-4"},
+	}
+	b2 := &mockBackend{
+		name:   "copilot",
+		models: []string{"gpt-4o"},
+	}
+
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"openrouter": b1,
+		"copilot":    b2,
+	}, config.RoutingConfig{})
+	defer cleanup()
+
+	t.Run("default mode returns flattened models", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+		rec := httptest.NewRecorder()
+		handler.ListModels(rec, req)
+
+		var ml backend.ModelList
+		if err := json.NewDecoder(rec.Body).Decode(&ml); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		// Flattened: "gpt-4o" should appear once (deduplicated) with 2 backends.
+		ids := make(map[string]bool)
+		for _, m := range ml.Data {
+			ids[m.ID] = true
+		}
+		if !ids["gpt-4o"] {
+			t.Error("expected gpt-4o in flattened listing")
+		}
+		if !ids["claude-sonnet-4"] {
+			t.Error("expected claude-sonnet-4 in flattened listing")
+		}
+		// No backend-prefixed IDs in flattened mode.
+		if ids["openrouter/gpt-4o"] || ids["copilot/gpt-4o"] {
+			t.Error("flattened mode should not contain backend-prefixed IDs")
+		}
+
+		// gpt-4o should have a routing strategy. Without explicit routing config,
+		// ResolveRoute uses wildcard search which returns the first matching backend.
+		for _, m := range ml.Data {
+			if m.ID == "gpt-4o" {
+				if len(m.AvailableBackends) < 1 {
+					t.Errorf("gpt-4o backends = %v, want at least 1", m.AvailableBackends)
+				}
+				if m.RoutingStrategy != "priority" {
+					t.Errorf("gpt-4o strategy = %q, want priority", m.RoutingStrategy)
+				}
+			}
+		}
+	})
+
+	t.Run("mode=flat returns same as default", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/v1/models?mode=flat", nil)
+		rec := httptest.NewRecorder()
+		handler.ListModels(rec, req)
+
+		var ml backend.ModelList
+		if err := json.NewDecoder(rec.Body).Decode(&ml); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		ids := make(map[string]bool)
+		for _, m := range ml.Data {
+			ids[m.ID] = true
+		}
+		if !ids["gpt-4o"] {
+			t.Error("expected gpt-4o in flat listing")
+		}
+		if ids["openrouter/gpt-4o"] {
+			t.Error("flat mode should not contain backend-prefixed IDs")
+		}
+	})
+
+	t.Run("mode=raw returns backend-prefixed models", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/v1/models?mode=raw", nil)
+		rec := httptest.NewRecorder()
+		handler.ListModels(rec, req)
+
+		var ml backend.ModelList
+		if err := json.NewDecoder(rec.Body).Decode(&ml); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		ids := make(map[string]bool)
+		for _, m := range ml.Data {
+			ids[m.ID] = true
+		}
+
+		// Raw mode: each model appears once per backend, with backend prefix.
+		if !ids["openrouter/gpt-4o"] {
+			t.Error("expected openrouter/gpt-4o in raw listing")
+		}
+		if !ids["openrouter/claude-sonnet-4"] {
+			t.Error("expected openrouter/claude-sonnet-4 in raw listing")
+		}
+		if !ids["copilot/gpt-4o"] {
+			t.Error("expected copilot/gpt-4o in raw listing")
+		}
+
+		// No bare IDs in raw mode.
+		if ids["gpt-4o"] || ids["claude-sonnet-4"] {
+			t.Error("raw mode should not contain bare (non-prefixed) IDs")
+		}
+
+		// Each raw model has exactly 1 backend and "direct" strategy.
+		for _, m := range ml.Data {
+			if len(m.AvailableBackends) != 1 {
+				t.Errorf("raw model %q backends = %v, want exactly 1", m.ID, m.AvailableBackends)
+			}
+			if m.RoutingStrategy != "direct" {
+				t.Errorf("raw model %q strategy = %q, want direct", m.ID, m.RoutingStrategy)
+			}
+		}
+	})
 }
