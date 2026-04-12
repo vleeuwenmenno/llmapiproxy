@@ -441,6 +441,9 @@
         <h1 style="font-size:1.5rem;font-weight:600;letter-spacing:-0.03em">Analytics</h1>
         <span id="loading-indicator"><span class="spinner"></span></span>
     </div>
+    {{if .Message}}
+    <div style="padding:0.65rem 1rem;border-radius:6px;margin-bottom:1rem;font-size:0.875rem;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:var(--green)">{{.Message}}</div>
+    {{end}}
 
     <!-- Filter bar -->
     <div class="filter-bar">
@@ -485,6 +488,10 @@
         <label class="filter-toggle">
             <input type="checkbox" id="filter-errors"> Errors only
         </label>
+
+        <div class="filter-sep"></div>
+
+        <button class="pill" style="background:rgba(248,113,113,0.1);color:var(--red);border:1px solid rgba(248,113,113,0.2);cursor:pointer" onclick="openWipeModal()" title="Delete analytics data matching current filters">&#128465; Wipe</button>
     </div>
 
     <!-- Summary cards -->
@@ -566,6 +573,43 @@
     </table>
     <div class="pagination" id="log-pagination"></div>
 </main>
+
+<!-- Wipe Analytics Modal -->
+<div id="wipe-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:200;backdrop-filter:blur(4px);justify-content:center;align-items:flex-start;padding:4vh 1rem;overflow-y:auto" onclick="if(event.target===this)closeWipeModal()">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;width:100%;max-width:480px;box-shadow:0 24px 80px rgba(0,0,0,0.4)">
+        <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+            <h2 style="font-size:1.1rem;font-weight:600;color:var(--red)">&#128465; Delete Analytics Data</h2>
+            <button onclick="closeWipeModal()" style="background:none;border:none;color:var(--text-dim);font-size:1.25rem;cursor:pointer">&#x2715;</button>
+        </div>
+        <div style="padding:1.25rem">
+            <p style="margin-bottom:1rem;font-size:0.9rem;color:var(--text)" id="wipe-description">Select which analytics records to delete. This cannot be undone.</p>
+
+            <div style="margin-bottom:1rem">
+                <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-dim);margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.05em">Backend</label>
+                <select id="wipe-backend" style="width:100%;padding:0.6rem 0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.875rem;font-family:var(--sans)">
+                    <option value="">All backends</option>
+                    {{range .Backends}}<option value="{{.}}">{{.}}</option>{{end}}
+                </select>
+            </div>
+
+            <div style="margin-bottom:1rem">
+                <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-dim);margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.05em">Model</label>
+                <select id="wipe-model" style="width:100%;padding:0.6rem 0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.875rem;font-family:var(--sans)">
+                    <option value="">All models</option>
+                    {{range .Models}}<option value="{{.}}">{{.}}</option>{{end}}
+                </select>
+            </div>
+
+            <div style="padding:0.75rem;border-radius:8px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);font-size:0.82rem;color:var(--text-dim)" id="wipe-warning">
+                <strong style="color:var(--red)">Warning:</strong> <span id="wipe-scope-text">All analytics records will be permanently deleted.</span>
+            </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:0.5rem;padding:0.75rem 1.25rem;border-top:1px solid var(--border)">
+            <button onclick="closeWipeModal()" style="padding:0.5rem 1rem;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text-dim);cursor:pointer;font-family:var(--sans);font-size:0.875rem;font-weight:500;transition:all 0.15s">Cancel</button>
+            <button onclick="submitWipe()" style="padding:0.5rem 1rem;border:1px solid rgba(248,113,113,0.3);border-radius:6px;background:rgba(248,113,113,0.15);color:var(--red);cursor:pointer;font-family:var(--sans);font-size:0.875rem;font-weight:600;transition:all 0.15s" onmouseover="this.style.background='rgba(248,113,113,0.25)'" onmouseout="this.style.background='rgba(248,113,113,0.15)'">Delete Data</button>
+        </div>
+    </div>
+</div>
 
 <!-- Detail modal (reused from dashboard) -->
 <div id="detail-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:200;overflow-y:auto" onclick="if(event.target===this)this.style.display='none'">
@@ -1009,6 +1053,55 @@ function renderLog(rec) {
     }
     pag.innerHTML = html;
 }
+
+// ── Wipe Analytics Modal ─────────────────────────────────────────────────
+function openWipeModal() {
+    // Pre-select backend/model from current filter state.
+    var backendSelect = document.getElementById('filter-backend');
+    var modelSelect = document.getElementById('filter-model');
+    document.getElementById('wipe-backend').value = backendSelect ? backendSelect.value : '';
+    document.getElementById('wipe-model').value = modelSelect ? modelSelect.value : '';
+    updateWipeScope();
+    document.getElementById('wipe-modal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+function closeWipeModal() {
+    document.getElementById('wipe-modal').style.display = 'none';
+    document.body.style.overflow = '';
+}
+function updateWipeScope() {
+    var backend = document.getElementById('wipe-backend').value;
+    var model = document.getElementById('wipe-model').value;
+    var text = '';
+    if (!backend && !model) {
+        text = 'All analytics records will be permanently deleted.';
+    } else if (backend && !model) {
+        text = 'All records for backend <strong>' + esc(backend) + '</strong> will be permanently deleted.';
+    } else if (!backend && model) {
+        text = 'All records for model <strong>' + esc(model) + '</strong> will be permanently deleted.';
+    } else {
+        text = 'All records for model <strong>' + esc(model) + '</strong> on backend <strong>' + esc(backend) + '</strong> will be permanently deleted.';
+    }
+    document.getElementById('wipe-scope-text').innerHTML = text;
+}
+function submitWipe() {
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/ui/analytics/wipe';
+    var backend = document.getElementById('wipe-backend').value;
+    var model = document.getElementById('wipe-model').value;
+    if (backend) { var b = document.createElement('input'); b.type = 'hidden'; b.name = 'backend'; b.value = backend; form.appendChild(b); }
+    if (model) { var m = document.createElement('input'); m.type = 'hidden'; m.name = 'model'; m.value = model; form.appendChild(m); }
+    document.body.appendChild(form);
+    form.submit();
+}
+// Update scope text when dropdowns change
+document.getElementById('wipe-backend').addEventListener('change', updateWipeScope);
+document.getElementById('wipe-model').addEventListener('change', updateWipeScope);
+// Close wipe modal on Escape
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeWipeModal();
+});
 
 // ── Detail modal ───────────────────────────────────────────────────────────
 function showDetail(id) {

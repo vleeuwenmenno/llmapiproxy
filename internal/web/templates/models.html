@@ -1530,9 +1530,10 @@
                     {{end}}
                     <span class="model-count" id="count-{{.Name}}">{{if not .Enabled}}disabled{{else if .StaticCount}}{{.StaticCount}} models{{else}}&hellip;{{end}}</span>
                     {{if and .IsDynamic .Enabled}}<button class="refresh-models-btn" onclick="refreshBackendModels(event, '{{.Name}}')" title="Refresh model list from upstream">&#x21BB;</button>{{end}}
-                    <form method="POST" action="/ui/settings/backends/delete" style="display:contents" onsubmit="return confirm('Delete backend {{.Name}}? This cannot be undone.')">
+                    <form method="POST" action="/ui/settings/backends/delete" id="delete-form-{{.Name}}" style="display:contents">
                         <input type="hidden" name="name" value="{{.Name}}">
-                        <button type="submit" class="delete-backend-btn" title="Delete backend {{.Name}}">&#x2715;</button>
+                        <input type="hidden" name="wipe_stats" id="delete-wipe-{{.Name}}" value="">
+                        <button type="button" class="delete-backend-btn" title="Delete backend {{.Name}}" onclick="openDeleteBackendModal('{{.Name}}')">&#x2715;</button>
                     </form>
                     <form method="POST" action="/ui/settings/backends/toggle" style="display:contents">
                         <input type="hidden" name="name" value="{{.Name}}">
@@ -1648,6 +1649,30 @@
             </button>
         </div>
     </main>
+
+    <!-- ── Delete Backend Confirmation Modal ──────────────────────── -->
+    <div class="modal-overlay" id="modal-delete-backend" onclick="closeOnBackdrop(event, 'modal-delete-backend')">
+        <div class="modal" style="max-width:480px">
+            <div class="modal-header">
+                <h2 style="color:var(--red)">Delete Backend</h2>
+                <button class="modal-close" onclick="closeModal('modal-delete-backend')">&#x2715;</button>
+            </div>
+            <div class="modal-body" style="padding:1.25rem">
+                <p id="delete-backend-msg" style="margin-bottom:1rem;font-size:0.95rem;color:var(--text)">Are you sure you want to delete <strong id="delete-backend-name"></strong>?</p>
+                <label style="display:flex;align-items:flex-start;gap:0.6rem;cursor:pointer;padding:0.75rem;border-radius:8px;background:var(--surface-2);border:1px solid var(--border)">
+                    <input type="checkbox" id="delete-wipe-stats" style="margin-top:3px;accent-color:var(--red)">
+                    <div>
+                        <div style="font-weight:600;font-size:0.85rem">Also delete all analytics data</div>
+                        <div style="font-size:0.8rem;color:var(--text-dim);margin-top:0.15rem">Remove all request logs, routing data, and statistics associated with this backend. This cannot be undone.</div>
+                    </div>
+                </label>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid var(--border);padding:0.75rem 1.25rem">
+                <button class="btn btn-secondary" onclick="closeModal('modal-delete-backend')">Cancel</button>
+                <button class="btn btn-danger" id="delete-backend-confirm" onclick="confirmDeleteBackend()">Delete Backend</button>
+            </div>
+        </div>
+    </div>
 
     <!-- ── Add Backend Modal ──────────────────────────────────────── -->
     <div class="modal-overlay" id="modal-add-backend" onclick="closeOnBackdrop(event, 'modal-add-backend')">
@@ -2014,6 +2039,21 @@
                 });
             }
         });
+
+        // ── Delete Backend Modal ──────────────────────────────────
+        var deleteBackendTarget = '';
+        function openDeleteBackendModal(name) {
+            deleteBackendTarget = name;
+            document.getElementById('delete-backend-name').textContent = name;
+            document.getElementById('delete-wipe-stats').checked = false;
+            openModal('modal-delete-backend');
+        }
+        function confirmDeleteBackend() {
+            var form = document.getElementById('delete-form-' + deleteBackendTarget);
+            var wipe = document.getElementById('delete-wipe-stats').checked;
+            document.getElementById('delete-wipe-' + deleteBackendTarget).value = wipe ? 'on' : '';
+            form.submit();
+        }
 
         // ── Add Backend Wizard ───────────────────────────────────
         var wizardType = '';

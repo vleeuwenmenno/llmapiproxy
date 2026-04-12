@@ -890,9 +890,18 @@ func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Collect models from all backends and deduplicate by model ID.
-	// For duplicates, merge metadata: largest context/output windows, union of capabilities.
-	seen := make(map[string]*backend.Model)
+	routing := h.cfgMgr.Get().Routing
+
+	// Collect models from all backends and deduplicate by base model ID.
+	// When multiple backends serve the same base model, merge metadata
+	// (largest context/output windows, union of capabilities) and track
+	// which backends are available. After collection, resolve routing to
+	// determine the effective strategy and priority order.
+	type modelEntry struct {
+		model    backend.Model
+		backends []string // backends that serve this model (insertion order)
+	}
+	seen := make(map[string]*modelEntry) // keyed by base model ID
 	var order []string
 
 	for _, b := range h.registry.All() {
@@ -902,40 +911,81 @@ func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		for _, m := range models {
-			publicID := b.Name() + "/" + strings.TrimPrefix(m.ID, b.Name()+"/")
-			if existing, ok := seen[publicID]; ok {
+			// Strip any backend prefix the model ID might already contain,
+			// then use the bare model ID as the dedup key.
+			baseID := strings.TrimPrefix(m.ID, b.Name()+"/")
+
+			if existing, ok := seen[baseID]; ok {
 				// Merge: keep largest context_length and max_output_tokens.
-				if m.ContextLength != nil && (existing.ContextLength == nil || *m.ContextLength > *existing.ContextLength) {
-					existing.ContextLength = m.ContextLength
+				if m.ContextLength != nil && (existing.model.ContextLength == nil || *m.ContextLength > *existing.model.ContextLength) {
+					existing.model.ContextLength = m.ContextLength
 				}
-				if m.MaxOutputTokens != nil && (existing.MaxOutputTokens == nil || *m.MaxOutputTokens > *existing.MaxOutputTokens) {
-					existing.MaxOutputTokens = m.MaxOutputTokens
+				if m.MaxOutputTokens != nil && (existing.model.MaxOutputTokens == nil || *m.MaxOutputTokens > *existing.model.MaxOutputTokens) {
+					existing.model.MaxOutputTokens = m.MaxOutputTokens
 				}
 				// Union capabilities.
-				capSet := make(map[string]bool, len(existing.Capabilities))
-				for _, c := range existing.Capabilities {
+				capSet := make(map[string]bool, len(existing.model.Capabilities))
+				for _, c := range existing.model.Capabilities {
 					capSet[c] = true
 				}
 				for _, c := range m.Capabilities {
 					if !capSet[c] {
-						existing.Capabilities = append(existing.Capabilities, c)
+						existing.model.Capabilities = append(existing.model.Capabilities, c)
 					}
 				}
+				// Track this backend as a source.
+				existing.backends = append(existing.backends, b.Name())
 			} else {
 				mCopy := m
-				mCopy.ID = publicID
+				mCopy.ID = baseID
 				if mCopy.OwnedBy == "" {
 					mCopy.OwnedBy = b.Name()
 				}
-				seen[publicID] = &mCopy
-				order = append(order, publicID)
+				seen[baseID] = &modelEntry{
+					model:    mCopy,
+					backends: []string{b.Name()},
+				}
+				order = append(order, baseID)
 			}
 		}
 	}
 
+	// Resolve routing for each model to determine effective strategy and
+	// priority-ordered backend list.
 	allModels := make([]backend.Model, 0, len(order))
 	for _, id := range order {
-		allModels = append(allModels, *seen[id])
+		entry := seen[id]
+		m := entry.model
+
+		// Determine effective routing strategy.
+		strategy := routing.Strategy
+		if strategy == "" {
+			strategy = config.StrategyPriority
+		}
+
+		// Try to resolve routing to get ordered backends.
+		// If a route is configured, use its backend order and strategy.
+		// Otherwise fall back to first-seen order with the global strategy.
+		routedBackends := entry.backends
+		entries, resolvedStrategy, _, err := h.registry.ResolveRoute(id, routing)
+		if err == nil && len(entries) > 0 {
+			routedBackends = make([]string, 0, len(entries))
+			for _, re := range entries {
+				routedBackends = append(routedBackends, re.Backend.Name())
+			}
+			strategy = resolvedStrategy
+		}
+
+		m.AvailableBackends = routedBackends
+		m.RoutingStrategy = strategy
+
+		// Set OwnedBy to first backend name for single-backend models,
+		// or keep existing value for multi-backend models.
+		if len(routedBackends) > 1 {
+			m.OwnedBy = routedBackends[0]
+		}
+
+		allModels = append(allModels, m)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -181,6 +181,51 @@ func (c *Collector) Clear() {
 	}
 }
 
+// DeleteFiltered removes records matching the filter from both the in-memory
+// slice and the persistent store.  Returns the number of database rows deleted.
+func (c *Collector) DeleteFiltered(f StatsFilter) (int64, error) {
+	c.mu.Lock()
+	// Remove matching records from in-memory slice.
+	filtered := c.records[:0]
+	for i := range c.records {
+		r := &c.records[i]
+		if !f.matchRecord(r) {
+			filtered = append(filtered, *r)
+		}
+	}
+	c.records = filtered
+	store := c.store
+	c.mu.Unlock()
+
+	if store != nil {
+		return store.DeleteFiltered(f)
+	}
+	return int64(len(c.records)), nil // approximate when no store
+}
+
+// matchRecord reports whether a record matches the filter.
+func (f StatsFilter) matchRecord(r *Record) bool {
+	if !f.From.IsZero() && r.Timestamp.Before(f.From) {
+		return false
+	}
+	if !f.To.IsZero() && r.Timestamp.After(f.To) {
+		return false
+	}
+	if f.Backend != "" && r.Backend != f.Backend {
+		return false
+	}
+	if f.Model != "" && r.Model != f.Model {
+		return false
+	}
+	if f.Client != "" && r.Client != f.Client {
+		return false
+	}
+	if f.ErrOnly && r.Error == "" {
+		return false
+	}
+	return true
+}
+
 // FilteredPaged returns a page of records (newest first) within an optional time window
 // and the total count of matching records. since=0 means all time.
 func (c *Collector) FilteredPaged(since time.Duration, page, pageSize int) ([]Record, int) {

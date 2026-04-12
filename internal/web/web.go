@@ -1694,6 +1694,8 @@ func (u *UI) AddBackendPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // DeleteBackendPage removes a backend from the Models page.
+// It accepts an optional wipe_stats form field; when set to "on" it also
+// deletes all analytics data associated with the backend.
 func (u *UI) DeleteBackendPage(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Redirect(w, r, "/ui/models?msg=Error:+failed+to+parse+form.", http.StatusSeeOther)
@@ -1705,11 +1707,48 @@ func (u *UI) DeleteBackendPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Optionally wipe all analytics data for this backend before deleting.
+	if r.FormValue("wipe_stats") == "on" {
+		n, err := u.collector.DeleteFiltered(stats.StatsFilter{Backend: name})
+		if err != nil {
+			log.Printf("warning: failed to wipe stats for backend %s: %v", name, err)
+		} else {
+			log.Printf("wiped %d stats records for backend %s", n, name)
+		}
+	}
+
 	if err := u.cfgMgr.DeleteBackend(name); err != nil {
 		http.Redirect(w, r, "/ui/models?msg=Error:"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/ui/models?msg=Backend+"+name+"+deleted.", http.StatusSeeOther)
+	msg := "Backend+" + name + "+deleted."
+	if r.FormValue("wipe_stats") == "on" {
+		msg = "Backend+" + name + "+deleted+and+analytics+wiped."
+	}
+	http.Redirect(w, r, "/ui/models?msg="+msg, http.StatusSeeOther)
+}
+
+// WipeAnalytics deletes analytics records matching the given filters.
+// Accepts form fields: backend, model (all optional).
+// When no filters are provided it acts like "Clear All Stats".
+func (u *UI) WipeAnalytics(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/ui/analytics?msg=Error:+failed+to+parse+form.", http.StatusSeeOther)
+		return
+	}
+
+	var f stats.StatsFilter
+	f.Backend = r.FormValue("backend")
+	f.Model = r.FormValue("model")
+
+	n, err := u.collector.DeleteFiltered(f)
+	if err != nil {
+		http.Redirect(w, r, "/ui/analytics?msg=Error:"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		return
+	}
+
+	msg := fmt.Sprintf("Deleted+%d+records.", n)
+	http.Redirect(w, r, "/ui/analytics?msg="+msg, http.StatusSeeOther)
 }
 
 // --- OAuth management handlers ---
@@ -1799,7 +1838,8 @@ func (u *UI) AnalyticsPage(w http.ResponseWriter, r *http.Request) {
 		"Models":   models,
 		"Clients":  clients,
 		// Pass current filter state for pre-selecting dropdowns
-		"Filter": r.URL.Query(),
+		"Filter":  r.URL.Query(),
+		"Message": r.URL.Query().Get("msg"),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "analytics.html", data); err != nil {

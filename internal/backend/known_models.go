@@ -8,6 +8,9 @@ type knownModelInfo struct {
 	ContextLength   int64
 	MaxOutputTokens int64
 	Vision          bool
+	// UseMaxCompletionTokens indicates that the model requires max_completion_tokens
+	// instead of the legacy max_tokens parameter (OpenAI o-series, gpt-5.x).
+	UseMaxCompletionTokens bool
 }
 
 // knownModels maps lowercase model ID prefixes to their metadata.
@@ -25,48 +28,48 @@ var knownModels = map[string]knownModelInfo{
 	"gpt-4.1-mini":   {DisplayName: "GPT-4.1 Mini", ContextLength: 1047576, MaxOutputTokens: 32768},
 	"gpt-4.1-nano":   {DisplayName: "GPT-4.1 Nano", ContextLength: 1047576, MaxOutputTokens: 32768},
 	"gpt-4.1":        {DisplayName: "GPT-4.1", ContextLength: 1047576, MaxOutputTokens: 32768},
-	"o3-":            {DisplayName: "o3", ContextLength: 200000, MaxOutputTokens: 100000},
-	"o3":             {DisplayName: "o3", ContextLength: 200000, MaxOutputTokens: 100000},
-	"o4-mini-":       {DisplayName: "o4 Mini", ContextLength: 200000, MaxOutputTokens: 100000},
-	"o4-mini":        {DisplayName: "o4 Mini", ContextLength: 200000, MaxOutputTokens: 100000},
+	"o3-":            {DisplayName: "o3", ContextLength: 200000, MaxOutputTokens: 100000, UseMaxCompletionTokens: true},
+	"o3":             {DisplayName: "o3", ContextLength: 200000, MaxOutputTokens: 100000, UseMaxCompletionTokens: true},
+	"o4-mini-":       {DisplayName: "o4 Mini", ContextLength: 200000, MaxOutputTokens: 100000, UseMaxCompletionTokens: true},
+	"o4-mini":        {DisplayName: "o4 Mini", ContextLength: 200000, MaxOutputTokens: 100000, UseMaxCompletionTokens: true},
 	"gpt-3.5-turbo-": {DisplayName: "GPT-3.5 Turbo", ContextLength: 16385, MaxOutputTokens: 4096},
 	"gpt-3.5-turbo":  {DisplayName: "GPT-3.5 Turbo", ContextLength: 16385, MaxOutputTokens: 4096},
 	"chatgpt-4o-":    {DisplayName: "ChatGPT-4o", ContextLength: 128000, MaxOutputTokens: 16384, Vision: true},
 	"chatgpt-4o":     {DisplayName: "ChatGPT-4o", ContextLength: 128000, MaxOutputTokens: 16384, Vision: true},
 
 	// GPT-5.4 series — flagship 2026 lineup (context 1.05M or 400K)
-	"gpt-5.4-pro-":  {DisplayName: "GPT-5.4 Pro", ContextLength: 1050000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5.4-pro":   {DisplayName: "GPT-5.4 Pro", ContextLength: 1050000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5.4-mini-": {DisplayName: "GPT-5.4 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5.4-mini":  {DisplayName: "GPT-5.4 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5.4-nano-": {DisplayName: "GPT-5.4 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5.4-nano":  {DisplayName: "GPT-5.4 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5.4-":      {DisplayName: "GPT-5.4", ContextLength: 1050000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5.4":       {DisplayName: "GPT-5.4", ContextLength: 1050000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.4-pro-":  {DisplayName: "GPT-5.4 Pro", ContextLength: 1050000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.4-pro":   {DisplayName: "GPT-5.4 Pro", ContextLength: 1050000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.4-mini-": {DisplayName: "GPT-5.4 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.4-mini":  {DisplayName: "GPT-5.4 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.4-nano-": {DisplayName: "GPT-5.4 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.4-nano":  {DisplayName: "GPT-5.4 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.4-":      {DisplayName: "GPT-5.4", ContextLength: 1050000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.4":       {DisplayName: "GPT-5.4", ContextLength: 1050000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
 
 	// GPT-5.3 series
-	"gpt-5.3-codex-": {DisplayName: "GPT-5.3 Codex", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5.3-codex":  {DisplayName: "GPT-5.3 Codex", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5.3-":       {DisplayName: "GPT-5.3", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5.3":        {DisplayName: "GPT-5.3", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.3-codex-": {DisplayName: "GPT-5.3 Codex", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.3-codex":  {DisplayName: "GPT-5.3 Codex", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.3-":       {DisplayName: "GPT-5.3", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.3":        {DisplayName: "GPT-5.3", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
 
 	// GPT-5.2 series
-	"gpt-5.2-codex-": {DisplayName: "GPT-5.2 Codex", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5.2-codex":  {DisplayName: "GPT-5.2 Codex", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5.2-":       {DisplayName: "GPT-5.2", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5.2":        {DisplayName: "GPT-5.2", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.2-codex-": {DisplayName: "GPT-5.2 Codex", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.2-codex":  {DisplayName: "GPT-5.2 Codex", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.2-":       {DisplayName: "GPT-5.2", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.2":        {DisplayName: "GPT-5.2", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
 
 	// GPT-5.1 series
-	"gpt-5.1-": {DisplayName: "GPT-5.1", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5.1":  {DisplayName: "GPT-5.1", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5.1-": {DisplayName: "GPT-5.1", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.1":  {DisplayName: "GPT-5.1", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
 
 	// GPT-5 base series
-	"gpt-5-mini-": {DisplayName: "GPT-5 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5-mini":  {DisplayName: "GPT-5 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5-nano-": {DisplayName: "GPT-5 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5-nano":  {DisplayName: "GPT-5 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5-":      {DisplayName: "GPT-5", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
-	"gpt-5":       {DisplayName: "GPT-5", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true},
+	"gpt-5-mini-": {DisplayName: "GPT-5 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5-mini":  {DisplayName: "GPT-5 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5-nano-": {DisplayName: "GPT-5 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5-nano":  {DisplayName: "GPT-5 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5-":      {DisplayName: "GPT-5", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5":       {DisplayName: "GPT-5", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
 
 	// ── Anthropic Claude ────────────────────────────────────────
 	// Claude 4 series: Opus/Sonnet have 1M ctx; Haiku has 200K ctx.

@@ -130,6 +130,7 @@ func main() {
 		r.Post("/settings/backends/toggle", ui.ToggleBackend)
 		r.Post("/settings/backends/add", ui.AddBackendPage)
 		r.Post("/settings/backends/delete", ui.DeleteBackendPage)
+		r.Post("/analytics/wipe", ui.WipeAnalytics)
 		r.Get("/stats/cards", ui.StatsCards)
 		r.Get("/stats/detail", ui.RequestDetail)
 		r.Get("/analytics", ui.AnalyticsPage)

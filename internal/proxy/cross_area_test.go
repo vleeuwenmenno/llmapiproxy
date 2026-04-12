@@ -71,8 +71,22 @@ func copilotTestEnv(t *testing.T, opts ...func(*copilotTestOpts)) (*backend.Copi
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]any{
 				"data": []map[string]any{
-					{"id": "gpt-4o", "object": "model", "owned_by": "copilot"},
-					{"id": "gpt-4.1", "object": "model", "owned_by": "copilot"},
+					{
+						"id": "gpt-4o", "object": "model", "owned_by": "copilot",
+						"capabilities": map[string]any{
+							"type":     "chat",
+							"supports": map[string]any{"streaming": true},
+							"limits":   map[string]any{"max_output_tokens": 16384},
+						},
+					},
+					{
+						"id": "gpt-4.1", "object": "model", "owned_by": "copilot",
+						"capabilities": map[string]any{
+							"type":     "chat",
+							"supports": map[string]any{"streaming": true},
+							"limits":   map[string]any{"max_output_tokens": 32768},
+						},
+					},
 				},
 			})
 			return

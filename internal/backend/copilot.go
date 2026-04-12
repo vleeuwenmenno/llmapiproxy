@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -34,6 +35,19 @@ const (
 	maxAuthRetries = 1
 )
 
+// copilotModelCap holds per-model capability metadata fetched from the Copilot /models API.
+type copilotModelCap struct {
+	// Type is the model type returned by Copilot, e.g. "chat", "base", "embeddings".
+	Type string
+	// UseMaxCompletionTokens indicates that this model requires max_completion_tokens
+	// instead of the legacy max_tokens parameter.
+	UseMaxCompletionTokens bool
+	// SupportsStreaming indicates this model can be used with streaming requests.
+	SupportsStreaming bool
+	// MaxOutputTokens is the maximum output token limit for this model.
+	MaxOutputTokens int64
+}
+
 // CopilotBackend implements the Backend interface for GitHub Copilot.
 // It uses the GitHub Device Code Flow to authenticate users and obtain Copilot
 // API tokens. The user visits a GitHub URL, enters a code, and authorizes the
@@ -52,6 +66,9 @@ type CopilotBackend struct {
 	client            *http.Client
 	deviceCodeHandler *oauth.DeviceCodeHandler
 	tokenStore        *oauth.TokenStore
+
+	capMu    sync.RWMutex
+	capCache map[string]copilotModelCap // keyed by model ID
 }
 
 // NewCopilotBackend creates a new CopilotBackend from the given configuration,
@@ -64,6 +81,7 @@ func NewCopilotBackend(cfg config.BackendConfig, deviceCodeHandler *oauth.Device
 		client:            &http.Client{Timeout: 5 * time.Minute},
 		deviceCodeHandler: deviceCodeHandler,
 		tokenStore:        tokenStore,
+		capCache:          make(map[string]copilotModelCap),
 	}
 }
 
@@ -97,11 +115,12 @@ func (b *CopilotBackend) ClearModelCache() {}
 // It obtains or validates the Copilot token, sets required headers, and forwards
 // the request. If the upstream returns 401, it re-authenticates and retries once.
 func (b *CopilotBackend) ChatCompletion(ctx context.Context, req *ChatCompletionRequest) (*ChatCompletionResponse, error) {
-	return b.doChatCompletion(ctx, req, 0)
+	return b.doChatCompletion(ctx, req, 0, false)
 }
 
-// doChatCompletion implements ChatCompletion with retry count for 401 loop prevention.
-func (b *CopilotBackend) doChatCompletion(ctx context.Context, req *ChatCompletionRequest, retryCount int) (*ChatCompletionResponse, error) {
+// doChatCompletion implements ChatCompletion with retry count for 401 loop prevention
+// and maxTokenRetried to prevent infinite loops on max_tokens translation retry.
+func (b *CopilotBackend) doChatCompletion(ctx context.Context, req *ChatCompletionRequest, retryCount int, maxTokenRetried bool) (*ChatCompletionResponse, error) {
 	// Get a valid Copilot token.
 	copilotToken, err := b.getCopilotToken(ctx)
 	if err != nil {
@@ -126,11 +145,27 @@ func (b *CopilotBackend) doChatCompletion(ctx context.Context, req *ChatCompleti
 		// Force a token refresh by expiring the Copilot token but preserving
 		// the GitHub token so GetCopilotToken can re-exchange.
 		b.forceExpireToken()
-		return b.doChatCompletion(ctx, req, retryCount+1)
+		return b.doChatCompletion(ctx, req, retryCount+1, maxTokenRetried)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
+		// Handle specific 400 error cases before returning a generic error.
+		if resp.StatusCode == http.StatusBadRequest {
+			if isUnsupportedEndpointError(errBody) {
+				return nil, fmt.Errorf("model %q does not support chat completions via the Copilot API; choose a chat-capable model from the models list", req.Model)
+			}
+			if !maxTokenRetried && isMaxTokensParamError(errBody) {
+				log.Printf("copilot: retrying request with max_completion_tokens for model %s", req.Model)
+				// Cache the finding so future requests skip the round-trip.
+				b.capMu.Lock()
+				cap := b.capCache[req.Model]
+				cap.UseMaxCompletionTokens = true
+				b.capCache[req.Model] = cap
+				b.capMu.Unlock()
+				return b.doChatCompletion(ctx, req, retryCount, true)
+			}
+		}
 		return nil, &BackendError{
 			StatusCode: resp.StatusCode,
 			Body:       string(errBody),
@@ -148,11 +183,12 @@ func (b *CopilotBackend) doChatCompletion(ctx context.Context, req *ChatCompleti
 // ChatCompletionStream sends a streaming chat completion request to the Copilot API.
 // It returns a reader of SSE data. Upstream 401 triggers re-auth with a single retry.
 func (b *CopilotBackend) ChatCompletionStream(ctx context.Context, req *ChatCompletionRequest) (io.ReadCloser, error) {
-	return b.doChatCompletionStream(ctx, req, 0)
+	return b.doChatCompletionStream(ctx, req, 0, false)
 }
 
-// doChatCompletionStream implements ChatCompletionStream with retry count for 401 loop prevention.
-func (b *CopilotBackend) doChatCompletionStream(ctx context.Context, req *ChatCompletionRequest, retryCount int) (io.ReadCloser, error) {
+// doChatCompletionStream implements ChatCompletionStream with retry count for 401 loop prevention
+// and maxTokenRetried to prevent infinite loops on max_tokens translation retry.
+func (b *CopilotBackend) doChatCompletionStream(ctx context.Context, req *ChatCompletionRequest, retryCount int, maxTokenRetried bool) (io.ReadCloser, error) {
 	// Get a valid Copilot token.
 	copilotToken, err := b.getCopilotToken(ctx)
 	if err != nil {
@@ -179,12 +215,27 @@ func (b *CopilotBackend) doChatCompletionStream(ctx context.Context, req *ChatCo
 		// Force a token refresh by expiring the Copilot token but preserving
 		// the GitHub token so GetCopilotToken can re-exchange.
 		b.forceExpireToken()
-		return b.doChatCompletionStream(ctx, req, retryCount+1)
+		return b.doChatCompletionStream(ctx, req, retryCount+1, maxTokenRetried)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		// Handle specific 400 error cases before returning a generic error.
+		if resp.StatusCode == http.StatusBadRequest {
+			if isUnsupportedEndpointError(errBody) {
+				return nil, fmt.Errorf("model %q does not support chat completions via the Copilot API; choose a chat-capable model from the models list", req.Model)
+			}
+			if !maxTokenRetried && isMaxTokensParamError(errBody) {
+				log.Printf("copilot: retrying request with max_completion_tokens for model %s", req.Model)
+				b.capMu.Lock()
+				cap := b.capCache[req.Model]
+				cap.UseMaxCompletionTokens = true
+				b.capCache[req.Model] = cap
+				b.capMu.Unlock()
+				return b.doChatCompletionStream(ctx, req, retryCount, true)
+			}
+		}
 		return nil, &BackendError{
 			StatusCode: resp.StatusCode,
 			Body:       string(errBody),
@@ -237,27 +288,74 @@ func (b *CopilotBackend) ListModels(ctx context.Context) ([]Model, error) {
 		return nil, fmt.Errorf("copilot models returned status %d: %s", resp.StatusCode, string(body))
 	}
 
+	// Full capabilities shape returned by the Copilot /models endpoint.
 	var result struct {
 		Data []struct {
 			ID      string `json:"id"`
 			Object  string `json:"object"`
 			OwnedBy string `json:"owned_by"`
+			Capabilities struct {
+				Type     string `json:"type"` // "chat", "base", "embeddings", ...
+				Supports struct {
+					Streaming bool `json:"streaming"`
+				} `json:"supports"`
+				Limits struct {
+					MaxOutputTokens int64 `json:"max_output_tokens"`
+				} `json:"limits"`
+			} `json:"capabilities"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decoding models response: %w", err)
 	}
 
+	newCache := make(map[string]copilotModelCap, len(result.Data))
 	models := make([]Model, 0, len(result.Data))
 	for _, m := range result.Data {
+		capType := strings.ToLower(m.Capabilities.Type)
+		cap := copilotModelCap{
+			Type:                   capType,
+			SupportsStreaming:       m.Capabilities.Supports.Streaming,
+			MaxOutputTokens:        m.Capabilities.Limits.MaxOutputTokens,
+			UseMaxCompletionTokens: capType == "chat" && needsMaxCompletionTokensByID(m.ID),
+		}
+		newCache[m.ID] = cap
+
+		// Only expose chat-capable models — base/embeddings models don't work
+		// with the /chat/completions endpoint.
+		if capType != "" && capType != "chat" {
+			log.Printf("copilot: skipping non-chat model %s (type: %s)", m.ID, capType)
+			continue
+		}
+
+		var maxOut *int64
+		if cap.MaxOutputTokens > 0 {
+			v := cap.MaxOutputTokens
+			maxOut = &v
+		}
 		models = append(models, Model{
-			ID:      m.ID,
-			Object:  m.Object,
-			Created: time.Now().Unix(),
-			OwnedBy: b.name,
+			ID:              m.ID,
+			Object:          "model",
+			Created:         time.Now().Unix(),
+			OwnedBy:         b.name,
+			MaxOutputTokens: maxOut,
 		})
 	}
+
+	// Atomically replace the capabilities cache.
+	b.capMu.Lock()
+	b.capCache = newCache
+	b.capMu.Unlock()
+
 	return models, nil
+}
+
+// getCap returns the cached capabilities for modelID, if present.
+func (b *CopilotBackend) getCap(modelID string) (copilotModelCap, bool) {
+	b.capMu.RLock()
+	defer b.capMu.RUnlock()
+	cap, ok := b.capCache[modelID]
+	return cap, ok
 }
 
 // getCopilotToken returns a valid Copilot API token. It uses the device code handler
@@ -300,8 +398,36 @@ func (b *CopilotBackend) setHeaders(httpReq *http.Request, copilotToken string) 
 	httpReq.Header.Set("X-Request-Id", requestID)
 }
 
-// rewriteBody rewrites the request body, replacing the model field with the
-// (prefix-stripped) model ID from the request. Extra fields are preserved.
+// needsMaxCompletionTokensByID returns true if a model ID matches a known pattern
+// that requires max_completion_tokens instead of the legacy max_tokens.
+// This is the package-level check used during ListModels before the cache is warm.
+func needsMaxCompletionTokensByID(modelID string) bool {
+	if info := LookupKnownModel(modelID); info != nil && info.UseMaxCompletionTokens {
+		return true
+	}
+	// Pattern fallback: o1/o3/o4 series and gpt-5.x all use max_completion_tokens.
+	id := strings.ToLower(modelID)
+	return strings.HasPrefix(id, "o1") ||
+		strings.HasPrefix(id, "o3") ||
+		strings.HasPrefix(id, "o4") ||
+		strings.HasPrefix(id, "gpt-5")
+}
+
+// needsMaxCompletionTokens returns true if the given model requires
+// max_completion_tokens instead of the legacy max_tokens field.
+// Checks the live capabilities cache first, then falls back to static detection.
+func (b *CopilotBackend) needsMaxCompletionTokens(modelID string) bool {
+	if cap, ok := b.getCap(modelID); ok {
+		return cap.UseMaxCompletionTokens
+	}
+	return needsMaxCompletionTokensByID(modelID)
+}
+
+// rewriteBody rewrites the request body for the Copilot API:
+//   - Replaces the model field with the prefix-stripped model ID.
+//   - For models that require it, renames max_tokens → max_completion_tokens.
+//
+// Extra fields from the original request are preserved.
 func (b *CopilotBackend) rewriteBody(req *ChatCompletionRequest) []byte {
 	if len(req.RawBody) == 0 {
 		data, _ := json.Marshal(req)
@@ -316,8 +442,47 @@ func (b *CopilotBackend) rewriteBody(req *ChatCompletionRequest) []byte {
 
 	modelBytes, _ := json.Marshal(req.Model)
 	m["model"] = modelBytes
+
+	// Translate max_tokens → max_completion_tokens for models that require it.
+	if b.needsMaxCompletionTokens(req.Model) {
+		if v, ok := m["max_tokens"]; ok {
+			m["max_completion_tokens"] = v
+			delete(m, "max_tokens")
+		}
+	}
+
 	data, _ := json.Marshal(m)
 	return data
+}
+
+// isMaxTokensParamError returns true when the Copilot API rejected the request
+// because max_tokens is not supported and max_completion_tokens should be used instead.
+func isMaxTokensParamError(body []byte) bool {
+	var e struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &e); err != nil {
+		return false
+	}
+	return e.Error.Code == "invalid_request_body" &&
+		strings.Contains(e.Error.Message, "max_tokens")
+}
+
+// isUnsupportedEndpointError returns true when the Copilot API indicates the model
+// does not support the /chat/completions endpoint at all.
+func isUnsupportedEndpointError(body []byte) bool {
+	var e struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &e); err != nil {
+		return false
+	}
+	return e.Error.Code == "unsupported_api_for_model"
 }
 
 // --- OAuthStatusProvider interface ---

@@ -94,6 +94,12 @@ type Model struct {
 	MaxOutputTokens *int64 `json:"max_output_tokens,omitempty"`
 	// Capabilities lists supported features, e.g. ["vision", "tools"].
 	Capabilities []string `json:"capabilities,omitempty"`
+	// AvailableBackends lists the backends that serve this model, in routing priority order.
+	// Set by the /v1/models handler when flattening across multiple backends.
+	AvailableBackends []string `json:"available_backends,omitempty"`
+	// RoutingStrategy is the effective routing strategy for this model
+	// (e.g. "priority", "round-robin", "race", "staggered-race").
+	RoutingStrategy string `json:"routing_strategy,omitempty"`
 }
 
 type ModelList struct {

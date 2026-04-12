@@ -95,6 +95,23 @@ func (s *Store) DeleteAll() {
 	}
 }
 
+// DeleteFiltered removes records matching the given filter and returns the number of rows deleted.
+// It reuses the same buildWhere logic as queries so backend, model, client, time, and error
+// filters all work.  Passing an empty filter deletes all records (equivalent to DeleteAll).
+func (s *Store) DeleteFiltered(f StatsFilter) (int64, error) {
+	where, args := buildWhere(f)
+	q := "DELETE FROM requests"
+	if where != "" {
+		q += " " + where
+	}
+	result, err := s.db.Exec(q, args...)
+	if err != nil {
+		return 0, fmt.Errorf("stats: delete filtered: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	return n, nil
+}
+
 // Prune deletes records older than the given duration to keep the file size in check.
 // Call periodically (e.g. daily) if desired.
 func (s *Store) Prune(olderThan time.Duration) error {

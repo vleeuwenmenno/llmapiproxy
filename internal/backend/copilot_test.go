@@ -1296,3 +1296,352 @@ func TestCopilotBackend_RefreshOAuthStatus_NoGitHubToken(t *testing.T) {
 		t.Error("expected error when no GitHub token for re-exchange, got nil")
 	}
 }
+
+// --- VAL-COPILOT-CAP-001: ListModels filters non-chat models using capabilities ---
+
+func TestCopilotBackend_ListModels_FiltersNonChatModels(t *testing.T) {
+	upstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{
+					{
+						"id": "gpt-4o", "object": "model", "owned_by": "copilot",
+						"capabilities": map[string]any{
+							"type":     "chat",
+							"supports": map[string]any{"streaming": true},
+							"limits":   map[string]any{"max_output_tokens": 16384},
+						},
+					},
+					{
+						"id": "text-embedding-3-small", "object": "model", "owned_by": "copilot",
+						"capabilities": map[string]any{
+							"type":     "embeddings",
+							"supports": map[string]any{"streaming": false},
+							"limits":   map[string]any{"max_output_tokens": 0},
+						},
+					},
+					{
+						"id": "davinci-base", "object": "model", "owned_by": "copilot",
+						"capabilities": map[string]any{
+							"type":     "base",
+							"supports": map[string]any{"streaming": false},
+							"limits":   map[string]any{"max_output_tokens": 4096},
+						},
+					},
+				},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer upstream.Close()
+
+	b, _ := newTestCopilotBackendAt(t, upstream.URL)
+	preSetToken(b, "test-token")
+
+	models, err := b.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+
+	// Only the "chat" type model should be returned.
+	if len(models) != 1 {
+		t.Fatalf("expected 1 model, got %d: %v", len(models), models)
+	}
+	if models[0].ID != "gpt-4o" {
+		t.Errorf("expected gpt-4o, got %s", models[0].ID)
+	}
+
+	// Non-chat models should still be in the capCache (cached but not returned).
+	cap, ok := b.getCap("text-embedding-3-small")
+	if !ok {
+		t.Error("expected text-embedding-3-small to be in capCache")
+	}
+	if cap.Type != "embeddings" {
+		t.Errorf("expected cap type 'embeddings', got %q", cap.Type)
+	}
+
+	cap2, ok2 := b.getCap("davinci-base")
+	if !ok2 {
+		t.Error("expected davinci-base to be in capCache")
+	}
+	if cap2.Type != "base" {
+		t.Errorf("expected cap type 'base', got %q", cap2.Type)
+	}
+}
+
+// --- VAL-COPILOT-CAP-002: ListModels caches capabilities and enriches MaxOutputTokens ---
+
+func TestCopilotBackend_ListModels_CachesCapabilities(t *testing.T) {
+	upstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{
+					{
+						"id": "gpt-4o-special", "object": "model", "owned_by": "copilot",
+						"capabilities": map[string]any{
+							"type":     "chat",
+							"supports": map[string]any{"streaming": true},
+							"limits":   map[string]any{"max_output_tokens": int64(65536)},
+						},
+					},
+				},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer upstream.Close()
+
+	b, _ := newTestCopilotBackendAt(t, upstream.URL)
+	preSetToken(b, "test-token")
+
+	models, err := b.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(models))
+	}
+	if models[0].MaxOutputTokens == nil || *models[0].MaxOutputTokens != 65536 {
+		t.Errorf("expected MaxOutputTokens=65536, got %v", models[0].MaxOutputTokens)
+	}
+
+	// capCache should have streaming set.
+	cap, ok := b.getCap("gpt-4o-special")
+	if !ok {
+		t.Fatal("expected gpt-4o-special in capCache")
+	}
+	if !cap.SupportsStreaming {
+		t.Error("expected SupportsStreaming=true")
+	}
+}
+
+// --- VAL-COPILOT-CAP-003: rewriteBody translates max_tokens for new models ---
+
+func TestCopilotBackend_RewriteBody_MaxTokensTranslated(t *testing.T) {
+	b, upstream := newTestCopilotBackend(t)
+	defer upstream.Close()
+
+	req := &ChatCompletionRequest{
+		Model:   "gpt-5.4",
+		RawBody: []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hi"}],"max_tokens":1024}`),
+	}
+
+	result := b.rewriteBody(req)
+
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(result, &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, hasOld := m["max_tokens"]; hasOld {
+		t.Error("expected max_tokens to be removed")
+	}
+	if _, hasNew := m["max_completion_tokens"]; !hasNew {
+		t.Error("expected max_completion_tokens to be present")
+	}
+	var maxComp int
+	if err := json.Unmarshal(m["max_completion_tokens"], &maxComp); err != nil {
+		t.Fatalf("unmarshal max_completion_tokens: %v", err)
+	}
+	if maxComp != 1024 {
+		t.Errorf("expected max_completion_tokens=1024, got %d", maxComp)
+	}
+}
+
+func TestCopilotBackend_RewriteBody_NoTranslationForGPT4(t *testing.T) {
+	b, upstream := newTestCopilotBackend(t)
+	defer upstream.Close()
+
+	req := &ChatCompletionRequest{
+		Model:   "gpt-4o",
+		RawBody: []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}],"max_tokens":512}`),
+	}
+
+	result := b.rewriteBody(req)
+
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(result, &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, hasOld := m["max_tokens"]; !hasOld {
+		t.Error("expected max_tokens to be kept for gpt-4o")
+	}
+	if _, hasNew := m["max_completion_tokens"]; hasNew {
+		t.Error("expected max_completion_tokens NOT to be present for gpt-4o")
+	}
+}
+
+// --- VAL-COPILOT-CAP-004: needsMaxCompletionTokens covers known patterns ---
+
+func TestCopilotBackend_NeedsMaxCompletionTokens_Patterns(t *testing.T) {
+	b, upstream := newTestCopilotBackend(t)
+	defer upstream.Close()
+
+	cases := []struct {
+		model string
+		want  bool
+	}{
+		{"o3", true},
+		{"o3-mini", true},
+		{"o4-mini", true},
+		{"gpt-5", true},
+		{"gpt-5.4", true},
+		{"gpt-5.4-mini", true},
+		{"gpt-5.1", true},
+		{"gpt-4o", false},
+		{"gpt-4.1", false},
+		{"gpt-4.1-mini", false},
+		{"claude-sonnet-4", false},
+		{"gemini-2.5-pro", false},
+	}
+	for _, tc := range cases {
+		got := b.needsMaxCompletionTokens(tc.model)
+		if got != tc.want {
+			t.Errorf("needsMaxCompletionTokens(%q) = %v, want %v", tc.model, got, tc.want)
+		}
+	}
+}
+
+// --- VAL-COPILOT-CAP-005: 400 max_tokens error triggers retry with renamed field ---
+
+func TestCopilotBackend_MaxTokensError_RetrySuccess(t *testing.T) {
+	callCount := 0
+	upstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		var body map[string]json.RawMessage
+		json.NewDecoder(r.Body).Decode(&body)
+
+		if callCount == 1 {
+			// First call with max_tokens — reject.
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]string{
+					"code":    "invalid_request_body",
+					"message": "'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.",
+				},
+			})
+			return
+		}
+		// Second call should have max_completion_tokens, not max_tokens.
+		if _, hasOld := body["max_tokens"]; hasOld {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "still got max_tokens on retry"})
+			return
+		}
+		if _, hasNew := body["max_completion_tokens"]; !hasNew {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "missing max_completion_tokens on retry"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"id": "chatcmpl-retry", "object": "chat.completion", "created": time.Now().Unix(), "model": "gpt-5.4",
+			"choices": []map[string]any{
+				{"index": 0, "message": map[string]string{"role": "assistant", "content": "OK"}, "finish_reason": "stop"},
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	b, _ := newTestCopilotBackendAt(t, upstream.URL)
+	preSetToken(b, "test-token")
+
+	req := &ChatCompletionRequest{
+		Model:   "gpt-5.4",
+		RawBody: []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"max_tokens":500}`),
+	}
+	_, err := b.ChatCompletion(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ChatCompletion: %v", err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 HTTP calls (initial + retry), got %d", callCount)
+	}
+
+	// capCache should now know this model needs max_completion_tokens.
+	if cap, ok := b.getCap("gpt-5.4"); ok && !cap.UseMaxCompletionTokens {
+		t.Error("expected capCache to be updated with UseMaxCompletionTokens=true")
+	}
+}
+
+// --- VAL-COPILOT-CAP-006: Retry does not loop — max 2 calls ---
+
+func TestCopilotBackend_MaxTokensError_NoRetryLoop(t *testing.T) {
+	callCount := 0
+	upstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "invalid_request_body",
+				"message": "'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.",
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	b, _ := newTestCopilotBackendAt(t, upstream.URL)
+	preSetToken(b, "test-token")
+
+	req := &ChatCompletionRequest{
+		Model:   "unknown-new-model",
+		RawBody: []byte(`{"model":"unknown-new-model","messages":[{"role":"user","content":"hi"}],"max_tokens":100}`),
+	}
+	_, err := b.ChatCompletion(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if callCount > 2 {
+		t.Errorf("expected at most 2 HTTP calls to prevent loop, got %d", callCount)
+	}
+}
+
+// --- VAL-COPILOT-CAP-007: Unsupported endpoint returns friendly error ---
+
+func TestCopilotBackend_UnsupportedEndpoint_FriendlyError(t *testing.T) {
+	upstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{
+				"code":    "unsupported_api_for_model",
+				"message": "model \"gpt-5.4-mini\" is not accessible via the /chat/completions endpoint",
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	b, _ := newTestCopilotBackendAt(t, upstream.URL)
+	preSetToken(b, "test-token")
+
+	req := &ChatCompletionRequest{
+		Model:   "gpt-5.4-mini",
+		RawBody: []byte(`{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"hi"}]}`),
+	}
+	_, err := b.ChatCompletion(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error for unsupported endpoint model")
+	}
+	if !strings.Contains(err.Error(), "does not support chat completions") {
+		t.Errorf("expected friendly error message, got: %v", err)
+	}
+}
+
+// newTestCopilotBackendAt creates a CopilotBackend pointing at the given base URL.
+// Useful when the test controls the server independently.
+func newTestCopilotBackendAt(t *testing.T, baseURL string) (*CopilotBackend, func()) {
+	t.Helper()
+	dir, cleanup := helperTempDir(t)
+	ts, err := oauth.NewTokenStore(filepath.Join(dir, "token.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := NewCopilotBackend(config.BackendConfig{
+		Name:    "copilot",
+		Type:    "copilot",
+		BaseURL: baseURL,
+	}, oauth.NewDeviceCodeHandler(ts), ts)
+	return b, cleanup
+}
