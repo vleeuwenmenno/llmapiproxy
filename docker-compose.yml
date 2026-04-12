@@ -4,6 +4,7 @@ services:
     image: llmapiproxy:dev
     ports:
       - "8000:8000"
+      - "1455:1455"
     volumes:
       - ./config.yaml:/app/config.yaml
       - ./stats.db:/app/stats.db
