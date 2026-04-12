@@ -510,8 +510,8 @@ func TestOAuthCallback_ErrorParamRedirectsToSettings(t *testing.T) {
 		t.Errorf("expected status 303, got %d", resp.StatusCode)
 	}
 	location := resp.Header.Get("Location")
-	if !strings.Contains(location, "/ui/settings") {
-		t.Errorf("expected redirect to /ui/settings, got %s", location)
+	if !strings.Contains(location, "/ui/models") {
+		t.Errorf("expected redirect to /ui/models, got %s", location)
 	}
 	if !strings.Contains(location, "OAuth+authentication+failed") {
 		t.Errorf("expected error message in redirect URL, got %s", location)
@@ -573,14 +573,14 @@ func TestOAuthDisconnect_ClearsToken(t *testing.T) {
 	}
 }
 
-func TestSettingsPage_ContainsOAuthSection(t *testing.T) {
+func TestModelsPage_ContainsOAuthSection(t *testing.T) {
 	ui, cleanup := createTestUI(t)
 	defer cleanup()
 
-	req := httptest.NewRequest(http.MethodGet, "/ui/settings", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ui/models", nil)
 	w := httptest.NewRecorder()
 
-	ui.SettingsPage(w, req)
+	ui.ModelsPage(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {
@@ -589,16 +589,16 @@ func TestSettingsPage_ContainsOAuthSection(t *testing.T) {
 
 	body := w.Body.String()
 
-	// Should contain OAuth Connections section
-	if !strings.Contains(body, "OAuth Connections") {
-		t.Error("expected 'OAuth Connections' section in settings page")
+	// Should contain oauth card section CSS (OAuth management moved to models page)
+	if !strings.Contains(body, "oauth-card-section") {
+		t.Error("expected oauth-card-section in models page")
 	}
 	// Should show both backends
 	if !strings.Contains(body, "copilot") {
-		t.Error("expected 'copilot' backend in settings page")
+		t.Error("expected 'copilot' backend in models page")
 	}
 	if !strings.Contains(body, "codex") {
-		t.Error("expected 'codex' backend in settings page")
+		t.Error("expected 'codex' backend in models page")
 	}
 }
 
@@ -691,69 +691,53 @@ func TestOAuthStatus_MultipleBackendsDisplayed(t *testing.T) {
 	}
 }
 
-func TestSettingsPage_IncludesHTMX(t *testing.T) {
+func TestModelsPage_IncludesHTMX(t *testing.T) {
 	ui, cleanup := createTestUI(t)
 	defer cleanup()
 
-	req := httptest.NewRequest(http.MethodGet, "/ui/settings", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ui/models", nil)
 	w := httptest.NewRecorder()
 
-	ui.SettingsPage(w, req)
+	ui.ModelsPage(w, req)
 
 	body := w.Body.String()
 
-	// Should include HTMX script
+	// Should include HTMX script (needed for dynamic model loading)
 	if !strings.Contains(body, "htmx.min.js") {
-		t.Error("expected HTMX script include in settings page")
+		t.Error("expected HTMX script include in models page")
 	}
 }
 
-func TestSettingsPage_IncludesOAuthCSS(t *testing.T) {
+func TestModelsPage_IncludesOAuthCSS(t *testing.T) {
 	ui, cleanup := createTestUI(t)
 	defer cleanup()
 
-	req := httptest.NewRequest(http.MethodGet, "/ui/settings", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ui/models", nil)
 	w := httptest.NewRecorder()
 
-	ui.SettingsPage(w, req)
+	ui.ModelsPage(w, req)
 
 	body := w.Body.String()
 
-	// Verify all oauth-* CSS classes are defined in the style block
+	// Verify oauth-* CSS classes used by backend cards are defined in models page
 	cssClasses := []string{
-		".oauth-backend-card",
-		".oauth-backend-header",
-		".oauth-backend-info",
-		".oauth-backend-name-row",
 		".oauth-status-dot",
 		".oauth-status-dot-valid",
 		".oauth-status-dot-expiring",
 		".oauth-status-dot-expired",
-		".oauth-backend-name",
-		".oauth-backend-type-badge",
-		".oauth-backend-details",
-		".oauth-detail-label",
-		".oauth-detail-value",
 		".oauth-text-valid",
 		".oauth-text-expiring",
 		".oauth-text-missing",
-		".oauth-backend-actions",
-		".btn-oauth-primary",
-		".btn-oauth-danger",
-		".oauth-backend-meta",
-		".oauth-meta-item",
-		".oauth-meta-label",
-		".oauth-meta-value",
-		".oauth-meta-warning",
-		".oauth-expiry-valid",
-		".oauth-expiry-expiring",
-		".oauth-expiry-expired",
-		".oauth-empty",
+		".oauth-card-section",
+		".oauth-actions",
+		".btn-oauth-xs",
+		".btn-oauth-xs-primary",
+		".btn-oauth-xs-danger",
 	}
 
 	for _, cls := range cssClasses {
 		if !strings.Contains(body, cls) {
-			t.Errorf("expected CSS class %s definition in settings page style block", cls)
+			t.Errorf("expected CSS class %s definition in models page style block", cls)
 		}
 	}
 }
@@ -1010,14 +994,14 @@ func TestOAuthCallback_FullFlow(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	// Should redirect to settings on success.
+	// Should redirect to models on success.
 	if resp.StatusCode != http.StatusSeeOther {
-		t.Errorf("expected 303 redirect to settings, got %d", resp.StatusCode)
+		t.Errorf("expected 303 redirect to models, got %d", resp.StatusCode)
 	}
 
 	finalLocation := resp.Header.Get("Location")
-	if !strings.Contains(finalLocation, "/ui/settings") {
-		t.Errorf("expected redirect to /ui/settings, got %s", finalLocation)
+	if !strings.Contains(finalLocation, "/ui/models") {
+		t.Errorf("expected redirect to /ui/models, got %s", finalLocation)
 	}
 	if !strings.Contains(finalLocation, "authentication+successful") {
 		t.Errorf("expected success message in redirect, got %s", finalLocation)

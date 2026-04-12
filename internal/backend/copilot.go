@@ -196,8 +196,9 @@ func (b *CopilotBackend) doChatCompletionStream(ctx context.Context, req *ChatCo
 }
 
 // ListModels returns the list of models this Copilot backend supports.
-// If a static model list is configured, it returns those. Otherwise, it returns
-// a default set of commonly available Copilot models.
+// If a static model list is configured, it returns those. When authenticated,
+// it fetches the live model list from the Copilot API. When not authenticated,
+// it returns an empty list rather than showing stale hardcoded models.
 func (b *CopilotBackend) ListModels(ctx context.Context) ([]Model, error) {
 	if len(b.models) > 0 {
 		models := make([]Model, 0, len(b.models))
@@ -212,21 +213,46 @@ func (b *CopilotBackend) ListModels(ctx context.Context) ([]Model, error) {
 		return models, nil
 	}
 
-	// Default Copilot models.
-	defaultModels := []string{
-		"gpt-4o",
-		"gpt-4.1",
-		"o3",
-		"o3-mini",
-		"o4-mini",
-		"claude-sonnet-4",
-		"gpt-4o-mini",
+	// Fetch live model list from the Copilot API when authenticated.
+	copilotToken, err := b.getCopilotToken(ctx)
+	if err != nil {
+		// Not authenticated — return empty list rather than stale hardcoded models.
+		return nil, nil //nolint:nilerr
 	}
-	models := make([]Model, 0, len(defaultModels))
-	for _, id := range defaultModels {
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, b.baseURL+"/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating models request: %w", err)
+	}
+	b.setHeaders(httpReq, copilotToken)
+
+	resp, err := b.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("fetching models: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("copilot models returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Data []struct {
+			ID      string `json:"id"`
+			Object  string `json:"object"`
+			OwnedBy string `json:"owned_by"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decoding models response: %w", err)
+	}
+
+	models := make([]Model, 0, len(result.Data))
+	for _, m := range result.Data {
 		models = append(models, Model{
-			ID:      id,
-			Object:  "model",
+			ID:      m.ID,
+			Object:  m.Object,
 			Created: time.Now().Unix(),
 			OwnedBy: b.name,
 		})
@@ -392,6 +418,14 @@ func (b *CopilotBackend) InitiateLogin() (authURL string, state string, err erro
 	}()
 
 	return authURL, state, nil
+}
+
+// --- OAuthDeviceCodeLoginHandler interface ---
+
+// InitiateDeviceCodeLogin implements OAuthDeviceCodeLoginHandler by delegating to InitiateLogin.
+// Copilot always uses a device code flow, so both interfaces map to the same underlying call.
+func (b *CopilotBackend) InitiateDeviceCodeLogin() (authURL string, state string, err error) {
+	return b.InitiateLogin()
 }
 
 // --- OAuthDisconnectHandler interface ---

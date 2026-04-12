@@ -1514,7 +1514,7 @@
         <div class="backend-grid">
         {{range .Backends}}
         {{$oauth := index $.OAuthByBackend .Name}}
-            <div class="backend-card{{if not .Enabled}} disabled{{end}}{{if .IsDynamic}} collapsed{{end}}" data-backend="{{.Name}}"{{if not .Enabled}} data-disabled="true"{{end}}>
+            <div class="backend-card{{if not .Enabled}} disabled{{end}}{{if .IsDynamic}} collapsed{{end}}" data-backend="{{.Name}}"{{if not .Enabled}} data-disabled="true"{{end}}{{if and $oauth (not $oauth.Authenticated)}} data-oauth-unauthed="true"{{end}}>
                 <div class="backend-header" onclick="toggleCard(event, '{{.Name}}')">
                     <div class="backend-name">
                         {{if .IconURL}}<img class="backend-icon" src="{{.IconURL}}" alt="{{.Name}}">{{else}}<div class="dot"></div>{{end}}
@@ -2075,13 +2075,18 @@
         function wizardSubmit() {
             var form = document.getElementById('add-backend-form');
             if (!form) return;
-            var data = new FormData(form);
+            // Convert FormData → URLSearchParams so the server receives
+            // application/x-www-form-urlencoded, which r.ParseForm() handles.
+            // (Sending FormData directly uses multipart/form-data, which
+            // ParseForm does not parse and causes FormValue to return "".)
+            var params = new URLSearchParams();
+            new FormData(form).forEach(function(value, name) { params.append(name, value); });
             var ferr = document.getElementById('wizard-form-error');
             if (ferr) { ferr.style.display = 'none'; ferr.textContent = ''; }
             fetch('/ui/settings/backends/add', {
                 method: 'POST',
-                headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                body: data
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params.toString()
             })
             .then(function(r) { return r.json(); })
             .then(function(json) {
@@ -2116,7 +2121,10 @@
                     var box = document.getElementById('wizard-auth-copilot');
                     if (box) box.style.display = 'block';
                     fetch('/ui/oauth/device-code-info/' + encodeURIComponent(name))
-                    .then(function(r) { return r.json(); })
+                    .then(function(r) {
+                        if (!r.ok) return r.text().then(function(t) { throw new Error(t || 'HTTP ' + r.status); });
+                        return r.json();
+                    })
                     .then(function(info) {
                         if (!info.ok) {
                             var aerr = document.getElementById('wizard-auth-error');
@@ -2950,7 +2958,10 @@
 
             var allCards = document.querySelectorAll('.backend-card[data-backend]');
             var cards = [];
-            allCards.forEach(function(c) { if (!c.dataset.disabled) cards.push(c); });
+            allCards.forEach(function(c) {
+                // Skip disabled backends and OAuth backends that are not yet authenticated.
+                if (!c.dataset.disabled && !c.dataset.oauthUnauthed) cards.push(c);
+            });
             pendingLoads = cards.length;
             if (pendingLoads === 0) { recomputeOverlaps(); buildZedConfig(); return; }
             cards.forEach(function(card) {

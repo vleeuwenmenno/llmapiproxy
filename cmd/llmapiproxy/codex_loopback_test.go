@@ -60,8 +60,8 @@ func TestCodexLoopbackHandler_Success(t *testing.T) {
 	}
 
 	location := resp.Header.Get("Location")
-	if !strings.Contains(location, "/ui/settings") {
-		t.Fatalf("expected redirect to settings, got %s", location)
+	if !strings.Contains(location, "/ui/models") {
+		t.Fatalf("expected redirect to models, got %s", location)
 	}
 	if !strings.Contains(location, "codex+authentication+successful") {
 		t.Fatalf("expected success message in redirect, got %s", location)

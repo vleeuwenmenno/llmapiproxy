@@ -165,7 +165,7 @@
             Waiting for authorization...
         </div>
 
-        <a href="/ui/settings" class="back-link">← Back to Settings</a>
+        <a href="/ui/models" class="back-link">← Back to Models</a>
     </div>
 
     <script>
@@ -186,8 +186,8 @@
 
         function markSuccess() {
             document.getElementById('status').className = 'status success';
-            document.getElementById('status').innerHTML = '✓ Authorization successful! Redirecting to settings...';
-            setTimeout(() => { window.location.href = '/ui/settings?msg=' + backend + '+authentication+successful!'; }, 1500);
+            document.getElementById('status').innerHTML = '✓ Authorization successful! Redirecting to models...';
+            setTimeout(() => { window.location.href = '/ui/models?msg=' + backend + '+authentication+successful!'; }, 1500);
         }
 
         function markExpired() {

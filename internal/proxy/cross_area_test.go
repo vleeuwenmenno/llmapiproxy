@@ -67,6 +67,17 @@ func copilotTestEnv(t *testing.T, opts ...func(*copilotTestOpts)) (*backend.Copi
 
 	// Mock Copilot upstream API.
 	copilotUpstream := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/models" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{
+					{"id": "gpt-4o", "object": "model", "owned_by": "copilot"},
+					{"id": "gpt-4.1", "object": "model", "owned_by": "copilot"},
+				},
+			})
+			return
+		}
+
 		tracker.mu.Lock()
 		tracker.upstreamRequestCount++
 		tracker.lastAuth = r.Header.Get("Authorization")

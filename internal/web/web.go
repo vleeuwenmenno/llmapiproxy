@@ -543,11 +543,13 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build a map of backend name → OAuthStatus for quick lookup in templates.
+	// Build a map of backend name → *OAuthStatus for quick lookup in templates.
+	// Using a pointer so that missing keys return nil (falsy in templates),
+	// preventing zero-value structs from matching {{if $oauth}} for non-OAuth backends.
 	oauthStatuses := u.registry.OAuthStatuses()
-	oauthByBackend := make(map[string]backend.OAuthStatus, len(oauthStatuses))
-	for _, s := range oauthStatuses {
-		oauthByBackend[s.BackendName] = s
+	oauthByBackend := make(map[string]*backend.OAuthStatus, len(oauthStatuses))
+	for i := range oauthStatuses {
+		oauthByBackend[oauthStatuses[i].BackendName] = &oauthStatuses[i]
 	}
 
 	data := map[string]any{
@@ -2109,13 +2111,17 @@ func (u *UI) OAuthDeviceCodeInfo(w http.ResponseWriter, r *http.Request) {
 
 	b := u.registry.Get(backendName)
 	if b == nil {
-		http.Error(w, fmt.Sprintf("backend %q not found", backendName), http.StatusNotFound)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": fmt.Sprintf("backend %q not found", backendName)})
 		return
 	}
 
 	deviceHandler, ok := b.(backend.OAuthDeviceCodeLoginHandler)
 	if !ok {
-		http.Error(w, fmt.Sprintf("backend %q does not support device code login", backendName), http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": fmt.Sprintf("backend %q does not support device code login", backendName)})
 		return
 	}
 
