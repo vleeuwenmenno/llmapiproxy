@@ -60,16 +60,25 @@ var knownModels = map[string]knownModelInfo{
 	"gpt-5.2":        {DisplayName: "GPT-5.2", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
 
 	// GPT-5.1 series
-	"gpt-5.1-": {DisplayName: "GPT-5.1", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
-	"gpt-5.1":  {DisplayName: "GPT-5.1", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.1-codex-max-":  {DisplayName: "GPT-5.1 Codex Max", ContextLength: 400000, MaxOutputTokens: 128000, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.1-codex-max":   {DisplayName: "GPT-5.1 Codex Max", ContextLength: 400000, MaxOutputTokens: 128000, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.1-codex-mini-": {DisplayName: "GPT-5.1 Codex Mini", ContextLength: 400000, MaxOutputTokens: 128000, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.1-codex-mini":  {DisplayName: "GPT-5.1 Codex Mini", ContextLength: 400000, MaxOutputTokens: 128000, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.1-codex-":      {DisplayName: "GPT-5.1 Codex", ContextLength: 400000, MaxOutputTokens: 128000, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.1-codex":       {DisplayName: "GPT-5.1 Codex", ContextLength: 400000, MaxOutputTokens: 128000, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.1-":            {DisplayName: "GPT-5.1", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5.1":             {DisplayName: "GPT-5.1", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
 
 	// GPT-5 base series
-	"gpt-5-mini-": {DisplayName: "GPT-5 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
-	"gpt-5-mini":  {DisplayName: "GPT-5 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
-	"gpt-5-nano-": {DisplayName: "GPT-5 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
-	"gpt-5-nano":  {DisplayName: "GPT-5 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
-	"gpt-5-":      {DisplayName: "GPT-5", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
-	"gpt-5":       {DisplayName: "GPT-5", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5-codex-":      {DisplayName: "GPT-5 Codex", ContextLength: 400000, MaxOutputTokens: 128000, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5-codex":       {DisplayName: "GPT-5 Codex", ContextLength: 400000, MaxOutputTokens: 128000, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5-mini-":       {DisplayName: "GPT-5 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5-mini":        {DisplayName: "GPT-5 Mini", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5-nano-":       {DisplayName: "GPT-5 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5-nano":        {DisplayName: "GPT-5 Nano", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5-":            {DisplayName: "GPT-5", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"gpt-5":             {DisplayName: "GPT-5", ContextLength: 400000, MaxOutputTokens: 131072, Vision: true, UseMaxCompletionTokens: true},
+	"codex-mini-latest": {DisplayName: "Codex Mini Latest", ContextLength: 200000, MaxOutputTokens: 100000, Vision: true, UseMaxCompletionTokens: true},
 
 	// ── Anthropic Claude ────────────────────────────────────────
 	// Claude 4 series: Opus/Sonnet have 1M ctx; Haiku has 200K ctx.

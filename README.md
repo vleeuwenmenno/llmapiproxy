@@ -116,7 +116,7 @@ zai-coding/glm-5-turbo
 openrouter/anthropic/claude-sonnet-4
 zen/kimi-k2.5
 copilot/gpt-4o
-codex/o4-mini
+codex/gpt-5.3-codex
 ```
 
 ### Example — curl
@@ -140,7 +140,7 @@ curl http://localhost:8080/v1/responses \
   -H "Authorization: Bearer my-secret-proxy-key" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "codex/o4-mini",
+    "model": "codex/gpt-5.3-codex",
     "input": "Write a function that reverses a linked list."
   }'
 ```

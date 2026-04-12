@@ -107,7 +107,7 @@ func codexTestHelper(t *testing.T) (*CodexBackend, *httptest.Server, func()) {
 		Name:    "codex",
 		Type:    "codex",
 		BaseURL: upstream.URL,
-		Models: []config.ModelConfig{{ID: "o4-mini"}, {ID: "gpt-5.2-codex"}},
+		Models:  []config.ModelConfig{{ID: "o4-mini"}, {ID: "gpt-5.2-codex"}},
 	}
 
 	b := NewCodexBackend(cfg, oauthHandler, ts, nil)
@@ -445,7 +445,7 @@ func TestCodexBackend_MultiTurn(t *testing.T) {
 	}
 }
 
-// --- VAL-CODEX-003: Temperature and max_tokens translation ---
+// --- VAL-CODEX-003: Sampling params are stripped for reasoning models ---
 
 func TestCodexBackend_TemperatureAndMaxTokens(t *testing.T) {
 	b, upstream, cleanup := codexTestHelper(t)
@@ -486,10 +486,11 @@ func TestCodexBackend_TemperatureAndMaxTokens(t *testing.T) {
 	temp := 0.7
 	maxTokens := 500
 	req := &ChatCompletionRequest{
-		Model:       "o4-mini",
+		Model:       "gpt-5.4-mini",
 		Messages:    []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
 		Temperature: &temp,
 		MaxTokens:   &maxTokens,
+		RawBody:     []byte(`{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"test"}],"temperature":0.7,"top_p":0.9}`),
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -497,20 +498,72 @@ func TestCodexBackend_TemperatureAndMaxTokens(t *testing.T) {
 		t.Fatalf("ChatCompletion: %v", err)
 	}
 
-	// Verify temperature was forwarded.
-	if tempRaw, ok := receivedBody["temperature"]; ok {
-		var gotTemp float64
-		json.Unmarshal(tempRaw, &gotTemp)
-		if gotTemp != 0.7 {
-			t.Errorf("temperature = %f, want 0.7", gotTemp)
-		}
-	} else {
-		t.Error("temperature not found in forwarded request")
+	if _, ok := receivedBody["temperature"]; ok {
+		t.Error("temperature should NOT be forwarded for GPT-5 reasoning models")
+	}
+	if _, ok := receivedBody["top_p"]; ok {
+		t.Error("top_p should NOT be forwarded for GPT-5 reasoning models")
 	}
 
 	// max_output_tokens is NOT forwarded — the Codex API does not support it.
 	if _, ok := receivedBody["max_output_tokens"]; ok {
 		t.Error("max_output_tokens should NOT be forwarded to Codex API")
+	}
+}
+
+func TestCodexBackend_GPT51NoneReasoningPreservesSamplingParams(t *testing.T) {
+	b, upstream, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	var receivedBody map[string]json.RawMessage
+	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		json.Unmarshal(raw, &receivedBody)
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+
+		codexRespondWithJSON(w, r, map[string]any{
+			"id":         "resp-test-gpt51",
+			"object":     "response",
+			"created_at": time.Now().Unix(),
+			"status":     "completed",
+			"model":      "gpt-5.1-codex",
+			"output": []map[string]any{
+				{
+					"type":   "message",
+					"id":     "msg-test-gpt51",
+					"role":   "assistant",
+					"status": "completed",
+					"content": []map[string]any{
+						{"type": "output_text", "text": "Response"},
+					},
+				},
+			},
+			"usage": map[string]any{
+				"input_tokens":  10,
+				"output_tokens": 5,
+				"total_tokens":  15,
+			},
+		})
+	})
+
+	temp := 0.7
+	req := &ChatCompletionRequest{
+		Model:       "gpt-5.1-codex",
+		Messages:    []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
+		Temperature: &temp,
+		RawBody:     []byte(`{"model":"gpt-5.1-codex","messages":[{"role":"user","content":"test"}],"temperature":0.7,"top_p":0.9,"reasoning":{"effort":"none"}}`),
+	}
+
+	_, err := b.ChatCompletion(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ChatCompletion: %v", err)
+	}
+
+	if _, ok := receivedBody["temperature"]; !ok {
+		t.Error("temperature should be forwarded when gpt-5.1 reasoning effort is none")
+	}
+	if _, ok := receivedBody["top_p"]; !ok {
+		t.Error("top_p should be forwarded when gpt-5.1 reasoning effort is none")
 	}
 }
 
@@ -720,15 +773,20 @@ func TestCodexBackend_ListModels_Default(t *testing.T) {
 		t.Fatal("expected default models when none configured")
 	}
 
-	found := false
-	for _, m := range models {
-		if m.ID == "o4-mini" {
-			found = true
-			break
-		}
+	if len(models) != len(defaultCodexModels) {
+		t.Fatalf("default models count = %d, want %d", len(models), len(defaultCodexModels))
 	}
-	if !found {
-		t.Error("expected o4-mini in default models")
+
+	for i, want := range defaultCodexModels {
+		if models[i].ID != want {
+			t.Fatalf("default model[%d] = %q, want %q", i, models[i].ID, want)
+		}
+		if models[i].DisplayName == "" {
+			t.Errorf("default model %q missing display_name", models[i].ID)
+		}
+		if models[i].ContextLength == nil || models[i].MaxOutputTokens == nil {
+			t.Errorf("default model %q missing metadata", models[i].ID)
+		}
 	}
 }
 
@@ -1324,9 +1382,9 @@ func TestCodexBackend_ExtraFields(t *testing.T) {
 	})
 
 	req := &ChatCompletionRequest{
-		Model:    "o4-mini",
+		Model:    "gpt-5.1-codex",
 		Messages: []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
-		RawBody:  []byte(`{"model":"o4-mini","messages":[{"role":"user","content":"test"}],"top_p":0.9,"presence_penalty":0.5,"frequency_penalty":0.3}`),
+		RawBody:  []byte(`{"model":"gpt-5.1-codex","messages":[{"role":"user","content":"test"}],"top_p":0.9,"presence_penalty":0.5,"frequency_penalty":0.3,"reasoning":{"effort":"none"}}`),
 	}
 
 	_, err := b.ChatCompletion(context.Background(), req)
@@ -1342,7 +1400,7 @@ func TestCodexBackend_ExtraFields(t *testing.T) {
 	if _, ok := receivedBody["frequency_penalty"]; ok {
 		t.Error("frequency_penalty should NOT be forwarded to Codex Responses API")
 	}
-	// top_p IS a valid Responses API field and should be present.
+	// top_p should be preserved when sampling is supported.
 	if _, ok := receivedBody["top_p"]; !ok {
 		t.Error("top_p should be preserved")
 	}
@@ -1539,7 +1597,7 @@ func TestCodexBackend_CoexistenceWithOpenAI(t *testing.T) {
 		Name:    "codex",
 		Type:    "codex",
 		BaseURL: "https://chatgpt.com/backend-api/codex",
-		Models: []config.ModelConfig{{ID: "o4-mini"}},
+		Models:  []config.ModelConfig{{ID: "o4-mini"}},
 	}
 	b := NewCodexBackend(cfg, nil, ts, nil)
 	r.Register("codex", b)
@@ -1550,7 +1608,7 @@ func TestCodexBackend_CoexistenceWithOpenAI(t *testing.T) {
 		Type:    "openai",
 		BaseURL: "https://openrouter.ai/api/v1",
 		APIKey:  "test-key",
-		Models: []config.ModelConfig{{ID: "openai/gpt-4o"}},
+		Models:  []config.ModelConfig{{ID: "openai/gpt-4o"}},
 	}
 	r.Register("openrouter", NewOpenAI(openaiCfg, 0))
 
@@ -1588,7 +1646,7 @@ func TestCodexBackend_PrefixRouting(t *testing.T) {
 		Name:    "codex",
 		Type:    "codex",
 		BaseURL: "https://chatgpt.com/backend-api/codex",
-		Models: []config.ModelConfig{{ID: "o4-mini"}, {ID: "gpt-5.2-codex"}},
+		Models:  []config.ModelConfig{{ID: "o4-mini"}, {ID: "gpt-5.2-codex"}},
 	}
 	b := NewCodexBackend(cfg, nil, ts, nil)
 	r.Register("codex", b)
@@ -1631,7 +1689,7 @@ func TestCodexBackend_PrefixRoutingNoCrossMatch(t *testing.T) {
 		Name:    "codex",
 		Type:    "codex",
 		BaseURL: "https://chatgpt.com/backend-api/codex",
-		Models: []config.ModelConfig{{ID: "o4-mini"}},
+		Models:  []config.ModelConfig{{ID: "o4-mini"}},
 	}
 	b := NewCodexBackend(cfg, nil, ts, nil)
 	r.Register("codex", b)

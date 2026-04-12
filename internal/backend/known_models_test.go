@@ -16,6 +16,13 @@ func TestLookupKnownModel(t *testing.T) {
 		{"gpt-5.4-pro", 1050000, false},
 		{"gpt-5.4-mini", 400000, false},
 		{"gpt-5.4-nano", 400000, false},
+		{"gpt-5.3-codex", 400000, false},
+		{"gpt-5.2-codex", 400000, false},
+		{"gpt-5.1-codex", 400000, false},
+		{"gpt-5.1-codex-max", 400000, false},
+		{"gpt-5.1-codex-mini", 400000, false},
+		{"gpt-5-codex", 400000, false},
+		{"codex-mini-latest", 200000, false},
 		{"gpt-5-mini", 400000, false},
 		{"claude-3.5-sonnet-20241022", 200000, false},
 		{"claude-sonnet-4-20250514", 1000000, false}, // Claude Sonnet 4.x has 1M ctx

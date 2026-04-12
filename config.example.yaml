@@ -141,7 +141,7 @@ backends:
   # ── OpenAI Codex ──────────────────────────────────────────
   # Uses OAuth PKCE flow for authentication. No api_key required.
   # Initiate auth via the web UI: http://localhost:8000/ui/settings
-  # Models: codex/o4-mini, codex/gpt-5.2-codex, etc.
+  # Models: codex/gpt-5.3-codex, codex/gpt-5.2-codex, codex/gpt-5.1-codex, etc.
   # - name: codex
   #   type: codex
   #   base_url: https://chatgpt.com/backend-api/codex

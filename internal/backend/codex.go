@@ -32,6 +32,20 @@ const (
 	codexHTTPTimeout = 5 * time.Minute
 )
 
+// defaultCodexModels is the built-in fallback list used when a Codex backend
+// does not declare explicit models in config. Codex does not currently expose
+// a stable upstream /models contract for this proxy, so this list must be kept
+// in sync with the officially documented Codex-capable model aliases.
+var defaultCodexModels = []string{
+	"gpt-5.3-codex",
+	"gpt-5.2-codex",
+	"gpt-5.1-codex",
+	"gpt-5.1-codex-max",
+	"gpt-5.1-codex-mini",
+	"gpt-5-codex",
+	"codex-mini-latest",
+}
+
 // CodexBackend implements the Backend interface for OpenAI Codex.
 // It translates between the OpenAI ChatCompletion format and the Codex
 // Responses API format, sending requests to chatgpt.com/backend-api/codex/responses.
@@ -100,13 +114,13 @@ func (b *CodexBackend) ClearModelCache() {}
 
 // codexRequest is the Responses API request format.
 type codexRequest struct {
-	Model         string          `json:"model"`
-	Input         json.RawMessage `json:"input"`
-	Stream        bool            `json:"stream,omitempty"`
-	Temperature   *float64        `json:"temperature,omitempty"`
-	TopP          *float64        `json:"top_p,omitempty"`
-	Instructions  string          `json:"instructions"`
-	Store         bool            `json:"store"`
+	Model        string          `json:"model"`
+	Input        json.RawMessage `json:"input"`
+	Stream       bool            `json:"stream,omitempty"`
+	Temperature  *float64        `json:"temperature,omitempty"`
+	TopP         *float64        `json:"top_p,omitempty"`
+	Instructions string          `json:"instructions"`
+	Store        bool            `json:"store"`
 
 	// Preserve extra fields from the original request body.
 	Extra map[string]json.RawMessage `json:"-"`
@@ -162,22 +176,22 @@ type codexInputMessage struct {
 
 // codexResponse is the Responses API response format.
 type codexResponse struct {
-	ID         string `json:"id"`
-	Object     string `json:"object"`
-	CreatedAt  int64  `json:"created_at"`
-	Status     string `json:"status"`
-	Model      string `json:"model"`
-	Output     []codexOutputItem `json:"output"`
-	Usage      *codexUsage       `json:"usage,omitempty"`
-	Error      *codexError       `json:"error,omitempty"`
+	ID        string            `json:"id"`
+	Object    string            `json:"object"`
+	CreatedAt int64             `json:"created_at"`
+	Status    string            `json:"status"`
+	Model     string            `json:"model"`
+	Output    []codexOutputItem `json:"output"`
+	Usage     *codexUsage       `json:"usage,omitempty"`
+	Error     *codexError       `json:"error,omitempty"`
 }
 
 // codexOutputItem is an item in the Responses API output array.
 type codexOutputItem struct {
-	Type    string              `json:"type"`
-	ID      string              `json:"id"`
-	Role    string              `json:"role"`
-	Status  string              `json:"status"`
+	Type    string               `json:"type"`
+	ID      string               `json:"id"`
+	Role    string               `json:"role"`
+	Status  string               `json:"status"`
 	Content []codexOutputContent `json:"content"`
 }
 
@@ -230,11 +244,23 @@ func translateToCodexRequest(req *ChatCompletionRequest) (*codexRequest, error) 
 	var input json.RawMessage
 	input, _ = json.Marshal(conversationMessages)
 
+	var raw map[string]json.RawMessage
+	if len(req.RawBody) > 0 {
+		_ = json.Unmarshal(req.RawBody, &raw)
+	}
+
+	supportsSampling := codexSupportsSampling(req.Model, raw)
+
+	var temperature *float64
+	if supportsSampling {
+		temperature = req.Temperature
+	}
+
 	codexReq := &codexRequest{
 		Model:        req.Model,
 		Input:        input,
 		Stream:       false, // set to true for streaming calls
-		Temperature:  req.Temperature,
+		Temperature:  temperature,
 		Instructions: instructions, // Codex API requires non-empty instructions
 		Extra:        make(map[string]json.RawMessage),
 	}
@@ -244,27 +270,25 @@ func translateToCodexRequest(req *ChatCompletionRequest) (*codexRequest, error) 
 		codexReq.Instructions = "You are a helpful assistant."
 	}
 
-
 	// Preserve extra fields from the raw body.
-	if len(req.RawBody) > 0 {
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(req.RawBody, &raw); err == nil {
-			knownFields := map[string]bool{
-				"model": true, "messages": true, "stream": true,
-				"temperature": true, "max_tokens": true, "max_output_tokens": true,
-				"store": true, "top_p": true, "frequency_penalty": true,
-				"presence_penalty": true, "n": true, "stop": true,
-				"user": true, "logprobs": true, "top_logprobs": true,
-				"response_format": true, "seed": true, "tools": true,
-				"tool_choice": true, "parallel_tool_calls": true,
+	if len(raw) > 0 {
+		knownFields := map[string]bool{
+			"model": true, "messages": true, "stream": true,
+			"temperature": true, "max_tokens": true, "max_output_tokens": true,
+			"store": true, "top_p": true, "frequency_penalty": true,
+			"presence_penalty": true, "n": true, "stop": true,
+			"user": true, "logprobs": true, "top_logprobs": true,
+			"response_format": true, "seed": true, "tools": true,
+			"tool_choice": true, "parallel_tool_calls": true,
+		}
+		for k, v := range raw {
+			if !knownFields[k] {
+				codexReq.Extra[k] = v
 			}
-			for k, v := range raw {
-				if !knownFields[k] {
-					codexReq.Extra[k] = v
-				}
-			}
+		}
 
-			// Also extract top_p from raw body if present.
+		// Extract top_p only for models that currently support sampling params.
+		if supportsSampling {
 			if topPRaw, ok := raw["top_p"]; ok {
 				var topP float64
 				if err := json.Unmarshal(topPRaw, &topP); err == nil {
@@ -275,6 +299,54 @@ func translateToCodexRequest(req *ChatCompletionRequest) (*codexRequest, error) 
 	}
 
 	return codexReq, nil
+}
+
+func codexSupportsSampling(modelID string, raw map[string]json.RawMessage) bool {
+	modelID = strings.ToLower(strings.TrimSpace(modelID))
+
+	// GPT-5.1 is the one GPT-5 family exception that can support sampling when
+	// the caller explicitly disables reasoning.
+	if strings.HasPrefix(modelID, "gpt-5.1") {
+		return codexReasoningEffort(raw) == "none"
+	}
+
+	// GPT-5, Codex, and o-series reasoning models reject temperature/top_p.
+	if strings.HasPrefix(modelID, "gpt-5") ||
+		strings.HasPrefix(modelID, "o3") ||
+		strings.HasPrefix(modelID, "o4") ||
+		strings.HasPrefix(modelID, "codex-mini") {
+		return false
+	}
+
+	if info := LookupKnownModel(modelID); info != nil && info.UseMaxCompletionTokens {
+		return false
+	}
+
+	return true
+}
+
+func codexReasoningEffort(raw map[string]json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+
+	if effortRaw, ok := raw["reasoning_effort"]; ok {
+		var effort string
+		if err := json.Unmarshal(effortRaw, &effort); err == nil {
+			return strings.ToLower(strings.TrimSpace(effort))
+		}
+	}
+
+	if reasoningRaw, ok := raw["reasoning"]; ok {
+		var reasoning struct {
+			Effort string `json:"effort"`
+		}
+		if err := json.Unmarshal(reasoningRaw, &reasoning); err == nil {
+			return strings.ToLower(strings.TrimSpace(reasoning.Effort))
+		}
+	}
+
+	return ""
 }
 
 // translateFromCodexResponse converts a Codex Responses API response to a ChatCompletion response.
@@ -434,8 +506,8 @@ func readCodexSSEToCompletion(reader io.Reader) (*codexResponse, error) {
 
 	fullText := strings.Join(textParts, "")
 	return &codexResponse{
-		Object:  "response",
-		Status:  "completed",
+		Object: "response",
+		Status: "completed",
 		Output: []codexOutputItem{
 			{
 				Type:   "message",
@@ -612,36 +684,41 @@ func (b *CodexBackend) doChatCompletionStream(ctx context.Context, req *ChatComp
 // If a static model list is configured, it returns those. Otherwise, it returns
 // a default set of commonly available Codex models.
 func (b *CodexBackend) ListModels(ctx context.Context) ([]Model, error) {
+	_ = ctx
+
 	if len(b.models) > 0 {
 		models := make([]Model, 0, len(b.models))
 		for _, id := range b.models {
-			models = append(models, Model{
-				ID:      id,
-				Object:  "model",
-				Created: time.Now().Unix(),
-				OwnedBy: b.name,
-			})
+			models = append(models, codexModel(id, b.name))
 		}
 		return models, nil
 	}
 
-	// Default Codex models.
-	defaultModels := []string{
-		"o4-mini",
-		"gpt-5.2-codex",
-		"gpt-5.3-codex",
-		"codex-mini",
-	}
-	models := make([]Model, 0, len(defaultModels))
-	for _, id := range defaultModels {
-		models = append(models, Model{
-			ID:      id,
-			Object:  "model",
-			Created: time.Now().Unix(),
-			OwnedBy: b.name,
-		})
+	models := make([]Model, 0, len(defaultCodexModels))
+	for _, id := range defaultCodexModels {
+		models = append(models, codexModel(id, b.name))
 	}
 	return models, nil
+}
+
+func codexModel(id string, owner string) Model {
+	model := Model{
+		ID:      id,
+		Object:  "model",
+		Created: time.Now().Unix(),
+		OwnedBy: owner,
+	}
+
+	if info := LookupKnownModel(id); info != nil {
+		model.DisplayName = info.DisplayName
+		model.ContextLength = &info.ContextLength
+		model.MaxOutputTokens = &info.MaxOutputTokens
+		if info.Vision {
+			model.Capabilities = append(model.Capabilities, "vision")
+		}
+	}
+
+	return model
 }
 
 // --- Helper methods ---
@@ -676,13 +753,13 @@ func (b *CodexBackend) setHeaders(httpReq *http.Request, accessToken string) {
 // codexStreamReader translates Codex Responses API SSE events into
 // OpenAI ChatCompletion SSE chunks in real time.
 type codexStreamReader struct {
-	source    io.ReadCloser
-	scanner   *bufio.Scanner
+	source     io.ReadCloser
+	scanner    *bufio.Scanner
 	responseID string
 	modelName  string
-	buf       bytes.Buffer
-	done      bool
-	mu        sync.Mutex
+	buf        bytes.Buffer
+	done       bool
+	mu         sync.Mutex
 
 	// Accumulated usage from the response.completed event.
 	usage *codexUsage
@@ -812,9 +889,9 @@ func (r *codexStreamReader) handleCompleted(data string) {
 		Model:   r.modelName,
 		Choices: []ChunkChoice{
 			{
-				Index:         0,
-				Delta:         &Message{},
-				FinishReason:  &finishReason,
+				Index:        0,
+				Delta:        &Message{},
+				FinishReason: &finishReason,
 			},
 		},
 	}
