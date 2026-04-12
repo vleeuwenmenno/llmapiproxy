@@ -88,6 +88,16 @@ backends:
       - glm-4.7
       - glm-4.5-air
 
+  # ── Anthropic-Compatible API ──────────────────────────────
+  # Any provider exposing Anthropic-style /v1/messages and /v1/models.
+  # Models: anthropic/claude-sonnet-4-5, anthropic/claude-opus-4-6, etc.
+  # - name: anthropic
+  #   type: anthropic
+  #   base_url: https://api.anthropic.com/v1
+  #   api_key: "sk-ant-your-key"
+  #   extra_headers:
+  #     anthropic-version: "2023-06-01"
+
   # ── OpenCode Zen ───────────────────────────────────────────
   # Curated models for coding agents. Pay-as-you-go.
   # Get your API key: https://opencode.ai/auth

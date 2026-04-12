@@ -93,6 +93,33 @@ func TestRegistry_LoadFromConfig_Codex(t *testing.T) {
 	}
 }
 
+func TestRegistry_LoadFromConfig_Anthropic(t *testing.T) {
+	cfg := &config.Config{
+		Backends: []config.BackendConfig{
+			{
+				Name:    "anthropic",
+				Type:    "anthropic",
+				BaseURL: "https://api.anthropic.com/v1",
+				APIKey:  "sk-ant-test",
+			},
+		},
+	}
+
+	r := NewRegistry()
+	r.LoadFromConfig(cfg)
+
+	if !r.Has("anthropic") {
+		t.Error("anthropic backend not registered")
+	}
+	b := r.Get("anthropic")
+	if b == nil {
+		t.Fatal("anthropic backend is nil")
+	}
+	if b.Name() != "anthropic" {
+		t.Errorf("Name() = %q, want %q", b.Name(), "anthropic")
+	}
+}
+
 func TestRegistry_LoadFromConfig_UnknownTypeSkipped(t *testing.T) {
 	cfg := &config.Config{
 		Backends: []config.BackendConfig{
@@ -275,7 +302,7 @@ func TestRegistry_HotReload_UpdatesBackend(t *testing.T) {
 				Name:    "copilot",
 				Type:    "copilot",
 				BaseURL: "https://api.githubcopilot.com",
-				Models: []config.ModelConfig{{ID: "gpt-4o"}},
+				Models:  []config.ModelConfig{{ID: "gpt-4o"}},
 			},
 		},
 	}
@@ -293,7 +320,7 @@ func TestRegistry_HotReload_UpdatesBackend(t *testing.T) {
 				Name:    "copilot",
 				Type:    "copilot",
 				BaseURL: "https://api.githubcopilot.com",
-				Models: []config.ModelConfig{{ID: "o3"}},
+				Models:  []config.ModelConfig{{ID: "o3"}},
 			},
 		},
 	}
@@ -800,7 +827,7 @@ func TestRegistry_HotReload_RemovesCodexAtRuntime(t *testing.T) {
 				Type:    "openai",
 				BaseURL: "https://openrouter.ai/api/v1",
 				APIKey:  "sk-or-key",
-				Models: []config.ModelConfig{{ID: "openai/gpt-4o"}},
+				Models:  []config.ModelConfig{{ID: "openai/gpt-4o"}},
 			},
 		},
 	}

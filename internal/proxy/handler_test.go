@@ -34,6 +34,7 @@ type mockBackend struct {
 	// Tracking fields for assertions
 	requestCount int
 	lastAPIKey   string
+	lastReq      *backend.ChatCompletionRequest
 }
 
 func (m *mockBackend) Name() string { return m.name }
@@ -53,12 +54,16 @@ func (m *mockBackend) SupportsModel(modelID string) bool {
 func (m *mockBackend) ChatCompletion(_ context.Context, req *backend.ChatCompletionRequest) (*backend.ChatCompletionResponse, error) {
 	m.requestCount++
 	m.lastAPIKey = req.APIKeyOverride
+	reqCopy := *req
+	m.lastReq = &reqCopy
 	return m.chatResp, m.chatErr
 }
 
 func (m *mockBackend) ChatCompletionStream(_ context.Context, req *backend.ChatCompletionRequest) (io.ReadCloser, error) {
 	m.requestCount++
 	m.lastAPIKey = req.APIKeyOverride
+	reqCopy := *req
+	m.lastReq = &reqCopy
 	if m.streamErr != nil {
 		return nil, m.streamErr
 	}
@@ -184,6 +189,29 @@ func makeChatRequest(t *testing.T, model string, stream bool, apiKey string) *ht
 	return req
 }
 
+func makeAnthropicRequest(t *testing.T, model string, stream bool, apiKey string) *http.Request {
+	t.Helper()
+
+	body := map[string]any{
+		"model":      model,
+		"max_tokens": 256,
+		"messages": []map[string]any{
+			{"role": "user", "content": "Hello"},
+		},
+		"stream": stream,
+	}
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(string(bodyBytes)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+	return req
+}
+
 // successResponse creates a standard successful ChatCompletionResponse.
 func successResponse() *backend.ChatCompletionResponse {
 	stop := "stop"
@@ -215,6 +243,126 @@ func sseStream(chunks ...string) string {
 	}
 	fmt.Fprintf(&b, "data: [DONE]\n\n")
 	return b.String()
+}
+
+func TestAuthMiddleware_AcceptsXAPIKey(t *testing.T) {
+	cfgMgr, cleanup := newTestConfigMgr(t)
+	defer cleanup()
+
+	handler := AuthMiddleware(cfgMgr)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/messages", nil)
+	req.Header.Set("x-api-key", "test-api-key")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNoContent)
+	}
+}
+
+func TestAnthropicMessages_NonStream(t *testing.T) {
+	b := &mockBackend{
+		name:     "zai",
+		models:   []string{"glm-5.1"},
+		chatResp: successResponse(),
+	}
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{"zai": b}, config.RoutingConfig{})
+	defer cleanup()
+
+	req := makeAnthropicRequest(t, "zai/glm-5.1", false, "test-api-key")
+	rec := httptest.NewRecorder()
+	handler.AnthropicMessages(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if b.lastReq == nil {
+		t.Fatal("expected backend request to be captured")
+	}
+	if b.lastReq.Model != "glm-5.1" {
+		t.Fatalf("backend model = %q, want %q", b.lastReq.Model, "glm-5.1")
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["type"] != "message" {
+		t.Fatalf("type = %v, want message", resp["type"])
+	}
+	if resp["model"] != "zai/glm-5.1" {
+		t.Fatalf("model = %v, want zai/glm-5.1", resp["model"])
+	}
+}
+
+func TestAnthropicMessages_Stream(t *testing.T) {
+	chunk1 := `{"id":"chatcmpl-test","object":"chat.completion.chunk","created":1,"model":"glm-5.1","choices":[{"index":0,"delta":{"content":"Hel"},"finish_reason":null}]}`
+	chunk2 := `{"id":"chatcmpl-test","object":"chat.completion.chunk","created":1,"model":"glm-5.1","choices":[{"index":0,"delta":{"content":"lo"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`
+	b := &mockBackend{
+		name:       "zai",
+		models:     []string{"glm-5.1"},
+		streamBody: sseStream(chunk1, chunk2),
+	}
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{"zai": b}, config.RoutingConfig{})
+	defer cleanup()
+
+	req := makeAnthropicRequest(t, "zai/glm-5.1", true, "test-api-key")
+	rec := httptest.NewRecorder()
+	handler.AnthropicMessages(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: message_start") {
+		t.Fatal("expected message_start event")
+	}
+	if !strings.Contains(body, "event: content_block_delta") {
+		t.Fatal("expected content_block_delta event")
+	}
+	if !strings.Contains(body, `"text":"Hel"`) || !strings.Contains(body, `"text":"lo"`) {
+		t.Fatal("expected translated text deltas")
+	}
+	if !strings.Contains(body, "event: message_stop") {
+		t.Fatal("expected message_stop event")
+	}
+}
+
+func TestAnthropicResponseFromChat_NestedContentText(t *testing.T) {
+	stop := "stop"
+	resp := &backend.ChatCompletionResponse{
+		Model: "glm-4.7",
+		Choices: []backend.Choice{
+			{
+				Index: 0,
+				Message: &backend.Message{
+					Role:    "assistant",
+					Content: json.RawMessage(`[{"type":"text","text":{"value":"Hello nested"}}]`),
+				},
+				FinishReason: &stop,
+			},
+		},
+	}
+
+	out, err := anthropicResponseFromChat(resp, "zai-anthropic/glm-4.7")
+	if err != nil {
+		t.Fatalf("anthropicResponseFromChat: %v", err)
+	}
+
+	var decoded struct {
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(out, &decoded); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if len(decoded.Content) != 1 || decoded.Content[0].Text != "Hello nested" {
+		t.Fatalf("content = %+v, want single text block", decoded.Content)
+	}
 }
 
 // --- VAL-COPILOT-012: Fallback/failover on 5xx ---

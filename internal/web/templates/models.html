@@ -1691,6 +1691,11 @@
                             <div class="wizard-label">OpenAI Compatible</div>
                             <div class="wizard-desc">Any provider with an OpenAI-compatible API (OpenRouter, Z.ai, etc.)</div>
                         </div>
+                        <div class="wizard-type-card" data-type="anthropic" onclick="selectBackendType('anthropic')">
+                            <div class="wizard-icon">&#x1F4AC;</div>
+                            <div class="wizard-label">Anthropic Compatible</div>
+                            <div class="wizard-desc">Any provider with Anthropic-style /v1/messages and /v1/models endpoints.</div>
+                        </div>
                         <div class="wizard-type-card" data-type="copilot" onclick="selectBackendType('copilot')">
                             <div class="wizard-icon">&#x1F4BB;</div>
                             <div class="wizard-label">GitHub Copilot</div>
@@ -2101,7 +2106,7 @@
             Object.keys(sets).forEach(function(key) {
                 var el = sets[key];
                 if (!el) return;
-                var show = (key === type);
+                var show = (key === type) || (type === 'anthropic' && key === 'openai');
                 el.style.display = show ? 'block' : 'none';
                 el.querySelectorAll('input').forEach(function(inp) {
                     if (inp.id === 'wizard-type-input') return;
@@ -2135,7 +2140,7 @@
                     return;
                 }
                 wizardAddedName = json.name;
-                if (json.type === 'openai') {
+                if (json.type === 'openai' || json.type === 'anthropic') {
                     closeModal('modal-add-backend');
                     location.reload();
                 } else {

@@ -37,7 +37,7 @@ func NewRegistry() *Registry {
 
 // LoadFromConfig creates backends from config and registers them.
 // Only enabled backends are registered for routing.
-// Supports backend types: openai, copilot, codex.
+// Supports backend types: openai, anthropic, copilot, codex.
 // Token stores for OAuth backends are preserved across reloads — if a backend
 // with the same name exists in the old set, its token store is reused.
 func (r *Registry) LoadFromConfig(cfg *config.Config) {
@@ -97,6 +97,8 @@ func (r *Registry) createBackend(bc config.BackendConfig, existingTS *oauth.Toke
 			return nil, nil, err
 		}
 		return b, ts, nil
+	case "anthropic":
+		return NewAnthropic(bc, cacheTTL), nil, nil
 	case "openai", "":
 		return NewOpenAI(bc, cacheTTL), nil, nil
 	default:

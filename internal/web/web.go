@@ -1853,6 +1853,15 @@ func (u *UI) AddBackendPage(w http.ResponseWriter, r *http.Request) {
 		if bc.BaseURL == "" {
 			bc.BaseURL = "https://api.githubcopilot.com"
 		}
+	case "anthropic":
+		if bc.BaseURL == "" {
+			sendErr("base URL is required for Anthropic-compatible backends")
+			return
+		}
+		if bc.APIKey == "" {
+			sendErr("API key is required for Anthropic-compatible backends")
+			return
+		}
 	case "codex":
 		if bc.BaseURL == "" {
 			bc.BaseURL = "https://chatgpt.com/backend-api/codex"

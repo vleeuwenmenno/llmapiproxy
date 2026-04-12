@@ -91,6 +91,7 @@ func main() {
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(proxy.AuthMiddleware(cfgMgr))
 		r.Post("/chat/completions", proxyHandler.ChatCompletions)
+		r.Post("/messages", proxyHandler.AnthropicMessages)
 		r.Post("/responses", proxyHandler.Responses)
 		r.Get("/models", proxyHandler.ListModels)
 	})

@@ -21,6 +21,7 @@ If you have subscriptions at several LLM providers, you end up juggling:
 ## Features
 
 - **Unified OpenAI-compatible API** — `/v1/chat/completions`, `/v1/models`, and `/v1/responses` work exactly like OpenAI's API, so any OpenAI-compatible client works out of the box.
+- **Anthropic Messages compatibility** — `/v1/messages` accepts Anthropic-style requests for text-first workflows, which lets Anthropic-compatible clients target backends like Z.ai GLM models through the same proxy.
 - **Multi-backend routing** — route to different providers based on model name prefix (e.g. `zai/glm-5.1`, `openrouter/anthropic/claude-sonnet-4`).
 - **Streaming support** — SSE streaming is fully proxied to clients.
 - **OAuth backends** — use GitHub Copilot and OpenAI Codex without managing API keys. Copilot uses a GitHub Device Code Flow; Codex uses an OAuth PKCE flow. Both are managed through the web UI.
@@ -45,6 +46,7 @@ Any OpenAI-compatible HTTP API works. The example config includes:
 | [OpenCode Go](https://opencode.ai)  | `openai`     | API key                      | Subscription tier for coding models                  |
 | [GitHub Copilot](https://github.com/features/copilot) | `copilot` | GitHub Device Code Flow | Authenticate via the web UI — no local tools needed |
 | [OpenAI Codex](https://openai.com/codex/) | `codex` | OAuth PKCE flow       | Web-based login flow managed through the settings UI |
+| Any Anthropic-compatible API        | `anthropic`  | API key                      | Uses upstream `/v1/messages` and `/v1/models`        |
 | Any OpenAI-compatible API           | `openai`     | API key                      | Self-hosted, Azure OpenAI, etc.                      |
 
 ---
@@ -150,6 +152,20 @@ curl http://localhost:8080/v1/responses \
 ```bash
 curl http://localhost:8080/v1/models \
   -H "Authorization: Bearer my-secret-proxy-key"
+```
+
+### Example — Anthropic Messages API
+
+```bash
+curl http://localhost:8080/v1/messages \
+  -H "x-api-key: my-secret-proxy-key" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "zai/glm-5.1",
+    "max_tokens": 512,
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
 ```
 
 ### Configure VS Code / Copilot / Cursor

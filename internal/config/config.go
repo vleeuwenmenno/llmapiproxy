@@ -745,7 +745,7 @@ func (m *Manager) UpdateModelCacheTTL(ttl time.Duration) error {
 func (m *Manager) AddBackend(bc BackendConfig) error {
 	// Validate type.
 	switch bc.Type {
-	case "openai", "copilot", "codex", "":
+	case "openai", "anthropic", "copilot", "codex", "":
 		// ok
 	default:
 		return fmt.Errorf("unsupported backend type %q", bc.Type)
