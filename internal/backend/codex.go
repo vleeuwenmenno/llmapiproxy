@@ -1263,10 +1263,10 @@ type codexStreamReader struct {
 	usage *codexUsage
 
 	// Tool call streaming state (mirrors CLIProxyAPI's ConvertCliToOpenAIParams).
-	toolCallCount     int                            // sequential index; starts at -1
+	toolCallCount     int                             // sequential index; starts at -1
 	toolCalls         map[string]*streamFuncCallState // keyed by Codex item ID
-	toolCallAnnounced bool                           // true after output_item.added processed
-	hasFunctionCall   bool                           // true if any function_call seen
+	toolCallAnnounced bool                            // true after output_item.added processed
+	hasFunctionCall   bool                            // true if any function_call seen
 }
 
 func newCodexStreamReader(source io.ReadCloser, responseID string, modelName string) *codexStreamReader {
