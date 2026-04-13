@@ -1182,7 +1182,7 @@ func (b *CodexBackend) OAuthStatus() OAuthStatus {
 		// Compute visual indicator state.
 		if token.IsExpired() {
 			status.TokenState = "expired"
-		} else if token.ExpiresAt.Sub(time.Now()) < 5*time.Minute {
+		} else if time.Until(token.ExpiresAt) < 5*time.Minute {
 			status.TokenState = "expiring"
 		} else {
 			status.TokenState = "valid"
@@ -1217,6 +1217,20 @@ func (b *CodexBackend) HandleCallback(ctx context.Context, code string, state st
 // Disconnect clears all stored tokens for the Codex backend.
 func (b *CodexBackend) Disconnect() error {
 	return b.tokenStore.Clear()
+}
+
+// RefreshOAuthStatus proactively re-validates or refreshes the Codex token.
+// It reuses the normal coordinated refresh path so the web UI can check the
+// status of this backend without affecting other OAuth backends.
+func (b *CodexBackend) RefreshOAuthStatus(ctx context.Context) error {
+	if b.oauthHandler == nil {
+		return fmt.Errorf("codex backend %s: oauth handler not configured", b.name)
+	}
+	_, err := b.oauthHandler.RefreshWithRetry(ctx)
+	if err != nil {
+		return fmt.Errorf("codex backend %s: token refresh failed: %w", b.name, err)
+	}
+	return nil
 }
 
 // GetOAuthHandler returns the underlying CodexOAuthHandler (for testing).

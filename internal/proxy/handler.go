@@ -1076,7 +1076,6 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	})
 }
 
-
 // Responses handles POST /v1/responses — native Responses API passthrough.
 // It resolves the backend from the model field, type-asserts the backend
 // implements ResponsesBackend, and forwards the request natively (no translation).
@@ -1113,27 +1112,29 @@ func (h *Handler) Responses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try each backend in the routing chain.
-	for _, entry := range entries {
-		// Type-assert to ResponsesBackend.
-		rb, ok := entry.Backend.(backend.ResponsesBackend)
-		if !ok {
-			writeError(w, http.StatusBadRequest, fmt.Sprintf("backend %q does not support the Responses API", entry.Backend.Name()))
-			return
-		}
-
-		reqCopy := req
-		reqCopy.Model = entry.ModelID
-
-		if req.Stream {
-			h.handleResponsesStream(r.Context(), w, rb, &reqCopy, entry.Backend.Name())
-		} else {
-			h.handleResponsesNonStream(r.Context(), w, rb, &reqCopy, entry.Backend.Name())
-		}
+	// Use the first routed backend.
+	if len(entries) == 0 {
+		writeError(w, http.StatusBadRequest, "no backend found for model "+req.Model)
 		return
 	}
 
-	writeError(w, http.StatusBadRequest, "no backend found for model "+req.Model)
+	entry := entries[0]
+
+	// Type-assert to ResponsesBackend.
+	rb, ok := entry.Backend.(backend.ResponsesBackend)
+	if !ok {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("backend %q does not support the Responses API", entry.Backend.Name()))
+		return
+	}
+
+	reqCopy := req
+	reqCopy.Model = entry.ModelID
+
+	if req.Stream {
+		h.handleResponsesStream(r.Context(), w, rb, &reqCopy, entry.Backend.Name())
+	} else {
+		h.handleResponsesNonStream(r.Context(), w, rb, &reqCopy, entry.Backend.Name())
+	}
 }
 
 // handleResponsesNonStream forwards a non-streaming Responses API request natively.

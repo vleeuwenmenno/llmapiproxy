@@ -26,7 +26,6 @@ import (
 // config, stats) together to validate end-to-end cross-area flows.
 // ============================================================================
 
-
 // copilotTestEnv sets up a Copilot backend with mock GitHub API and mock
 // Copilot upstream. Returns backend, cleanup function, and upstream tracker.
 // It sets COPILOT_GITHUB_TOKEN env var for token discovery.
@@ -330,8 +329,8 @@ func TestCrossArea_MixedBackendRouting(t *testing.T) {
 		t.Fatalf("openrouter request status = %d, want %d", oaiRec.Code, http.StatusOK)
 	}
 
-	// Verify both backends appear in model listing.
-	modelsReq := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	// Verify both backends appear in model listing (using raw mode for prefixed IDs).
+	modelsReq := httptest.NewRequest(http.MethodGet, "/v1/models?mode=raw", nil)
 	modelsRec := httptest.NewRecorder()
 	handler.ListModels(modelsRec, modelsReq)
 
@@ -655,7 +654,7 @@ func TestCrossArea_PlaygroundWithOAuthBackends(t *testing.T) {
 	collector := stats.NewCollector(1000)
 	handler := NewHandler(registry, collector, cfgMgr)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/models?mode=raw", nil)
 	rec := httptest.NewRecorder()
 	handler.ListModels(rec, req)
 

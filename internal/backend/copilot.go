@@ -303,9 +303,9 @@ func (b *CopilotBackend) ListModels(ctx context.Context) ([]Model, error) {
 	// Full capabilities shape returned by the Copilot /models endpoint.
 	var result struct {
 		Data []struct {
-			ID      string `json:"id"`
-			Object  string `json:"object"`
-			OwnedBy string `json:"owned_by"`
+			ID           string `json:"id"`
+			Object       string `json:"object"`
+			OwnedBy      string `json:"owned_by"`
 			Capabilities struct {
 				Type     string `json:"type"` // "chat", "base", "embeddings", ...
 				Supports struct {
@@ -327,7 +327,7 @@ func (b *CopilotBackend) ListModels(ctx context.Context) ([]Model, error) {
 		capType := strings.ToLower(m.Capabilities.Type)
 		cap := copilotModelCap{
 			Type:                   capType,
-			SupportsStreaming:       m.Capabilities.Supports.Streaming,
+			SupportsStreaming:      m.Capabilities.Supports.Streaming,
 			MaxOutputTokens:        m.Capabilities.Limits.MaxOutputTokens,
 			UseMaxCompletionTokens: capType == "chat" && needsMaxCompletionTokensByID(m.ID),
 		}
@@ -527,7 +527,7 @@ func (b *CopilotBackend) OAuthStatus() OAuthStatus {
 			if token.GitHubToken != "" {
 				status.NeedsReauth = false // Can auto-revalidate
 			}
-		} else if token.ExpiresAt.Sub(time.Now()) < 5*time.Minute {
+		} else if time.Until(token.ExpiresAt) < 5*time.Minute {
 			status.TokenState = "expiring"
 			status.NeedsReauth = false
 		} else {

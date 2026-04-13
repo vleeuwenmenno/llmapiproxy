@@ -1,6 +1,8 @@
 package backend
 
 import (
+	"context"
+	"io"
 	"net/url"
 	"strings"
 	"testing"
@@ -1282,5 +1284,582 @@ func TestOAuthStatuses_Empty(t *testing.T) {
 	statuses := r.OAuthStatuses()
 	if len(statuses) != 0 {
 		t.Errorf("expected 0 statuses, got %d", len(statuses))
+	}
+}
+
+// --- routeMock implements Backend for ResolveRoute tests ---
+
+type routeMock struct {
+	name   string
+	models map[string]bool
+}
+
+func (m *routeMock) Name() string { return m.name }
+func (m *routeMock) SupportsModel(modelID string) bool {
+	return m.models[modelID]
+}
+func (m *routeMock) ChatCompletion(_ context.Context, _ *ChatCompletionRequest) (*ChatCompletionResponse, error) {
+	return nil, nil
+}
+func (m *routeMock) ChatCompletionStream(_ context.Context, _ *ChatCompletionRequest) (io.ReadCloser, error) {
+	return nil, nil
+}
+func (m *routeMock) ListModels(_ context.Context) ([]Model, error) { return nil, nil }
+func (m *routeMock) ClearModelCache()                              {}
+
+// --- ResolveRoute tests ---
+
+func TestResolveRoute_ExplicitConfig_SingleBackend(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("openai", &routeMock{name: "openai"})
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"openai"}},
+		},
+	}
+
+	entries, strategy, _, err := r.ResolveRoute("gpt-4o", routing)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Backend.Name() != "openai" {
+		t.Errorf("backend = %q, want %q", entries[0].Backend.Name(), "openai")
+	}
+	if entries[0].ModelID != "gpt-4o" {
+		t.Errorf("modelID = %q, want %q", entries[0].ModelID, "gpt-4o")
+	}
+	if strategy != config.StrategyPriority {
+		t.Errorf("strategy = %q, want %q", strategy, config.StrategyPriority)
+	}
+}
+
+func TestResolveRoute_ExplicitConfig_MultiBackend(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("openai", &routeMock{name: "openai"})
+	r.RegisterBackend("openrouter", &routeMock{name: "openrouter"})
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"openai", "openrouter"}},
+		},
+	}
+
+	entries, _, _, err := r.ResolveRoute("gpt-4o", routing)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].Backend.Name() != "openai" {
+		t.Errorf("entries[0] = %q, want %q", entries[0].Backend.Name(), "openai")
+	}
+	if entries[1].Backend.Name() != "openrouter" {
+		t.Errorf("entries[1] = %q, want %q", entries[1].Backend.Name(), "openrouter")
+	}
+}
+
+func TestResolveRoute_ExplicitConfig_PerModelStrategy(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("a", &routeMock{name: "a"})
+	r.RegisterBackend("b", &routeMock{name: "b"})
+
+	routing := config.RoutingConfig{
+		Strategy: config.StrategyPriority,
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"a", "b"}, Strategy: config.StrategyRace},
+		},
+	}
+
+	_, strategy, _, err := r.ResolveRoute("gpt-4o", routing)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strategy != config.StrategyRace {
+		t.Errorf("strategy = %q, want %q", strategy, config.StrategyRace)
+	}
+}
+
+func TestResolveRoute_ExplicitConfig_FallsBackToGlobalStrategy(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("a", &routeMock{name: "a"})
+
+	routing := config.RoutingConfig{
+		Strategy: config.StrategyRace,
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"a"}},
+		},
+	}
+
+	_, strategy, _, err := r.ResolveRoute("gpt-4o", routing)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strategy != config.StrategyRace {
+		t.Errorf("strategy = %q, want %q", strategy, config.StrategyRace)
+	}
+}
+
+func TestResolveRoute_ExplicitConfig_DefaultStrategyPriority(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("a", &routeMock{name: "a"})
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"a"}},
+		},
+	}
+
+	_, strategy, _, err := r.ResolveRoute("gpt-4o", routing)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strategy != config.StrategyPriority {
+		t.Errorf("strategy = %q, want %q", strategy, config.StrategyPriority)
+	}
+}
+
+func TestResolveRoute_ExplicitConfig_StaggerDelay_PerModel(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("a", &routeMock{name: "a"})
+	r.RegisterBackend("b", &routeMock{name: "b"})
+
+	routing := config.RoutingConfig{
+		StaggerDelayMs: 100,
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"a", "b"}, Strategy: config.StrategyStaggeredRace, StaggerDelayMs: 300},
+		},
+	}
+
+	_, _, staggerMs, err := r.ResolveRoute("gpt-4o", routing)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if staggerMs != 300 {
+		t.Errorf("staggerDelayMs = %d, want 300", staggerMs)
+	}
+}
+
+func TestResolveRoute_ExplicitConfig_StaggerDelay_FallsBackToGlobal(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("a", &routeMock{name: "a"})
+
+	routing := config.RoutingConfig{
+		StaggerDelayMs: 250,
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"a"}, Strategy: config.StrategyStaggeredRace},
+		},
+	}
+
+	_, _, staggerMs, err := r.ResolveRoute("gpt-4o", routing)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if staggerMs != 250 {
+		t.Errorf("staggerDelayMs = %d, want 250", staggerMs)
+	}
+}
+
+func TestResolveRoute_ExplicitConfig_SkipsUnregisteredBackends(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("openai", &routeMock{name: "openai"})
+	// "ghost" is NOT registered
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"ghost", "openai"}},
+		},
+	}
+
+	entries, _, _, err := r.ResolveRoute("gpt-4o", routing)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry (ghost skipped), got %d", len(entries))
+	}
+	if entries[0].Backend.Name() != "openai" {
+		t.Errorf("backend = %q, want %q", entries[0].Backend.Name(), "openai")
+	}
+}
+
+func TestResolveRoute_ExplicitConfig_AllBackendsUnregistered_FallsThrough(t *testing.T) {
+	r := NewRegistry()
+	// No backends registered at all, but config references them.
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"ghost1", "ghost2"}},
+		},
+	}
+
+	// All config backends are unregistered → skip this model entry,
+	// fall through to prefix/wildcard. No backends exist → error.
+	_, _, _, err := r.ResolveRoute("gpt-4o", routing)
+	if err == nil {
+		t.Fatal("expected error when all configured backends are unregistered")
+	}
+}
+
+func TestResolveRoute_ExplicitConfig_RoundRobin_RotatesEntries(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("a", &routeMock{name: "a"})
+	r.RegisterBackend("b", &routeMock{name: "b"})
+	r.RegisterBackend("c", &routeMock{name: "c"})
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"a", "b", "c"}, Strategy: config.StrategyRoundRobin},
+		},
+	}
+
+	// Call ResolveRoute 3 times; each call should yield a different leading backend.
+	leaders := make([]string, 3)
+	for i := 0; i < 3; i++ {
+		entries, strategy, _, err := r.ResolveRoute("gpt-4o", routing)
+		if err != nil {
+			t.Fatalf("call %d: unexpected error: %v", i, err)
+		}
+		if strategy != config.StrategyRoundRobin {
+			t.Errorf("call %d: strategy = %q, want %q", i, strategy, config.StrategyRoundRobin)
+		}
+		if len(entries) != 3 {
+			t.Fatalf("call %d: expected 3 entries, got %d", i, len(entries))
+		}
+		leaders[i] = entries[0].Backend.Name()
+	}
+
+	// All three leaders should be distinct.
+	seen := map[string]bool{}
+	for _, l := range leaders {
+		seen[l] = true
+	}
+	if len(seen) != 3 {
+		t.Errorf("expected 3 distinct leaders, got %v (leaders: %v)", seen, leaders)
+	}
+}
+
+func TestResolveRoute_ExplicitConfig_RoundRobin_PerModelCounters(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("a", &routeMock{name: "a"})
+	r.RegisterBackend("b", &routeMock{name: "b"})
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "model-x", Backends: []string{"a", "b"}, Strategy: config.StrategyRoundRobin},
+			{Model: "model-y", Backends: []string{"a", "b"}, Strategy: config.StrategyRoundRobin},
+		},
+	}
+
+	// Call model-x twice, then model-y once.
+	// model-y should start from its own counter (independent of model-x).
+	e1, _, _, _ := r.ResolveRoute("model-x", routing)
+	e2, _, _, _ := r.ResolveRoute("model-x", routing)
+	ey, _, _, _ := r.ResolveRoute("model-y", routing)
+
+	// model-x calls should have different leaders.
+	if e1[0].Backend.Name() == e2[0].Backend.Name() {
+		t.Errorf("model-x: calls 1 and 2 should have different leaders, both got %q", e1[0].Backend.Name())
+	}
+
+	// model-y's first call should start from the same leader as model-x's first call
+	// (both counters start at 0).
+	if ey[0].Backend.Name() != e1[0].Backend.Name() {
+		t.Errorf("model-y first call leader = %q, expected same as model-x first call = %q", ey[0].Backend.Name(), e1[0].Backend.Name())
+	}
+}
+
+// --- Prefix routing tests ---
+
+func TestResolveRoute_PrefixRouting_Basic(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("openrouter", &routeMock{name: "openrouter"})
+
+	entries, strategy, _, err := r.ResolveRoute("openrouter/gpt-4o", config.RoutingConfig{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Backend.Name() != "openrouter" {
+		t.Errorf("backend = %q, want %q", entries[0].Backend.Name(), "openrouter")
+	}
+	if entries[0].ModelID != "gpt-4o" {
+		t.Errorf("modelID = %q, want %q", entries[0].ModelID, "gpt-4o")
+	}
+	if strategy != config.StrategyPriority {
+		t.Errorf("strategy = %q, want %q", strategy, config.StrategyPriority)
+	}
+}
+
+func TestResolveRoute_PrefixRouting_NestedSlash(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("openrouter", &routeMock{name: "openrouter"})
+
+	// "openrouter/openai/gpt-4o" — prefix is "openrouter", model is "openai/gpt-4o"
+	entries, _, _, err := r.ResolveRoute("openrouter/openai/gpt-4o", config.RoutingConfig{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if entries[0].ModelID != "openai/gpt-4o" {
+		t.Errorf("modelID = %q, want %q", entries[0].ModelID, "openai/gpt-4o")
+	}
+}
+
+func TestResolveRoute_PrefixRouting_UnknownBackend_FallsToWildcard(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("openai", &routeMock{name: "openai", models: map[string]bool{"unknown/gpt-4o": true}})
+
+	// "unknown/gpt-4o" — "unknown" is not a backend name, so prefix fails.
+	// Then wildcard: openai supports "unknown/gpt-4o" via its model list.
+	entries, _, _, err := r.ResolveRoute("unknown/gpt-4o", config.RoutingConfig{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if entries[0].Backend.Name() != "openai" {
+		t.Errorf("backend = %q, want %q", entries[0].Backend.Name(), "openai")
+	}
+	if entries[0].ModelID != "unknown/gpt-4o" {
+		t.Errorf("modelID = %q, want %q (wildcard should not strip prefix)", entries[0].ModelID, "unknown/gpt-4o")
+	}
+}
+
+func TestResolveRoute_PrefixRouting_ExplicitConfigTakesPriority(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("openai", &routeMock{name: "openai"})
+	r.RegisterBackend("openrouter", &routeMock{name: "openrouter"})
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			// Explicit config for "openrouter/gpt-4o" — should use openai, not prefix routing.
+			{Model: "openrouter/gpt-4o", Backends: []string{"openai"}},
+		},
+	}
+
+	entries, _, _, err := r.ResolveRoute("openrouter/gpt-4o", routing)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Backend.Name() != "openai" {
+		t.Errorf("backend = %q, want %q (explicit config should override prefix)", entries[0].Backend.Name(), "openai")
+	}
+}
+
+// --- Wildcard routing tests ---
+
+func TestResolveRoute_Wildcard_SingleMatch(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("openai", &routeMock{name: "openai", models: map[string]bool{"gpt-4o": true}})
+
+	entries, strategy, _, err := r.ResolveRoute("gpt-4o", config.RoutingConfig{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Backend.Name() != "openai" {
+		t.Errorf("backend = %q, want %q", entries[0].Backend.Name(), "openai")
+	}
+	if entries[0].ModelID != "gpt-4o" {
+		t.Errorf("modelID = %q, want %q", entries[0].ModelID, "gpt-4o")
+	}
+	if strategy != config.StrategyPriority {
+		t.Errorf("strategy = %q, want %q", strategy, config.StrategyPriority)
+	}
+}
+
+func TestResolveRoute_Wildcard_NoMatch(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("openai", &routeMock{name: "openai", models: map[string]bool{"gpt-4o": true}})
+
+	_, _, _, err := r.ResolveRoute("nonexistent-model", config.RoutingConfig{})
+	if err == nil {
+		t.Fatal("expected error for unsupported model")
+	}
+}
+
+func TestResolveRoute_Wildcard_EmptyCache_ReturnsFalse(t *testing.T) {
+	r := NewRegistry()
+	// Backend with no models → SupportsModel returns false for everything.
+	r.RegisterBackend("openai", &routeMock{name: "openai", models: nil})
+
+	_, _, _, err := r.ResolveRoute("gpt-4o", config.RoutingConfig{})
+	if err == nil {
+		t.Fatal("expected error when no backend supports the model")
+	}
+}
+
+func TestResolveRoute_NoBackends_ReturnsError(t *testing.T) {
+	r := NewRegistry()
+
+	_, _, _, err := r.ResolveRoute("gpt-4o", config.RoutingConfig{})
+	if err == nil {
+		t.Fatal("expected error with no backends registered")
+	}
+}
+
+// --- Mixed backend scenarios ---
+
+func TestResolveRoute_ThreeBackends_OpenAI_Codex_Copilot(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("openai", &routeMock{name: "openai", models: map[string]bool{"gpt-4o": true}})
+	r.RegisterBackend("codex", &routeMock{name: "codex", models: map[string]bool{"o4-mini": true}})
+	r.RegisterBackend("copilot", &routeMock{name: "copilot", models: map[string]bool{"gpt-4o": true, "claude-sonnet-4": true}})
+
+	routing := config.RoutingConfig{
+		Strategy: config.StrategyPriority,
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"openai", "copilot"}},
+			{Model: "o4-mini", Backends: []string{"codex"}},
+		},
+	}
+
+	// gpt-4o should resolve to openai + copilot
+	entries, _, _, err := r.ResolveRoute("gpt-4o", routing)
+	if err != nil {
+		t.Fatalf("gpt-4o: unexpected error: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("gpt-4o: expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].Backend.Name() != "openai" || entries[1].Backend.Name() != "copilot" {
+		t.Errorf("gpt-4o: backends = [%q, %q], want [openai, copilot]", entries[0].Backend.Name(), entries[1].Backend.Name())
+	}
+
+	// o4-mini should resolve to codex only
+	entries, _, _, err = r.ResolveRoute("o4-mini", routing)
+	if err != nil {
+		t.Fatalf("o4-mini: unexpected error: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Backend.Name() != "codex" {
+		t.Errorf("o4-mini: expected [codex], got %v", entries)
+	}
+
+	// claude-sonnet-4 — not in explicit config, should wildcard to copilot
+	entries, _, _, err = r.ResolveRoute("claude-sonnet-4", routing)
+	if err != nil {
+		t.Fatalf("claude-sonnet-4: unexpected error: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Backend.Name() != "copilot" {
+		t.Errorf("claude-sonnet-4: expected [copilot], got %v", entries)
+	}
+}
+
+func TestResolveRoute_FourBackends_2OpenAI_Anthropic_Copilot(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("openai-1", &routeMock{name: "openai-1", models: map[string]bool{"gpt-4o": true}})
+	r.RegisterBackend("openai-2", &routeMock{name: "openai-2", models: map[string]bool{"gpt-4o": true}})
+	r.RegisterBackend("anthropic", &routeMock{name: "anthropic", models: map[string]bool{"claude-sonnet-4": true}})
+	r.RegisterBackend("copilot", &routeMock{name: "copilot", models: map[string]bool{"gpt-4o": true}})
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"openai-1", "openai-2", "copilot"}, Strategy: config.StrategyRoundRobin},
+			{Model: "claude-sonnet-4", Backends: []string{"anthropic"}},
+		},
+	}
+
+	// gpt-4o with round-robin: 3 entries, should rotate.
+	entries, strategy, _, err := r.ResolveRoute("gpt-4o", routing)
+	if err != nil {
+		t.Fatalf("gpt-4o: unexpected error: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("gpt-4o: expected 3 entries, got %d", len(entries))
+	}
+	if strategy != config.StrategyRoundRobin {
+		t.Errorf("gpt-4o: strategy = %q, want %q", strategy, config.StrategyRoundRobin)
+	}
+
+	// claude-sonnet-4: single anthropic
+	entries, strategy, _, err = r.ResolveRoute("claude-sonnet-4", routing)
+	if err != nil {
+		t.Fatalf("claude-sonnet-4: unexpected error: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Backend.Name() != "anthropic" {
+		t.Errorf("claude-sonnet-4: expected [anthropic], got %v", entries)
+	}
+	if strategy != config.StrategyPriority {
+		t.Errorf("claude-sonnet-4: strategy = %q, want %q (default)", strategy, config.StrategyPriority)
+	}
+}
+
+func TestResolveRoute_OfflineBackend_EmptyModelCache(t *testing.T) {
+	r := NewRegistry()
+	// "offline" backend has no models (simulating unreachable API / empty cache).
+	r.RegisterBackend("offline", &routeMock{name: "offline", models: nil})
+	r.RegisterBackend("openai", &routeMock{name: "openai", models: map[string]bool{"gpt-4o": true}})
+
+	// Without explicit config, wildcard should skip "offline" and find "openai".
+	// Note: map iteration is non-deterministic, so we can only test that it resolves.
+	entries, _, _, err := r.ResolveRoute("gpt-4o", config.RoutingConfig{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Backend.Name() != "openai" {
+		t.Errorf("expected openai, got %q", entries[0].Backend.Name())
+	}
+}
+
+func TestResolveRoute_MissingModel_AllBackends(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("openai", &routeMock{name: "openai", models: map[string]bool{"gpt-4o": true}})
+	r.RegisterBackend("anthropic", &routeMock{name: "anthropic", models: map[string]bool{"claude-sonnet-4": true}})
+	r.RegisterBackend("copilot", &routeMock{name: "copilot", models: map[string]bool{"gpt-4o": true}})
+
+	// Request a model that no backend supports.
+	_, _, _, err := r.ResolveRoute("nonexistent-model", config.RoutingConfig{})
+	if err == nil {
+		t.Fatal("expected error when no backend supports the model")
+	}
+}
+
+func TestResolveRoute_PrefixBypassesOfflineBackend(t *testing.T) {
+	r := NewRegistry()
+	// Even if backend has no models, prefix routing always works.
+	r.RegisterBackend("openai", &routeMock{name: "openai", models: nil})
+
+	entries, _, _, err := r.ResolveRoute("openai/gpt-4o", config.RoutingConfig{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if entries[0].ModelID != "gpt-4o" {
+		t.Errorf("modelID = %q, want %q", entries[0].ModelID, "gpt-4o")
+	}
+}
+
+func TestResolveRoute_ExplicitConfig_ModelNotInConfig_UsesPrefix(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterBackend("openai", &routeMock{name: "openai"})
+	r.RegisterBackend("anthropic", &routeMock{name: "anthropic"})
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"openai"}},
+		},
+	}
+
+	// claude-sonnet-4 is not in routing config; use prefix routing.
+	entries, _, _, err := r.ResolveRoute("anthropic/claude-sonnet-4", routing)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if entries[0].Backend.Name() != "anthropic" {
+		t.Errorf("backend = %q, want %q", entries[0].Backend.Name(), "anthropic")
+	}
+	if entries[0].ModelID != "claude-sonnet-4" {
+		t.Errorf("modelID = %q, want %q", entries[0].ModelID, "claude-sonnet-4")
 	}
 }

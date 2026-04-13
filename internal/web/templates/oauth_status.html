@@ -3,90 +3,276 @@
      hx-get="/ui/oauth/status" 
      hx-trigger="every 30s" 
      hx-swap="innerHTML">
+<style>
+  #oauth-status-container {
+    display: grid;
+    gap: 0.75rem;
+  }
+  .oauth-backend-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    padding: 1rem 1.05rem;
+    border: 1px solid var(--border, #273244);
+    border-radius: 14px;
+    background: var(--surface, #0f172a);
+    color: var(--text, #e5eef8);
+  }
+  .oauth-backend-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .oauth-backend-name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin-bottom: 0.25rem;
+  }
+  .oauth-backend-type-badge {
+    padding: 0.12rem 0.45rem;
+    border-radius: 999px;
+    border: 1px solid var(--border, #273244);
+    color: var(--text-dim, #94a3b8);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .oauth-backend-details {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    color: var(--text-dim, #94a3b8);
+  }
+  .oauth-status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .oauth-status-dot-valid {
+    background: var(--green, #34d399);
+    box-shadow: 0 0 6px rgba(52, 211, 153, 0.5);
+  }
+  .oauth-status-dot-expiring {
+    background: var(--amber, #fbbf24);
+    box-shadow: 0 0 6px rgba(251, 191, 36, 0.5);
+  }
+  .oauth-status-dot-expired {
+    background: var(--red, #f87171);
+    box-shadow: 0 0 6px rgba(248, 113, 113, 0.5);
+  }
+  .oauth-status-dot-missing {
+    background: var(--text-dim, #94a3b8);
+  }
+  .oauth-text-valid {
+    color: var(--green, #34d399);
+  }
+  .oauth-text-expiring {
+    color: var(--amber, #fbbf24);
+  }
+  .oauth-text-expired {
+    color: var(--red, #f87171);
+  }
+  .oauth-text-missing {
+    color: var(--text-dim, #94a3b8);
+  }
+  .oauth-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 500;
+  }
+  .oauth-backend-footer {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.75rem 1rem;
+    flex-wrap: wrap;
+    margin-top: auto;
+  }
+  .oauth-backend-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+  .oauth-backend-card .btn {
+    font-size: 0.74rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 8px;
+    border: 1px solid;
+    text-decoration: none;
+    background: transparent;
+    cursor: pointer;
+    color: inherit;
+  }
+  .check-status-btn {
+    position: relative;
+  }
+  .check-status-loading {
+    display: none;
+  }
+  .check-status-btn.htmx-request {
+    opacity: 0.8;
+    pointer-events: none;
+  }
+  .check-status-btn.htmx-request .check-status-label {
+    display: none;
+  }
+  .check-status-btn.htmx-request .check-status-loading {
+    display: inline;
+  }
+  .oauth-backend-card .btn-oauth-primary {
+    background: var(--accent-dim, rgba(34, 211, 238, 0.12));
+    color: var(--accent, #22d3ee);
+    border-color: rgba(34, 211, 238, 0.3);
+  }
+  .oauth-backend-card .btn-oauth-secondary {
+    background: var(--surface-2, #111827);
+    color: var(--text-dim, #94a3b8);
+    border-color: var(--border, #273244);
+  }
+  .oauth-backend-card .btn-oauth-danger {
+    background: rgba(248, 113, 113, 0.1);
+    color: var(--red, #f87171);
+    border-color: rgba(248, 113, 113, 0.24);
+  }
+  .oauth-backend-meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.35rem 0.7rem;
+    margin-left: auto;
+    font-size: 0.78rem;
+    color: var(--text-dim, #94a3b8);
+  }
+  .oauth-meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+  }
+  .oauth-time-text {
+    color: inherit;
+    cursor: help;
+    border-bottom: 1px dotted rgba(148, 163, 184, 0.55);
+  }
+  .oauth-time-text:hover {
+    color: var(--text, #e5eef8);
+    border-bottom-color: currentColor;
+  }
+  .oauth-source-hint {
+    width: 1.15rem;
+    height: 1.15rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid var(--border, #273244);
+    color: var(--text-dim, #94a3b8);
+    font-size: 0.68rem;
+    font-weight: 600;
+    line-height: 1;
+    cursor: help;
+    user-select: none;
+  }
+  .oauth-source-hint:hover {
+    color: var(--text, #e5eef8);
+    border-color: var(--text-dim, #94a3b8);
+  }
+  .oauth-expiry-valid {
+    color: var(--green, #34d399);
+  }
+  .oauth-expiry-expiring {
+    color: var(--amber, #fbbf24);
+  }
+  .oauth-expiry-expired {
+    color: var(--red, #f87171);
+  }
+  .oauth-meta-warning {
+    color: var(--amber, #fbbf24);
+  }
+  .oauth-empty {
+    padding: 0.9rem 1rem;
+    border: 1px dashed var(--border, #273244);
+    border-radius: 12px;
+    color: var(--text-dim, #94a3b8);
+    background: var(--surface, #0f172a);
+  }
+  .oauth-backend-card.oauth-just-updated {
+    animation: oauthStatusFlash 0.8s ease;
+  }
+  @keyframes oauthStatusFlash {
+    0% {
+      box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.45);
+      background: rgba(34, 211, 238, 0.08);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(34, 211, 238, 0);
+      background: var(--surface, #0f172a);
+    }
+  }
+  @media (max-width: 720px) {
+    .oauth-backend-footer {
+      align-items: flex-start;
+    }
+    .oauth-backend-meta {
+      margin-left: 0;
+      justify-content: flex-start;
+    }
+  }
+</style>
 {{range .}}
-<div class="oauth-backend-card"
-     id="oauth-status-{{.BackendName}}"
-     data-backend-name="{{.BackendName}}"
-     data-authenticated="{{if .Authenticated}}true{{else}}false{{end}}"
-     data-token-state="{{.TokenState}}">
-  <div class="oauth-backend-header">
-    <div class="oauth-backend-info">
-      <div class="oauth-backend-name-row">
-        <span class="oauth-status-dot oauth-status-dot-{{.TokenState}}"></span>
-        <strong class="oauth-backend-name">{{.BackendName}}</strong>
-        <span class="oauth-backend-type-badge">{{.BackendType}}</span>
-      </div>
-      <div class="oauth-backend-details">
-        <span class="oauth-detail-label">Status:</span>
-        <span class="oauth-detail-value oauth-text-{{if eq .TokenState "missing"}}missing{{else}}{{.TokenState}}{{end}}">
-          {{if eq .TokenState "valid"}}Connected{{else if eq .TokenState "expiring"}}Expiring soon{{else if eq .TokenState "expired"}}Expired{{else}}Not connected{{end}}
-        </span>
-      </div>
-    </div>
-    <div class="oauth-backend-actions">
-      {{if eq .BackendType "codex"}}
-        {{if .NeedsReauth}}
-          <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-oauth-primary" target="_blank" rel="noopener noreferrer">
-            Re-authenticate (Browser)
-          </a>
-          <a href="/ui/oauth/device-login/{{.BackendName}}" class="btn btn-oauth-secondary" target="_blank" rel="noopener noreferrer">
-            Re-authenticate (Device Code)
-          </a>
-        {{else if .Authenticated}}
-          <form method="POST" action="/ui/oauth/disconnect/{{.BackendName}}" style="display: inline;">
-            <button type="submit" class="btn btn-oauth-danger" 
-                    onclick="return confirm('Disconnect {{.BackendName}}? This will clear stored tokens.')">
-              Disconnect
-            </button>
-          </form>
-        {{else}}
-          <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-oauth-primary" target="_blank" rel="noopener noreferrer">
-            Connect (Browser)
-          </a>
-          <a href="/ui/oauth/device-login/{{.BackendName}}" class="btn btn-oauth-secondary" target="_blank" rel="noopener noreferrer">
-            Connect (Device Code)
-          </a>
-        {{end}}
-      {{else if eq .BackendType "copilot"}}
-        {{if not .Authenticated}}
-          <a href="/ui/oauth/login/{{.BackendName}}" class="btn btn-oauth-primary" target="_blank" rel="noopener noreferrer">
-            {{if .TokenSource}}Re-authenticate{{else}}Connect{{end}}
-          </a>
-        {{end}}
-        {{if or .Authenticated .TokenSource}}
-          <button type="button" class="btn btn-oauth-secondary"
-                  hx-post="/ui/oauth/check-status/{{.BackendName}}" hx-target="#oauth-status-container" hx-swap="innerHTML">
-            Check Status
-          </button>
-        {{end}}
-        {{if or .Authenticated .TokenSource}}
-          <form method="POST" action="/ui/oauth/disconnect/{{.BackendName}}" style="display: inline;">
-            <button type="submit" class="btn btn-oauth-danger"
-                    onclick="return confirm('Clear stored token for {{.BackendName}}?')">
-              Disconnect
-            </button>
-          </form>
-        {{end}}
-      {{end}}
-    </div>
-  </div>
-  {{if or .Authenticated .TokenSource .TokenExpiry .LastRefresh}}
-  <div class="oauth-backend-meta">
-    {{if .TokenSource}}<div class="oauth-meta-item"><span class="oauth-meta-label">Source:</span> <span class="oauth-meta-value">{{.TokenSource}}</span></div>{{end}}
-    {{if .TokenExpiry}}<div class="oauth-meta-item"><span class="oauth-meta-label">Expires:</span> <span class="oauth-meta-value oauth-expiry-{{.TokenState}}">{{.TokenExpiry}}</span></div>{{end}}
-    {{if .LastRefresh}}<div class="oauth-meta-item"><span class="oauth-meta-label">Last refreshed:</span> <span class="oauth-meta-value">{{.LastRefresh}}</span></div>{{end}}
-    {{if .NeedsReauth}}<div class="oauth-meta-item oauth-meta-warning">Token expired or missing — re-authentication required</div>{{end}}
-  </div>
-  {{else if .NeedsReauth}}
-  <div class="oauth-backend-meta">
-    <div class="oauth-meta-item oauth-meta-warning">Token expired or missing — re-authentication required</div>
-  </div>
-  {{end}}
-</div>
+{{template "oauth_status_card" .}}
 {{end}}
 {{if not .}}
 <div class="oauth-empty">
   No OAuth backends configured. Add a <code>copilot</code> or <code>codex</code> backend to the config to enable OAuth management.
 </div>
 {{end}}
+<script>
+  (function() {
+    function localize(root) {
+      root = root || document;
+      root.querySelectorAll('[data-local-time]').forEach(function(el) {
+        var raw = el.getAttribute('data-local-time');
+        if (!raw) return;
+        var parsed = new Date(raw);
+        if (Number.isNaN(parsed.getTime())) return;
+        var label = el.getAttribute('data-local-label') || 'Timestamp';
+        el.setAttribute('title', label + ': ' + parsed.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }));
+      });
+    }
+
+    function flashCard(target) {
+      if (!target || !target.classList) return;
+      if (!target.id || target.id.indexOf('oauth-status-') !== 0) return;
+      target.classList.remove('oauth-just-updated');
+      void target.offsetWidth;
+      target.classList.add('oauth-just-updated');
+      window.setTimeout(function() {
+        target.classList.remove('oauth-just-updated');
+      }, 900);
+    }
+
+    var root = document.getElementById('oauth-status-container') || document;
+    if (window.localizeOAuthMetadata) {
+      window.localizeOAuthMetadata(root);
+    } else {
+      localize(root);
+    }
+
+    document.body.addEventListener('htmx:afterSwap', function(event) {
+      if (window.localizeOAuthMetadata) {
+        window.localizeOAuthMetadata(event.target || document);
+      } else {
+        localize(event.target || document);
+      }
+      flashCard(event.target || document);
+    });
+  })();
+</script>
 </div>

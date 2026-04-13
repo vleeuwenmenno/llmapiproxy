@@ -393,6 +393,24 @@ func (r *Registry) OAuthStatuses() []OAuthStatus {
 	return statuses
 }
 
+// OAuthStatus returns the OAuth authentication status for one named backend.
+// The boolean result is false when the backend does not exist or does not
+// expose OAuth status.
+func (r *Registry) OAuthStatus(name string) (OAuthStatus, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	b, ok := r.backends[name]
+	if !ok {
+		return OAuthStatus{}, false
+	}
+	sp, ok := b.(OAuthStatusProvider)
+	if !ok {
+		return OAuthStatus{}, false
+	}
+	return sp.OAuthStatus(), true
+}
+
 // GetTokenStore returns the token store for the named backend, or nil.
 func (r *Registry) GetTokenStore(name string) *oauth.TokenStore {
 	r.mu.RLock()

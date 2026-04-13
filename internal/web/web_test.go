@@ -58,7 +58,6 @@ backends:
 	registry.LoadFromConfig(cfgMgr.Get())
 
 	collector := stats.NewCollector(1000)
-
 	ui := NewUI(cfgMgr, collector, registry, nil, nil)
 
 	cleanup := func() {
@@ -66,41 +65,6 @@ backends:
 	}
 
 	return ui, cleanup
-}
-
-func TestOAuthStatus_ReturnsHTMXFragment(t *testing.T) {
-	ui, cleanup := createTestUI(t)
-	defer cleanup()
-
-	req := httptest.NewRequest(http.MethodGet, "/ui/oauth/status", nil)
-	w := httptest.NewRecorder()
-
-	ui.OAuthStatus(w, req)
-
-	resp := w.Result()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", resp.StatusCode)
-	}
-
-	body := w.Body.String()
-
-	// Should contain our HTMX auto-refresh container
-	if !strings.Contains(body, "oauth-status-container") {
-		t.Error("expected oauth-status-container in response")
-	}
-	if !strings.Contains(body, "hx-get") {
-		t.Error("expected hx-get attribute for HTMX auto-refresh")
-	}
-	if !strings.Contains(body, "oauth-backend-card") {
-		t.Error("expected oauth-backend-card in response")
-	}
-	// Should show both backends
-	if !strings.Contains(body, "copilot") {
-		t.Error("expected copilot backend in response")
-	}
-	if !strings.Contains(body, "codex") {
-		t.Error("expected codex backend in response")
-	}
 }
 
 func TestOAuthStatus_ShowsNotConnectedForMissingToken(t *testing.T) {
@@ -128,6 +92,9 @@ func TestOAuthStatus_ShowsNotConnectedForMissingToken(t *testing.T) {
 	// Both backends should show "Not connected" since tokens were cleared
 	if !strings.Contains(body, "Not connected") {
 		t.Error("expected 'Not connected' status for backends without tokens")
+	}
+	if strings.Contains(body, "Status:") {
+		t.Error("expected standalone OAuth cards not to keep the textual status label in the header")
 	}
 	// Codex should show "Connect" button since it's not authenticated
 	if !strings.Contains(body, "Connect") {
@@ -331,6 +298,39 @@ func TestOAuthStatus_DisplaysTokenMetadata(t *testing.T) {
 	}
 }
 
+func TestOAuthStatus_ReturnsHTMXFragment(t *testing.T) {
+	ui, cleanup := createTestUI(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/oauth/status", nil)
+	w := httptest.NewRecorder()
+
+	ui.OAuthStatus(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	body := w.Body.String()
+
+	if !strings.Contains(body, "oauth-status-container") {
+		t.Error("expected oauth-status-container in response")
+	}
+	if !strings.Contains(body, "hx-get") {
+		t.Error("expected hx-get attribute for HTMX auto-refresh")
+	}
+	if !strings.Contains(body, "oauth-backend-card") {
+		t.Error("expected oauth-backend-card in response")
+	}
+	if !strings.Contains(body, "copilot") {
+		t.Error("expected copilot backend in response")
+	}
+	if !strings.Contains(body, "codex") {
+		t.Error("expected codex backend in response")
+	}
+}
+
 func TestOAuthStatus_CopilotShowsSource(t *testing.T) {
 	ui, cleanup := createTestUI(t)
 	defer cleanup()
@@ -358,9 +358,11 @@ func TestOAuthStatus_CopilotShowsSource(t *testing.T) {
 
 	body := w.Body.String()
 
-	// Should show the token source
-	if !strings.Contains(body, "env:GH_TOKEN") {
-		t.Error("expected token source 'env:GH_TOKEN' for copilot backend")
+	if !strings.Contains(body, `data-oauth-source="env:GH_TOKEN"`) {
+		t.Error("expected token source hint metadata for copilot backend")
+	}
+	if strings.Contains(body, ">Source:") {
+		t.Error("expected source label to stay out of the compact footer")
 	}
 }
 
@@ -602,6 +604,99 @@ func TestModelsPage_ContainsOAuthSection(t *testing.T) {
 	}
 }
 
+func TestModelsPage_UsesCodexAndCopilotIcons(t *testing.T) {
+	ui, cleanup := createTestUI(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/models", nil)
+	w := httptest.NewRecorder()
+
+	ui.ModelsPage(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, `/ui/static/icons/codex-color.svg`) {
+		t.Error("expected Codex icon asset on models page")
+	}
+	if !strings.Contains(body, `/ui/static/icons/githubcopilot.svg`) {
+		t.Error("expected Copilot icon asset on models page")
+	}
+	if !strings.Contains(body, `backend-icon backend-icon-color`) {
+		t.Error("expected colored icon class for Codex backend")
+	}
+}
+
+func TestModelsPage_RendersOverlapToolbarShell(t *testing.T) {
+	ui, cleanup := createTestUI(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/models", nil)
+	w := httptest.NewRecorder()
+
+	ui.ModelsPage(w, req)
+
+	body := w.Body.String()
+	checks := []string{
+		`id="overlap-section"`,
+		`id="overlap-search"`,
+		`id="overlap-backend-filter"`,
+		`id="overlap-status-filter"`,
+		`id="overlap-strategy-filter"`,
+		`id="overlap-sort"`,
+		`id="overlap-view-toggle"`,
+		`data-view="grid"`,
+		`data-view="list"`,
+		`var overlapBootstrap =`,
+	}
+
+	for _, check := range checks {
+		if !strings.Contains(body, check) {
+			t.Errorf("expected models page to contain %q", check)
+		}
+	}
+}
+
+func TestModelsPage_RendersHumanReadableOAuthFooter(t *testing.T) {
+	ui, cleanup := createTestUI(t)
+	defer cleanup()
+
+	b := ui.registry.Get("codex")
+	if b == nil {
+		t.Fatal("codex backend not found")
+	}
+	store := b.(*backend.CodexBackend).GetTokenStore()
+	expiresAt := time.Now().Add(26 * time.Hour).Truncate(time.Second)
+	obtainedAt := time.Now().Add(-1 * time.Hour).Truncate(time.Second)
+	if err := store.Save(&oauth.TokenData{
+		AccessToken: "test-access-token",
+		ExpiresAt:   expiresAt,
+		ObtainedAt:  obtainedAt,
+		Source:      "codex_oauth",
+	}); err != nil {
+		t.Fatalf("saving token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/models", nil)
+	w := httptest.NewRecorder()
+	ui.ModelsPage(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, "oauth-footer") {
+		t.Error("expected oauth footer layout on models page")
+	}
+	if !strings.Contains(body, "Connected") {
+		t.Error("expected OAuth status text to be rendered in the footer")
+	}
+	if !strings.Contains(body, "Expires: tomorrow at") {
+		t.Error("expected human-readable expiry text on models page")
+	}
+	if !strings.Contains(body, "Refreshed: 1 hour ago") {
+		t.Error("expected human-readable refresh text on models page")
+	}
+	if !strings.Contains(body, `data-oauth-source="codex_oauth"`) {
+		t.Error("expected source hint metadata on models page")
+	}
+}
+
 func TestOAuthStatus_NoOAuthBackends(t *testing.T) {
 	// Create a config with only openai backends
 	tmpDir := t.TempDir()
@@ -683,11 +778,11 @@ func TestOAuthStatus_MultipleBackendsDisplayed(t *testing.T) {
 	if strings.Count(body, "oauth-status-dot-valid") < 2 {
 		t.Error("expected at least 2 valid status dots")
 	}
-	if !strings.Contains(body, "env:GH_TOKEN") {
-		t.Error("expected copilot source 'env:GH_TOKEN'")
+	if !strings.Contains(body, `data-oauth-source="env:GH_TOKEN"`) {
+		t.Error("expected Copilot source hint metadata")
 	}
-	if !strings.Contains(body, "codex_oauth") {
-		t.Error("expected codex source 'codex_oauth'")
+	if !strings.Contains(body, `data-oauth-source="codex_oauth"`) {
+		t.Error("expected Codex source hint metadata")
 	}
 }
 
@@ -729,10 +824,15 @@ func TestModelsPage_IncludesOAuthCSS(t *testing.T) {
 		".oauth-text-expiring",
 		".oauth-text-missing",
 		".oauth-card-section",
+		".oauth-footer",
 		".oauth-actions",
+		".oauth-meta-pill",
+		".oauth-time-text",
+		".oauth-source-hint",
 		".btn-oauth-xs",
 		".btn-oauth-xs-primary",
 		".btn-oauth-xs-danger",
+		".backend-icon-color",
 	}
 
 	for _, cls := range cssClasses {
@@ -835,11 +935,57 @@ func TestOAuthStatus_CopilotCheckStatusUsesHTMXWhenTokenExists(t *testing.T) {
 	if !strings.Contains(body, `hx-post="/ui/oauth/check-status/copilot"`) {
 		t.Error("expected hx-post attribute on Check Status button pointing to check-status endpoint")
 	}
-	if !strings.Contains(body, `hx-target="#oauth-status-container"`) {
-		t.Error("expected hx-target attribute pointing to oauth-status-container")
+	if !strings.Contains(body, `hx-target="#oauth-status-copilot"`) {
+		t.Error("expected hx-target attribute pointing to the copilot status card")
+	}
+	if !strings.Contains(body, `hx-disabled-elt="this"`) {
+		t.Error("expected Check Status button to disable itself while checking")
+	}
+	if !strings.Contains(body, `Checking...`) {
+		t.Error("expected Check Status button to include loading text")
+	}
+	if strings.Contains(body, `hx-target="#oauth-status-container"`) {
+		t.Error("expected Check Status not to target the shared oauth status container")
 	}
 	if !strings.Contains(body, "Disconnect") {
 		t.Error("expected Disconnect button when a Copilot token is stored")
+	}
+}
+
+func TestOAuthStatus_CodexCheckStatusUsesHTMXWhenTokenExists(t *testing.T) {
+	ui, cleanup := createTestUI(t)
+	defer cleanup()
+
+	b := ui.registry.Get("codex")
+	if b == nil {
+		t.Fatal("codex backend not found")
+	}
+	codexBackend := b.(*backend.CodexBackend)
+	if err := codexBackend.GetTokenStore().Save(&oauth.TokenData{
+		AccessToken:  "codex-token",
+		RefreshToken: "refresh-token",
+		TokenType:    "Bearer",
+		ExpiresAt:    time.Now().Add(1 * time.Hour),
+		ObtainedAt:   time.Now(),
+		Source:       "codex_oauth",
+	}); err != nil {
+		t.Fatalf("saving token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/oauth/status", nil)
+	w := httptest.NewRecorder()
+
+	ui.OAuthStatus(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, `hx-post="/ui/oauth/check-status/codex"`) {
+		t.Error("expected Codex Check Status button to point to the check-status endpoint")
+	}
+	if !strings.Contains(body, `hx-target="#oauth-status-codex"`) {
+		t.Error("expected Codex Check Status button to target only the Codex card")
+	}
+	if !strings.Contains(body, `Checking...`) {
+		t.Error("expected Codex Check Status button to include loading text")
 	}
 }
 
@@ -1101,6 +1247,12 @@ func TestOAuthCheckStatus_TriggersTokenRefreshForCopilot(t *testing.T) {
 	if !strings.Contains(body, "Connected") {
 		t.Errorf("expected 'Connected' in response body, got: %s", body)
 	}
+	if strings.Contains(body, `id="oauth-status-container"`) {
+		t.Error("expected single-card response, not the full oauth status container")
+	}
+	if strings.Contains(body, "codex") {
+		t.Error("expected Copilot check-status response not to include the Codex card")
+	}
 
 	// Verify the token store now has the fresh token
 	newToken := mockStore.Get()
@@ -1109,6 +1261,123 @@ func TestOAuthCheckStatus_TriggersTokenRefreshForCopilot(t *testing.T) {
 	}
 	if newToken.AccessToken != "fresh-copilot-token" {
 		t.Errorf("access token = %q, want %q", newToken.AccessToken, "fresh-copilot-token")
+	}
+}
+
+func TestOAuthCheckStatus_TriggersTokenRefreshForCodex(t *testing.T) {
+	refreshCalls := 0
+	tokenServer := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("parsing form: %v", err)
+		}
+		if r.Form.Get("grant_type") != "refresh_token" {
+			t.Fatalf("grant_type = %q, want refresh_token", r.Form.Get("grant_type"))
+		}
+		refreshCalls++
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "fresh-codex-token",
+			"refresh_token": "rotated-refresh-token",
+			"token_type":    "Bearer",
+			"expires_in":    3600,
+		})
+	}))
+	defer tokenServer.Close()
+
+	ui, cleanup := createTestUIWithTokenURL(t, tokenServer.URL, "custom-client-id")
+	defer cleanup()
+
+	b := ui.registry.Get("codex")
+	if b == nil {
+		t.Fatal("codex backend not found")
+	}
+	codexBackend := b.(*backend.CodexBackend)
+	store := codexBackend.GetTokenStore()
+	if err := store.Save(&oauth.TokenData{
+		AccessToken:  "expired-codex-token",
+		RefreshToken: "refresh-token",
+		TokenType:    "Bearer",
+		ExpiresAt:    time.Now().Add(-1 * time.Hour),
+		ObtainedAt:   time.Now().Add(-2 * time.Hour),
+		Source:       "codex_oauth",
+	}); err != nil {
+		t.Fatalf("saving token: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Post("/ui/oauth/check-status/{backend}", ui.OAuthCheckStatus)
+	server := newTestServer(t, r)
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/ui/oauth/check-status/codex", "", nil)
+	if err != nil {
+		t.Fatalf("making request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status 200, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	body := string(bodyBytes)
+	if !strings.Contains(body, "Connected") {
+		t.Errorf("expected connected Codex status after refresh, got: %s", body)
+	}
+	if strings.Contains(body, "copilot") {
+		t.Error("expected Codex check-status response not to include the Copilot card")
+	}
+	if refreshCalls != 1 {
+		t.Fatalf("expected 1 Codex refresh call, got %d", refreshCalls)
+	}
+
+	newToken := store.Get()
+	if newToken == nil {
+		t.Fatal("expected Codex token to be stored after check status")
+	}
+	if newToken.AccessToken != "fresh-codex-token" {
+		t.Errorf("access token = %q, want %q", newToken.AccessToken, "fresh-codex-token")
+	}
+}
+
+func TestOAuthCheckStatus_ReturnsModelsCardFragmentWhenRequested(t *testing.T) {
+	ui, cleanup := createTestUI(t)
+	defer cleanup()
+
+	b := ui.registry.Get("copilot")
+	if b == nil {
+		t.Fatal("copilot backend not found")
+	}
+	copilotBackend := b.(*backend.CopilotBackend)
+	if err := copilotBackend.GetTokenStore().Save(&oauth.TokenData{
+		AccessToken: "copilot-token",
+		TokenType:   "Bearer",
+		ExpiresAt:   time.Now().Add(1 * time.Hour),
+		ObtainedAt:  time.Now(),
+		Source:      "device_code_flow",
+	}); err != nil {
+		t.Fatalf("saving token: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Post("/ui/oauth/check-status/{backend}", ui.OAuthCheckStatus)
+	server := newTestServer(t, r)
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/ui/oauth/check-status/copilot?view=models", "", nil)
+	if err != nil {
+		t.Fatalf("making request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	body := string(bodyBytes)
+	if !strings.Contains(body, `id="oauth-copilot"`) {
+		t.Error("expected models oauth card fragment id")
+	}
+	if strings.Contains(body, `id="oauth-status-copilot"`) {
+		t.Error("expected models fragment, not standalone oauth status card")
 	}
 }
 

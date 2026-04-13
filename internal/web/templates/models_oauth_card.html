@@ -1,0 +1,56 @@
+{{define "models_oauth_card"}}
+{{$oauth := .OAuth}}
+<div class="oauth-card-section" id="oauth-{{.Name}}">
+    <div class="oauth-footer">
+        <div class="oauth-actions">
+        {{if eq .Type "codex"}}
+            {{if $oauth.NeedsReauth}}
+                <a href="/ui/oauth/login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-primary" target="_blank" rel="noopener noreferrer">Re-authenticate (Browser)</a>
+                <a href="/ui/oauth/device-login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-secondary" target="_blank" rel="noopener noreferrer">Device Code</a>
+            {{else if not $oauth.Authenticated}}
+                <a href="/ui/oauth/login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-primary" target="_blank" rel="noopener noreferrer">Connect (Browser)</a>
+                <a href="/ui/oauth/device-login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-secondary" target="_blank" rel="noopener noreferrer">Device Code</a>
+            {{end}}
+            {{if or $oauth.Authenticated $oauth.TokenSource $oauth.NeedsReauth}}
+                <button type="button" class="btn-oauth-xs btn-oauth-xs-secondary check-status-btn" hx-post="/ui/oauth/check-status/{{.Name}}?view=models" hx-target="#oauth-{{.Name}}" hx-swap="outerHTML" hx-disabled-elt="this"><span class="check-status-label">Check Status</span><span class="check-status-loading">Checking...</span></button>
+            {{end}}
+            {{if or $oauth.Authenticated $oauth.TokenSource}}
+                <form method="POST" action="/ui/oauth/disconnect/{{.Name}}" style="display:inline"><button type="submit" class="btn-oauth-xs btn-oauth-xs-danger" onclick="return confirm('Disconnect {{.Name}}?')">Disconnect</button></form>
+            {{end}}
+        {{else if eq .Type "copilot"}}
+            {{if not $oauth.Authenticated}}
+                <a href="/ui/oauth/login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-primary" target="_blank" rel="noopener noreferrer">{{if $oauth.TokenSource}}Re-authenticate{{else}}Connect{{end}}</a>
+            {{end}}
+            {{if or $oauth.Authenticated $oauth.TokenSource $oauth.NeedsReauth}}
+                <button type="button" class="btn-oauth-xs btn-oauth-xs-secondary check-status-btn" hx-post="/ui/oauth/check-status/{{.Name}}?view=models" hx-target="#oauth-{{.Name}}" hx-swap="outerHTML" hx-disabled-elt="this"><span class="check-status-label">Check Status</span><span class="check-status-loading">Checking...</span></button>
+            {{end}}
+            {{if or $oauth.Authenticated $oauth.TokenSource}}
+                <form method="POST" action="/ui/oauth/disconnect/{{.Name}}" style="display:inline"><button type="submit" class="btn-oauth-xs btn-oauth-xs-danger" onclick="return confirm('Clear token for {{.Name}}?')">Disconnect</button></form>
+            {{end}}
+        {{end}}
+        </div>
+        <div class="oauth-meta-row">
+            <span class="oauth-meta-pill oauth-status-pill oauth-text-{{if eq $oauth.TokenState `valid`}}valid{{else if eq $oauth.TokenState `expiring`}}expiring{{else if eq $oauth.TokenState `expired`}}expired{{else}}missing{{end}}">
+                <span class="oauth-status-dot oauth-status-dot-{{$oauth.TokenState}}"></span>
+                <span>{{if eq $oauth.TokenState "valid"}}Connected{{else if eq $oauth.TokenState "expiring"}}Expiring soon{{else if eq $oauth.TokenState "expired"}}Expired{{else}}Not connected{{end}}</span>
+            </span>
+            {{if $oauth.TokenExpiry}}
+            <span class="oauth-meta-pill oauth-expiry-{{$oauth.TokenState}}">
+                <span class="oauth-time-text" data-local-time="{{rfc3339Time $oauth.ExpiresAt}}" data-local-label="{{if eq $oauth.TokenState `expired`}}Expired{{else}}Expires{{end}}" title="{{rfc3339Time $oauth.ExpiresAt}}">{{if eq $oauth.TokenState "expired"}}Expired: {{timeAgo $oauth.ExpiresAt}}{{else}}Expires: {{timeUntil $oauth.ExpiresAt}}{{end}}</span>
+            </span>
+            {{end}}
+            {{if $oauth.LastRefresh}}
+            <span class="oauth-meta-pill">
+                <span class="oauth-time-text" data-local-time="{{rfc3339Time $oauth.ObtainedAt}}" data-local-label="Refreshed" title="{{rfc3339Time $oauth.ObtainedAt}}">Refreshed: {{timeAgo $oauth.ObtainedAt}}</span>
+            </span>
+            {{end}}
+            {{if $oauth.NeedsReauth}}
+            <span class="oauth-meta-pill oauth-meta-warning">Re-authentication required</span>
+            {{end}}
+            {{if $oauth.TokenSource}}
+            <span class="oauth-source-hint" data-oauth-source="{{$oauth.TokenSource}}" title="Token source: {{$oauth.TokenSource}}" aria-label="Token source">i</span>
+            {{end}}
+        </div>
+    </div>
+</div>
+{{end}}

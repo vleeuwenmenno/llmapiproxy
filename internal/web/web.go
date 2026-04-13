@@ -39,9 +39,27 @@ func init() {
 			b, _ := json.Marshal(v)
 			return template.JS(b)
 		},
+		"dict": func(values ...any) (map[string]any, error) {
+			if len(values)%2 != 0 {
+				return nil, fmt.Errorf("dict requires an even number of arguments")
+			}
+			out := make(map[string]any, len(values)/2)
+			for i := 0; i < len(values); i += 2 {
+				key, ok := values[i].(string)
+				if !ok {
+					return nil, fmt.Errorf("dict keys must be strings")
+				}
+				out[key] = values[i+1]
+			}
+			return out, nil
+		},
+		"hasTime": hasTime,
 		"formatTime": func(t time.Time) string {
 			return t.Format("15:04:05")
 		},
+		"timeAgo":     humanizePastTime,
+		"timeUntil":   humanizeFutureTime,
+		"rfc3339Time": rfc3339Time,
 		"formatDuration": func(ms int64) string {
 			if ms < 1000 {
 				return time.Duration(ms * int64(time.Millisecond)).String()
@@ -104,6 +122,91 @@ func init() {
 			return template.HTML(sb.String())
 		},
 	}).ParseFS(templateFS, "templates/*.html"))
+}
+
+func hasTime(t time.Time) bool {
+	return !t.IsZero()
+}
+
+func rfc3339Time(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC3339)
+}
+
+func humanizeFutureTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+
+	local := t.Local()
+	now := time.Now().In(local.Location())
+	if !local.After(now) {
+		return humanizePastTime(local)
+	}
+
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	targetDay := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
+	dayDiff := int(targetDay.Sub(today) / (24 * time.Hour))
+
+	switch {
+	case dayDiff == 0:
+		return local.Format("today at 15:04")
+	case dayDiff == 1:
+		return local.Format("tomorrow at 15:04")
+	case dayDiff > 1 && dayDiff < 7:
+		return local.Format("Monday at 15:04")
+	case local.Year() == now.Year():
+		return local.Format("2 Jan at 15:04")
+	default:
+		return local.Format("2 Jan 2006 at 15:04")
+	}
+}
+
+func humanizePastTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+
+	local := t.Local()
+	now := time.Now().In(local.Location())
+	if local.After(now) {
+		return humanizeFutureTime(local)
+	}
+
+	delta := now.Sub(local)
+	switch {
+	case delta < time.Minute:
+		return "just now"
+	case delta < time.Hour:
+		minutes := int(delta / time.Minute)
+		if minutes <= 1 {
+			return "1 minute ago"
+		}
+		return fmt.Sprintf("%d minutes ago", minutes)
+	case delta < 24*time.Hour:
+		hours := int(delta / time.Hour)
+		if hours <= 1 {
+			return "1 hour ago"
+		}
+		return fmt.Sprintf("%d hours ago", hours)
+	case delta < 48*time.Hour:
+		return "yesterday"
+	case delta < 7*24*time.Hour:
+		days := int(delta / (24 * time.Hour))
+		return fmt.Sprintf("%d days ago", days)
+	case local.Year() == now.Year():
+		return local.Format("2 Jan")
+	default:
+		return local.Format("2 Jan 2006")
+	}
+}
+
+type modelOAuthCardData struct {
+	Name  string
+	Type  string
+	OAuth backend.OAuthStatus
 }
 
 type UI struct {
@@ -2191,8 +2294,7 @@ func (u *UI) RoutingPage(w http.ResponseWriter, r *http.Request) {
 // OAuthCheckStatus proactively checks and refreshes the OAuth status for a
 // specific backend. Unlike OAuthStatus which only reads cached state, this
 // handler triggers a token refresh/re-exchange for backends that implement
-// OAuthStatusRefresher (e.g., Copilot). Returns an HTMX fragment with the
-// updated status for all backends.
+// OAuthStatusRefresher and returns only the requested backend fragment.
 func (u *UI) OAuthCheckStatus(w http.ResponseWriter, r *http.Request) {
 	backendName := chi.URLParam(r, "backend")
 	if backendName == "" {
@@ -2217,10 +2319,23 @@ func (u *UI) OAuthCheckStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Return the full OAuth status fragment (HTMX will swap it in).
-	statuses := u.registry.OAuthStatuses()
+	status, ok := u.registry.OAuthStatus(backendName)
+	if !ok {
+		http.Error(w, fmt.Sprintf("backend %q does not expose oauth status", backendName), http.StatusNotFound)
+		return
+	}
+
+	view := r.URL.Query().Get("view")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := templates.ExecuteTemplate(w, "oauth_status.html", statuses); err != nil {
+	var err error
+	switch view {
+	case "models":
+		data := modelOAuthCardData{Name: status.BackendName, Type: status.BackendType, OAuth: status}
+		err = templates.ExecuteTemplate(w, "models_oauth_card", data)
+	default:
+		err = templates.ExecuteTemplate(w, "oauth_status_card", status)
+	}
+	if err != nil {
 		log.Printf("template error: %v", err)
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}

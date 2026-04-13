@@ -179,16 +179,34 @@ type anthropicMessageRequest struct {
 	Temperature   *float64                  `json:"temperature,omitempty"`
 	TopP          *float64                  `json:"top_p,omitempty"`
 	StopSequences []string                  `json:"stop_sequences,omitempty"`
+	Tools         []anthropicTool           `json:"tools,omitempty"`
+	ToolChoice    *anthropicToolChoice      `json:"tool_choice,omitempty"`
+}
+
+type anthropicTool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"input_schema"`
+}
+
+type anthropicToolChoice struct {
+	Type string `json:"type"`
+	Name string `json:"name,omitempty"`
 }
 
 type anthropicRequestMessage struct {
-	Role    string                         `json:"role"`
-	Content []anthropicRequestContentBlock `json:"content"`
+	Role    string          `json:"role"`
+	Content json.RawMessage `json:"content"`
 }
 
 type anthropicRequestContentBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
+	Type       string          `json:"type"`
+	Text       string          `json:"text,omitempty"`
+	ID         string          `json:"id,omitempty"`
+	Name       string          `json:"name,omitempty"`
+	Input      json.RawMessage `json:"input,omitempty"`
+	ToolUseID  string          `json:"tool_use_id,omitempty"`
+	Content    json.RawMessage `json:"content,omitempty"`
 }
 
 func (b *AnthropicBackend) rewriteBody(req *ChatCompletionRequest) ([]byte, error) {
@@ -206,26 +224,115 @@ func (b *AnthropicBackend) rewriteBody(req *ChatCompletionRequest) ([]byte, erro
 		_ = json.Unmarshal(req.RawBody, &raw)
 	}
 
+	// Parse raw messages from the original body so we can access tool_calls,
+	// tool_call_id, and other fields that aren't in backend.Message.
+	var rawMessages []map[string]json.RawMessage
+	if raw != nil {
+		if msgsRaw, ok := raw["messages"]; ok {
+			_ = json.Unmarshal(msgsRaw, &rawMessages)
+		}
+	}
+
 	systemParts := make([]string, 0)
 	messages := make([]anthropicRequestMessage, 0, len(req.Messages))
-	for _, msg := range req.Messages {
-		text := chatContentToText(msg.Content)
+	for i, msg := range req.Messages {
+		var rawMsg map[string]json.RawMessage
+		if i < len(rawMessages) {
+			rawMsg = rawMessages[i]
+		}
+
 		switch msg.Role {
 		case "system", "developer":
+			text := chatContentToText(msg.Content)
 			if strings.TrimSpace(text) != "" {
 				systemParts = append(systemParts, text)
 			}
-		default:
-			// Some Anthropic-compatible providers reject {"type":"text"} blocks
-			// with no text field. Skip empty text-only messages entirely.
+
+		case "assistant":
+			blocks := make([]anthropicRequestContentBlock, 0)
+			text := chatContentToText(msg.Content)
+			if strings.TrimSpace(text) != "" {
+				blocks = append(blocks, anthropicRequestContentBlock{Type: "text", Text: text})
+			}
+			// Convert OpenAI tool_calls to Anthropic tool_use content blocks.
+			if rawMsg != nil {
+				if tcRaw, ok := rawMsg["tool_calls"]; ok {
+					var toolCalls []struct {
+						ID       string `json:"id"`
+						Function struct {
+							Name      string `json:"name"`
+							Arguments string `json:"arguments"`
+						} `json:"function"`
+					}
+					if err := json.Unmarshal(tcRaw, &toolCalls); err == nil {
+						for _, tc := range toolCalls {
+							// Parse the arguments string into a JSON object.
+							inputJSON := json.RawMessage(tc.Function.Arguments)
+							// Validate it's valid JSON; fall back to empty object.
+							if !json.Valid(inputJSON) {
+								inputJSON = json.RawMessage(`{}`)
+							}
+							blocks = append(blocks, anthropicRequestContentBlock{
+								Type:  "tool_use",
+								ID:    tc.ID,
+								Name:  tc.Function.Name,
+								Input: inputJSON,
+							})
+						}
+					}
+				}
+			}
+			if len(blocks) == 0 {
+				continue
+			}
+			contentJSON, _ := json.Marshal(blocks)
+			messages = append(messages, anthropicRequestMessage{
+				Role:    "assistant",
+				Content: contentJSON,
+			})
+
+		case "tool":
+			// Convert OpenAI tool result to Anthropic tool_result content block.
+			var toolCallID string
+			if rawMsg != nil {
+				if idRaw, ok := rawMsg["tool_call_id"]; ok {
+					_ = json.Unmarshal(idRaw, &toolCallID)
+				}
+			}
+			text := chatContentToText(msg.Content)
+			resultContent, _ := json.Marshal(text)
+			block := anthropicRequestContentBlock{
+				Type:      "tool_result",
+				ToolUseID: toolCallID,
+				Content:   resultContent,
+			}
+			contentJSON, _ := json.Marshal([]anthropicRequestContentBlock{block})
+			// Tool results are sent as user messages in Anthropic format.
+			// Merge into the previous user message if it exists to group tool results.
+			if len(messages) > 0 && messages[len(messages)-1].Role == "user" {
+				// Append this tool_result block to the previous user message's content.
+				var prevBlocks []anthropicRequestContentBlock
+				_ = json.Unmarshal(messages[len(messages)-1].Content, &prevBlocks)
+				prevBlocks = append(prevBlocks, block)
+				merged, _ := json.Marshal(prevBlocks)
+				messages[len(messages)-1].Content = merged
+			} else {
+				messages = append(messages, anthropicRequestMessage{
+					Role:    "user",
+					Content: contentJSON,
+				})
+			}
+
+		default: // "user" and any other role
+			text := chatContentToText(msg.Content)
 			if strings.TrimSpace(text) == "" {
 				continue
 			}
+			blocks := []anthropicRequestContentBlock{{Type: "text", Text: text}}
+			contentJSON, _ := json.Marshal(blocks)
 			messages = append(messages, anthropicRequestMessage{
-				Role: msg.Role,
-				Content: []anthropicRequestContentBlock{
-					{Type: "text", Text: text},
-				},
+				Role:    msg.Role,
+				Content: contentJSON,
 			})
 		}
 	}
@@ -238,7 +345,40 @@ func (b *AnthropicBackend) rewriteBody(req *ChatCompletionRequest) ([]byte, erro
 		Stream:      req.Stream,
 		Temperature: req.Temperature,
 	}
+
+	// Translate OpenAI tools definition to Anthropic format.
 	if raw != nil {
+		if toolsRaw, ok := raw["tools"]; ok {
+			var openAITools []struct {
+				Type     string `json:"type"`
+				Function struct {
+					Name        string          `json:"name"`
+					Description string          `json:"description"`
+					Parameters  json.RawMessage `json:"parameters"`
+				} `json:"function"`
+			}
+			if err := json.Unmarshal(toolsRaw, &openAITools); err == nil && len(openAITools) > 0 {
+				tools := make([]anthropicTool, 0, len(openAITools))
+				for _, t := range openAITools {
+					schema := t.Function.Parameters
+					if len(schema) == 0 {
+						schema = json.RawMessage(`{"type":"object"}`)
+					}
+					tools = append(tools, anthropicTool{
+						Name:        t.Function.Name,
+						Description: t.Function.Description,
+						InputSchema: schema,
+					})
+				}
+				out.Tools = tools
+			}
+		}
+
+		// Translate OpenAI tool_choice to Anthropic format.
+		if tcRaw, ok := raw["tool_choice"]; ok {
+			out.ToolChoice = translateToolChoice(tcRaw)
+		}
+
 		if topPRaw, ok := raw["top_p"]; ok {
 			var topP float64
 			if err := json.Unmarshal(topPRaw, &topP); err == nil {
@@ -259,6 +399,35 @@ func (b *AnthropicBackend) rewriteBody(req *ChatCompletionRequest) ([]byte, erro
 	}
 
 	return json.Marshal(out)
+}
+
+// translateToolChoice converts OpenAI tool_choice to Anthropic format.
+// OpenAI: "auto", "none", "required", or {type:"function", function:{name:"X"}}
+// Anthropic: {type:"auto"}, {type:"none"}, {type:"any"}, {type:"tool", name:"X"}
+func translateToolChoice(raw json.RawMessage) *anthropicToolChoice {
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		switch s {
+		case "auto":
+			return &anthropicToolChoice{Type: "auto"}
+		case "none":
+			return &anthropicToolChoice{Type: "none"}
+		case "required":
+			return &anthropicToolChoice{Type: "any"}
+		default:
+			return &anthropicToolChoice{Type: "auto"}
+		}
+	}
+	var obj struct {
+		Type     string `json:"type"`
+		Function struct {
+			Name string `json:"name"`
+		} `json:"function"`
+	}
+	if err := json.Unmarshal(raw, &obj); err == nil && obj.Function.Name != "" {
+		return &anthropicToolChoice{Type: "tool", Name: obj.Function.Name}
+	}
+	return nil
 }
 
 func chatContentToText(raw json.RawMessage) string {
@@ -306,17 +475,57 @@ type anthropicResponseBlock struct {
 	Text    json.RawMessage `json:"text,omitempty"`
 	Content json.RawMessage `json:"content,omitempty"`
 	Value   json.RawMessage `json:"value,omitempty"`
+	// tool_use fields
+	ID    string          `json:"id,omitempty"`
+	Name  string          `json:"name,omitempty"`
+	Input json.RawMessage `json:"input,omitempty"`
 }
 
 func anthropicResponseToChatCompletion(resp *anthropicMessageResponse) *ChatCompletionResponse {
 	stopReason := anthropicFinishReason(resp.StopReason)
 	content := ""
+
+	// Collect tool_use blocks for conversion to OpenAI tool_calls.
+	type openAIToolCall struct {
+		ID       string `json:"id"`
+		Type     string `json:"type"`
+		Function struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		} `json:"function"`
+	}
+	var toolCalls []openAIToolCall
+
 	for _, block := range resp.Content {
-		if text := anthropicResponseBlockText(block); text != "" {
-			content += text
+		switch block.Type {
+		case "tool_use":
+			args := string(block.Input)
+			if args == "" {
+				args = "{}"
+			}
+			tc := openAIToolCall{
+				ID:   block.ID,
+				Type: "function",
+			}
+			tc.Function.Name = block.Name
+			tc.Function.Arguments = args
+			toolCalls = append(toolCalls, tc)
+		default:
+			if text := anthropicResponseBlockText(block); text != "" {
+				content += text
+			}
 		}
 	}
 	contentBytes, _ := json.Marshal(content)
+
+	msg := &Message{
+		Role:    "assistant",
+		Content: contentBytes,
+	}
+	if len(toolCalls) > 0 {
+		tcJSON, _ := json.Marshal(toolCalls)
+		msg.ToolCalls = tcJSON
+	}
 
 	out := &ChatCompletionResponse{
 		ID:      resp.ID,
@@ -325,11 +534,8 @@ func anthropicResponseToChatCompletion(resp *anthropicMessageResponse) *ChatComp
 		Model:   resp.Model,
 		Choices: []Choice{
 			{
-				Index: 0,
-				Message: &Message{
-					Role:    "assistant",
-					Content: contentBytes,
-				},
+				Index:        0,
+				Message:      msg,
 				FinishReason: &stopReason,
 			},
 		},
@@ -419,12 +625,15 @@ type anthropicStreamReader struct {
 	done        bool
 	finishSent  bool
 	currentType string
+	// tool_use streaming state
+	toolCallIndex int // current tool call index (-1 = no active tool call, incremented per tool_use block)
 }
 
 func newAnthropicStreamReader(source io.ReadCloser) *anthropicStreamReader {
 	s := &anthropicStreamReader{
-		source:     source,
-		responseID: uuid.New().String(),
+		source:        source,
+		responseID:    uuid.New().String(),
+		toolCallIndex: -1,
 	}
 	s.scanner = bufio.NewScanner(source)
 	s.scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -481,15 +690,37 @@ func (r *anthropicStreamReader) handleEventData(data string) {
 			}
 			r.modelName = event.Message.Model
 		}
+	case "content_block_start":
+		var event struct {
+			ContentBlock struct {
+				Type string `json:"type"`
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"content_block"`
+		}
+		if err := json.Unmarshal([]byte(data), &event); err == nil && event.ContentBlock.Type == "tool_use" {
+			r.toolCallIndex++
+			r.writeToolCallStartChunk(r.toolCallIndex, event.ContentBlock.ID, event.ContentBlock.Name)
+		}
 	case "content_block_delta":
 		var event struct {
 			Delta struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
+				Type            string `json:"type"`
+				Text            string `json:"text"`
+				PartialJSON     string `json:"partial_json"`
 			} `json:"delta"`
 		}
-		if err := json.Unmarshal([]byte(data), &event); err == nil && event.Delta.Type == "text_delta" && event.Delta.Text != "" {
-			r.writeTextChunk(event.Delta.Text)
+		if err := json.Unmarshal([]byte(data), &event); err == nil {
+			switch event.Delta.Type {
+			case "text_delta":
+				if event.Delta.Text != "" {
+					r.writeTextChunk(event.Delta.Text)
+				}
+			case "input_json_delta":
+				if event.Delta.PartialJSON != "" {
+					r.writeToolCallDeltaChunk(r.toolCallIndex, event.Delta.PartialJSON)
+				}
+			}
 		}
 	case "message_delta":
 		var event struct {
@@ -529,6 +760,67 @@ func (r *anthropicStreamReader) writeTextChunk(text string) {
 				"index": 0,
 				"delta": map[string]any{
 					"content": text,
+				},
+				"finish_reason": nil,
+			},
+		},
+	}
+	b, _ := json.Marshal(chunk)
+	r.buf.WriteString("data: ")
+	r.buf.Write(b)
+	r.buf.WriteString("\n\n")
+}
+
+func (r *anthropicStreamReader) writeToolCallStartChunk(index int, id, name string) {
+	chunk := map[string]any{
+		"id":      r.responseID,
+		"object":  "chat.completion.chunk",
+		"created": time.Now().Unix(),
+		"model":   r.modelName,
+		"choices": []map[string]any{
+			{
+				"index": 0,
+				"delta": map[string]any{
+					"tool_calls": []map[string]any{
+						{
+							"index": index,
+							"id":    id,
+							"type":  "function",
+							"function": map[string]any{
+								"name":      name,
+								"arguments": "",
+							},
+						},
+					},
+				},
+				"finish_reason": nil,
+			},
+		},
+	}
+	b, _ := json.Marshal(chunk)
+	r.buf.WriteString("data: ")
+	r.buf.Write(b)
+	r.buf.WriteString("\n\n")
+}
+
+func (r *anthropicStreamReader) writeToolCallDeltaChunk(index int, partialJSON string) {
+	chunk := map[string]any{
+		"id":      r.responseID,
+		"object":  "chat.completion.chunk",
+		"created": time.Now().Unix(),
+		"model":   r.modelName,
+		"choices": []map[string]any{
+			{
+				"index": 0,
+				"delta": map[string]any{
+					"tool_calls": []map[string]any{
+						{
+							"index": index,
+							"function": map[string]any{
+								"arguments": partialJSON,
+							},
+						},
+					},
 				},
 				"finish_reason": nil,
 			},

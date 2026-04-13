@@ -289,6 +289,8 @@
             border: 1px solid var(--border);
             border-radius: 10px;
             overflow: visible;
+            display: flex;
+            flex-direction: column;
             animation: fadeIn 0.3s ease both;
             transition: border-color 0.2s;
         }
@@ -357,6 +359,11 @@
             opacity: 0.85;
         }
 
+        .backend-icon-color {
+            filter: none;
+            opacity: 1;
+        }
+
         .connect-icon {
             width: 20px;
             height: 20px;
@@ -384,6 +391,7 @@
 
         .model-list {
             padding: 0.5rem 0;
+            flex: 1 1 auto;
         }
 
         .model-item {
@@ -765,11 +773,201 @@
         .backend-header { cursor: pointer; user-select: none; }
 
         /* ── Overlap section ─────────────────────────────────── */
+        .filter-bar {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .filter-group label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-dim);
+            font-weight: 600;
+        }
+
+        .filter-select,
+        .filter-input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.3rem 0.6rem;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            font-family: var(--mono);
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        .filter-select {
+            cursor: pointer;
+        }
+
+        .filter-select:focus,
+        .filter-input:focus {
+            border-color: var(--accent);
+        }
+
+        .window-pills {
+            display: flex;
+            gap: 0.25rem;
+            flex-wrap: wrap;
+        }
+
+        .pill {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-family: var(--mono);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .pill:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .pill.active {
+            background: var(--accent-dim);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .overlap-section {
+            margin-bottom: 2.5rem;
+        }
+
+        .overlap-description {
+            font-size: 0.82rem;
+            color: var(--text-dim);
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+
+        .overlap-filter-bar {
+            align-items: flex-end;
+            margin-bottom: 0;
+        }
+
+        .overlap-filter-primary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: flex-end;
+            flex: 1 1 auto;
+        }
+
+        .overlap-search-group {
+            flex: 1 1 200px;
+            min-width: 180px;
+        }
+
+        .overlap-search-group .filter-input {
+            width: 100%;
+        }
+
+        .overlap-view-group {
+            align-items: flex-end;
+            flex: 0 0 auto;
+        }
+
+        .overlap-filter-secondary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: flex-end;
+            padding-top: 0.6rem;
+        }
+
+        .overlap-filter-bar.collapsed .overlap-filter-secondary {
+            display: none;
+        }
+
+        .overlap-filter-bar.collapsed .overlap-clear-btn {
+            display: none;
+        }
+
+        .overlap-toggle-filters {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 0.3rem 0.65rem;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            font-family: var(--sans);
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+
+        .overlap-toggle-filters:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .overlap-toggle-filters .toggle-arrow {
+            display: inline-block;
+            transition: transform 0.2s;
+            margin-left: 0.2rem;
+            font-size: 0.65rem;
+        }
+
+        .overlap-filter-bar:not(.collapsed) .overlap-toggle-filters .toggle-arrow {
+            transform: rotate(180deg);
+        }
+
+        .overlap-clear-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 0.3rem 0.65rem;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            font-family: var(--sans);
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+
+        .overlap-clear-btn:hover {
+            border-color: var(--red);
+            color: var(--red);
+        }
+
+        .overlap-meta-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.9rem;
+            min-height: 1.25rem;
+        }
+
+        .overlap-results-count {
+            font-size: 0.78rem;
+            color: var(--text-dim);
+        }
+
         .overlap-list {
             display: flex;
             flex-wrap: wrap;
             gap: 0.5rem;
-            margin-bottom: 2.5rem;
         }
 
         .overlap-chip {
@@ -780,6 +978,7 @@
             font-size: 0.75rem;
             cursor: pointer;
             transition: border-color 0.15s, background 0.15s;
+            min-width: min(100%, 260px);
         }
 
         .overlap-chip:hover {
@@ -830,7 +1029,7 @@
             opacity: 0.7;
         }
 
-        .overlap-chip .strat-badge {
+        .strat-badge {
             display: inline-block;
             font-size: 0.58rem;
             font-weight: 600;
@@ -839,11 +1038,124 @@
             margin-bottom: 0.3rem;
             letter-spacing: 0.03em;
         }
-        .overlap-chip .strat-priority        { background: rgba(34,211,238,0.12); color: var(--accent); }
-        .overlap-chip .strat-round-robin      { background: rgba(167,139,250,0.15); color: #a78bfa; }
-        .overlap-chip .strat-race             { background: rgba(251,191,36,0.15);  color: var(--amber); }
-        .overlap-chip .strat-staggered-race   { background: rgba(52,211,153,0.15);  color: #34d399; }
-        .overlap-chip .strat-global           { background: rgba(148,163,184,0.10); color: var(--text-dim); border: 1px dashed rgba(148,163,184,0.25); }
+        .strat-priority        { background: rgba(34,211,238,0.12); color: var(--accent); }
+        .strat-round-robin     { background: rgba(167,139,250,0.15); color: #a78bfa; }
+        .strat-race            { background: rgba(251,191,36,0.15);  color: var(--amber); }
+        .strat-staggered-race  { background: rgba(52,211,153,0.15);  color: #34d399; }
+        .strat-global          { background: rgba(148,163,184,0.10); color: var(--text-dim); border: 1px dashed rgba(148,163,184,0.25); }
+        .strat-unconfigured    { background: rgba(148,163,184,0.08); color: var(--text-dim); border: 1px dashed rgba(148,163,184,0.2); }
+
+        .overlap-empty-state {
+            border: 1px dashed var(--border);
+            border-radius: 12px;
+            padding: 1rem 1.1rem;
+            background: var(--surface);
+            color: var(--text-dim);
+            font-size: 0.82rem;
+        }
+
+        .overlap-table-wrap {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .overlap-table-scroll {
+            overflow-x: auto;
+        }
+
+        .overlap-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 780px;
+        }
+
+        .overlap-table th,
+        .overlap-table td {
+            padding: 0.8rem 0.95rem;
+            border-bottom: 1px solid var(--border);
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .overlap-table th {
+            font-size: 0.68rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            font-weight: 600;
+            background: rgba(148,163,184,0.06);
+        }
+
+        .overlap-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .overlap-table-model {
+            font-family: var(--mono);
+            color: var(--amber);
+            white-space: nowrap;
+        }
+
+        .overlap-table-backends {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+        }
+
+        .overlap-backend-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.18rem 0.45rem;
+            border-radius: 999px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            font-size: 0.72rem;
+        }
+
+        .overlap-table-ids {
+            display: flex;
+            flex-direction: column;
+            gap: 0.22rem;
+            min-width: 220px;
+        }
+
+        .overlap-table-ids .backend-row {
+            display: flex;
+            align-items: baseline;
+            gap: 0.35rem;
+        }
+
+        .overlap-table-ids .backend-name {
+            min-width: 86px;
+            color: var(--text-dim);
+            font-size: 0.72rem;
+        }
+
+        .overlap-table-ids .backend-modelid {
+            font-family: var(--mono);
+            color: var(--accent);
+            font-size: 0.7rem;
+        }
+
+        .overlap-table-ids .backend-modelid.same {
+            color: var(--text-dim);
+        }
+
+        .overlap-configure-btn {
+            border-color: rgba(251,191,36,0.3);
+            color: var(--amber);
+            white-space: nowrap;
+        }
+
+        .overlap-configure-btn:hover {
+            border-color: rgba(251,191,36,0.7);
+            color: var(--amber);
+            background: rgba(251,191,36,0.08);
+        }
 
         /* ── Connect section ─────────────────────────────────── */
         .connect-buttons {
@@ -1227,19 +1539,36 @@
             font-weight: 500;
             white-space: nowrap;
         }
+        .oauth-status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-weight: 500;
+        }
         .oauth-text-valid { color: var(--green); }
         .oauth-text-expiring { color: var(--amber); }
+        .oauth-text-expired { color: var(--red); }
         .oauth-text-missing { color: var(--text-dim); }
 
         .oauth-card-section {
             padding: 0.6rem 1.1rem 0.75rem;
             border-top: 1px solid var(--border);
+            margin-top: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.55rem;
+        }
+        .oauth-footer {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 0.75rem 1rem;
+            flex-wrap: wrap;
         }
         .oauth-actions {
             display: flex;
             flex-wrap: wrap;
             gap: 0.4rem;
-            margin-top: 0.4rem;
         }
         .btn-oauth-xs {
             font-size: 0.68rem;
@@ -1252,6 +1581,35 @@
             display: inline-flex;
             align-items: center;
             gap: 0.25rem;
+        }
+        .check-status-btn {
+            position: relative;
+        }
+        .check-status-loading {
+            display: none;
+        }
+        .check-status-btn.htmx-request {
+            opacity: 0.8;
+            pointer-events: none;
+        }
+        .check-status-btn.htmx-request .check-status-label {
+            display: none;
+        }
+        .check-status-btn.htmx-request .check-status-loading {
+            display: inline;
+        }
+        .oauth-card-section.oauth-just-updated {
+            animation: oauthStatusFlash 0.8s ease;
+        }
+        @keyframes oauthStatusFlash {
+            0% {
+                box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.45);
+                background: rgba(34, 211, 238, 0.08);
+            }
+            100% {
+                box-shadow: inset 0 0 0 0 rgba(34, 211, 238, 0);
+                background: transparent;
+            }
         }
         .btn-oauth-xs-primary {
             background: var(--accent-dim);
@@ -1275,12 +1633,59 @@
         .oauth-meta-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 0.3rem 1rem;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 0.35rem 0.7rem;
             font-size: 0.72rem;
             color: var(--text-dim);
-            margin-top: 0.3rem;
+            margin-left: auto;
         }
-        .oauth-meta-row strong { color: var(--text); font-weight: 500; }
+        .oauth-meta-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            white-space: nowrap;
+        }
+        .oauth-time-text {
+            color: inherit;
+            cursor: help;
+            border-bottom: 1px dotted rgba(148, 163, 184, 0.55);
+        }
+        .oauth-time-text:hover {
+            color: var(--text);
+            border-bottom-color: currentColor;
+        }
+        .oauth-source-hint {
+            width: 1.15rem;
+            height: 1.15rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            font-size: 0.68rem;
+            font-weight: 600;
+            line-height: 1;
+            cursor: help;
+            user-select: none;
+        }
+        .oauth-source-hint:hover {
+            color: var(--text);
+            border-color: var(--text-dim);
+        }
+        .oauth-meta-warning {
+            color: var(--amber);
+        }
+        @media (max-width: 720px) {
+            .oauth-footer {
+                align-items: flex-start;
+            }
+            .oauth-meta-row {
+                margin-left: 0;
+                justify-content: flex-start;
+            }
+        }
         .oauth-expiry-valid { color: var(--green); }
         .oauth-expiry-expiring { color: var(--amber); }
         .oauth-expiry-expired { color: var(--red); }
@@ -1485,11 +1890,17 @@
             .backend-grid { grid-template-columns: 1fr; }
             .legend-strip { gap: 0.4rem; font-size: 0.65rem; }
             .connect-buttons { justify-content: center; }
+            .filter-bar { flex-direction: column; align-items: stretch; }
+            .overlap-filter-primary { flex-direction: column; align-items: stretch; }
+            .overlap-search-group { min-width: 0; }
+            .overlap-view-group { align-items: stretch; }
+            .overlap-meta-row { align-items: flex-start; }
         }
 
         @media (max-width: 480px) {
             main { padding: 1rem; }
             .overlap-chip { padding: 0.35rem 0.6rem; }
+            .pill { padding: 0.25rem 0.4rem; font-size: 0.7rem; }
         }
     </style>
 </head>
@@ -1599,18 +2010,12 @@
             <div class="backend-card{{if not .Enabled}} disabled{{end}}{{if .IsDynamic}} collapsed{{end}}" data-backend="{{.Name}}"{{if not .Enabled}} data-disabled="true"{{end}}{{if and $oauth (not $oauth.Authenticated)}} data-oauth-unauthed="true"{{end}}>
                 <div class="backend-header" onclick="toggleCard(event, '{{.Name}}')">
                     <div class="backend-name">
-                        {{if .IconURL}}<img class="backend-icon" src="{{.IconURL}}" alt="{{.Name}}">{{else}}<div class="dot"></div>{{end}}
+                        {{if .IconURL}}<img class="backend-icon{{if eq .Type "codex"}} backend-icon-color{{end}}" src="{{.IconURL}}" alt="{{.Name}}">{{else}}<div class="dot"></div>{{end}}
                         {{.Name}}
                         <span class="type-badge type-{{.Type}}">{{.Type}}</span>
                         <span class="collapse-chevron">&#x25BE;</span>
                     </div>
                     <div class="backend-actions" onclick="event.stopPropagation()">
-                    {{if $oauth}}
-                    <span class="oauth-status-dot oauth-status-dot-{{$oauth.TokenState}}" title="{{$oauth.TokenState}}"></span>
-                    <span class="oauth-status-text oauth-text-{{if eq $oauth.TokenState `valid`}}valid{{else if eq $oauth.TokenState `expiring`}}expiring{{else}}missing{{end}}">
-                        {{if eq $oauth.TokenState "valid"}}connected{{else if eq $oauth.TokenState "expiring"}}expiring{{else}}not connected{{end}}
-                    </span>
-                    {{end}}
                     <span class="model-count" id="count-{{.Name}}">{{if not .Enabled}}disabled{{else if .StaticCount}}{{.StaticCount}} models{{else}}&hellip;{{end}}</span>
                     <div class="backend-dropdown-container" id="backend-dropdown-{{.Name}}">
                         <button type="button" class="backend-menu-trigger" aria-expanded="false" aria-controls="backend-menu-{{.Name}}" title="Backend actions" onclick="toggleBackendDropdown(event, '{{.Name}}')">&#x22EE;</button>
@@ -1665,40 +2070,7 @@
                     {{end}}
                 </div>
                 {{if and $oauth .Enabled}}
-                <div class="oauth-card-section" id="oauth-{{.Name}}">
-                    <div class="oauth-actions">
-                    {{if eq .Type "codex"}}
-                        {{if $oauth.NeedsReauth}}
-                            <a href="/ui/oauth/login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-primary" target="_blank" rel="noopener noreferrer">Re-authenticate (Browser)</a>
-                            <a href="/ui/oauth/device-login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-secondary" target="_blank" rel="noopener noreferrer">Device Code</a>
-                        {{else if $oauth.Authenticated}}
-                            <form method="POST" action="/ui/oauth/disconnect/{{.Name}}" style="display:inline"><button type="submit" class="btn-oauth-xs btn-oauth-xs-danger" onclick="return confirm('Disconnect {{.Name}}?')">Disconnect</button></form>
-                        {{else}}
-                            <a href="/ui/oauth/login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-primary" target="_blank" rel="noopener noreferrer">Connect (Browser)</a>
-                            <a href="/ui/oauth/device-login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-secondary" target="_blank" rel="noopener noreferrer">Device Code</a>
-                        {{end}}
-                    {{else if eq .Type "copilot"}}
-                        {{if not $oauth.Authenticated}}
-                            <a href="/ui/oauth/login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-primary" target="_blank" rel="noopener noreferrer">{{if $oauth.TokenSource}}Re-authenticate{{else}}Connect{{end}}</a>
-                        {{end}}
-                        {{if or $oauth.Authenticated $oauth.TokenSource}}
-                            <button type="button" class="btn-oauth-xs btn-oauth-xs-secondary" hx-post="/ui/oauth/check-status/{{.Name}}" hx-target="#oauth-{{.Name}}" hx-swap="outerHTML">Check Status</button>
-                        {{end}}
-                        {{if or $oauth.Authenticated $oauth.TokenSource}}
-                            <form method="POST" action="/ui/oauth/disconnect/{{.Name}}" style="display:inline"><button type="submit" class="btn-oauth-xs btn-oauth-xs-danger" onclick="return confirm('Clear token for {{.Name}}?')">Disconnect</button></form>
-                        {{end}}
-                    {{end}}
-                    </div>
-                    {{if or $oauth.Authenticated $oauth.TokenSource}}
-                    <div class="oauth-meta-row">
-                        {{if $oauth.TokenSource}}<span>Source: <strong>{{$oauth.TokenSource}}</strong></span>{{end}}
-                        {{if $oauth.TokenExpiry}}<span>Expires: <strong class="oauth-expiry-{{$oauth.TokenState}}">{{$oauth.TokenExpiry}}</strong></span>{{end}}
-                        {{if $oauth.LastRefresh}}<span>Refreshed: <strong>{{$oauth.LastRefresh}}</strong></span>{{end}}
-                    </div>
-                    {{else if $oauth.NeedsReauth}}
-                    <div class="oauth-meta-row" style="color:var(--amber);font-style:italic">Token expired or missing — re-authentication required</div>
-                    {{end}}
-                </div>
+                {{template "models_oauth_card" (dict "Name" .Name "Type" .Type "OAuth" $oauth)}}
                 {{end}}
             </div>
             {{end}}
@@ -1707,30 +2079,68 @@
             </button>
         </div>
 
-        <div id="overlap-section">{{if .Overlaps}}
-        <div class="section-title">Overlapping Models</div>
-        <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1rem;line-height:1.6">
-            These model IDs appear in more than one backend. Click a chip to configure which backend is tried first and what happens on failure.
-        </p>
-        <div class="overlap-list">
-            {{range .Overlaps}}
-            {{$entry := .}}
-            <div class="overlap-chip" data-model="{{.ModelID}}" data-backends="{{json .Backends}}">
-                <span class="mid">{{.ModelID}}</span>
-                <span class="backends">
-                    {{range .Backends}}
-                    {{$mid := index $entry.BackendModels .}}
-                    <span class="backend-row">
-                        <span class="backend-name">{{.}}</span>
-                        <span class="backend-modelid{{if eq $mid $entry.ModelID}} same{{end}}">{{$mid}}</span>
-                    </span>
-                    {{end}}
-                </span>
-                <span class="configure-hint">&#x2699; click to configure routing</span>
+        <div id="overlap-section" class="overlap-section"{{if not .Overlaps}} hidden{{end}}>
+            <div class="section-title">Overlapping Models</div>
+            <p class="overlap-description">
+                These model IDs appear in more than one backend. Click a chip to configure which backend is tried first and what happens on failure.
+            </p>
+            <div class="filter-bar overlap-filter-bar collapsed" id="overlap-toolbar">
+                <div class="overlap-filter-primary">
+                    <div class="filter-group overlap-search-group">
+                        <label for="overlap-search">Search</label>
+                        <input type="search" id="overlap-search" class="filter-input" placeholder="Model IDs, backends, aliases">
+                    </div>
+                    <div class="filter-group overlap-view-group">
+                        <label>View</label>
+                        <div class="window-pills" id="overlap-view-toggle">
+                            <button type="button" class="pill overlap-view-btn" data-view="grid">Grid</button>
+                            <button type="button" class="pill overlap-view-btn" data-view="list">List</button>
+                        </div>
+                    </div>
+                    <button type="button" class="overlap-toggle-filters" id="overlap-toggle-filters">Filters<span class="toggle-arrow">&#x25BE;</span></button>
+                    <button type="button" class="overlap-clear-btn" id="overlap-clear-filters">Clear</button>
+                </div>
+                <div class="overlap-filter-secondary">
+                    <div class="filter-group">
+                        <label for="overlap-backend-filter">Backend</label>
+                        <select id="overlap-backend-filter" class="filter-select">
+                            <option value="">All backends</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="overlap-status-filter">Routing status</label>
+                        <select id="overlap-status-filter" class="filter-select">
+                            <option value="">All statuses</option>
+                            <option value="configured">Configured override</option>
+                            <option value="global">Global fallback</option>
+                            <option value="unconfigured">Unconfigured</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="overlap-strategy-filter">Strategy</label>
+                        <select id="overlap-strategy-filter" class="filter-select">
+                            <option value="">All strategies</option>
+                            <option value="priority">Priority</option>
+                            <option value="round-robin">Round-Robin</option>
+                            <option value="race">Race</option>
+                            <option value="staggered-race">Staggered Race</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="overlap-sort">Sort</label>
+                        <select id="overlap-sort" class="filter-select">
+                            <option value="name">Name</option>
+                            <option value="backend-count">Most backends</option>
+                            <option value="configured-first">Configured first</option>
+                        </select>
+                    </div>
+                </div>
             </div>
-            {{end}}
+            <div class="overlap-meta-row">
+                <span class="overlap-results-count" id="overlap-results-count"></span>
+            </div>
+            <div id="overlap-results"></div>
         </div>
-        {{end}}</div>
 
         <div class="section-title">Quick Connect</div>
         <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1.25rem;line-height:1.6">
@@ -2211,6 +2621,37 @@
             openBackendDropdown = dropdown;
         }
 
+        function localizeOAuthMetadata(root) {
+            root = root || document;
+            root.querySelectorAll('[data-local-time]').forEach(function(el) {
+                var raw = el.getAttribute('data-local-time');
+                if (!raw) return;
+                var parsed = new Date(raw);
+                if (Number.isNaN(parsed.getTime())) return;
+                var label = el.getAttribute('data-local-label') || 'Timestamp';
+                el.setAttribute('title', label + ': ' + parsed.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }));
+            });
+        }
+
+        function flashOAuthStatusCard(target) {
+            if (!target || !target.classList) return;
+            if (!target.id || target.id.indexOf('oauth-') !== 0) return;
+            target.classList.remove('oauth-just-updated');
+            void target.offsetWidth;
+            target.classList.add('oauth-just-updated');
+            window.setTimeout(function() {
+                target.classList.remove('oauth-just-updated');
+            }, 900);
+        }
+
+        window.localizeOAuthMetadata = localizeOAuthMetadata;
+        localizeOAuthMetadata(document);
+        document.body.addEventListener('htmx:afterSwap', function(event) {
+            var target = event.target || document;
+            localizeOAuthMetadata(target);
+            flashOAuthStatusCard(target);
+        });
+
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') {
                 closeBackendDropdown();
@@ -2501,8 +2942,26 @@
         // ── Routing modal ──────────────────────────────────────────────
         var routingData = {{.RoutingJSON}};  // map of model → {backends, strategy}
         var globalStrategy = {{if .GlobalStrategy}}{{.GlobalStrategy | js}}{{else}}''{{end}};
+        var overlapBootstrap = {{json .Overlaps}} || [];
         var currentRoutingModel = '';
         var currentBackends = [];
+        var overlapViewStorageKey = 'models-overlap-view';
+        var overlapStrategyBadges = {
+            'priority': { text: 'Priority', html: '&#8595; Priority', className: 'strat-priority' },
+            'round-robin': { text: 'Round-Robin', html: '&#8634; Round-Robin', className: 'strat-round-robin' },
+            'race': { text: 'Race', html: '&#9889; Race', className: 'strat-race' },
+            'staggered-race': { text: 'Staggered Race', html: '&#9201; Staggered Race', className: 'strat-staggered-race' }
+        };
+        var overlapState = {
+            items: [],
+            search: '',
+            backend: '',
+            status: '',
+            strategy: '',
+            sort: 'name',
+            view: localStorage.getItem(overlapViewStorageKey) === 'list' ? 'list' : 'grid'
+        };
+        var overlapControlsInitialized = false;
 
         function openRoutingModal(modelID, backends) {
             currentRoutingModel = modelID;
@@ -2672,16 +3131,86 @@
             return i >= 0 ? s.slice(i + 1) : s;
         }
 
-        // Recompute overlaps from allBackendModels and re-render #overlap-section.
-        // Called once all pending backend loads (success or error) have completed.
-        function recomputeOverlaps() {
-            var byCanonical = {}; // canonical → {backends: [], backendModels: {}}
+        function overlapStatusRank(item) {
+            if (item.status === 'configured') return 0;
+            if (item.status === 'global') return 1;
+            return 2;
+        }
+
+        function buildOverlapItem(modelID, backends, backendModels) {
+            var savedEntry = routingData[modelID] || {};
+            var savedBackends = Array.isArray(savedEntry.backends) ? savedEntry.backends.slice() : [];
+            var orderedBackends = savedBackends.filter(function(name) { return backends.indexOf(name) !== -1; });
+            backends.forEach(function(name) {
+                if (orderedBackends.indexOf(name) === -1) orderedBackends.push(name);
+            });
+
+            var status = 'unconfigured';
+            var strategyKey = '';
+            var badgeHTML = '';
+            var badgeText = '';
+            var badgeClass = '';
+
+            if (savedEntry.strategy && overlapStrategyBadges[savedEntry.strategy]) {
+                status = 'configured';
+                strategyKey = savedEntry.strategy;
+                badgeHTML = overlapStrategyBadges[savedEntry.strategy].html;
+                badgeText = overlapStrategyBadges[savedEntry.strategy].text;
+                badgeClass = overlapStrategyBadges[savedEntry.strategy].className;
+            } else if (savedBackends.length > 0) {
+                status = 'global';
+                strategyKey = globalStrategy || 'priority';
+                if (overlapStrategyBadges[strategyKey]) {
+                    badgeHTML = 'Global ' + overlapStrategyBadges[strategyKey].html;
+                    badgeText = 'Global ' + overlapStrategyBadges[strategyKey].text;
+                } else {
+                    badgeHTML = 'Global Priority';
+                    badgeText = 'Global Priority';
+                }
+                badgeClass = 'strat-global';
+            }
+
+            var aliases = orderedBackends.map(function(name) {
+                return backendModels[name] || '';
+            });
+
+            return {
+                modelID: modelID,
+                backends: backends.slice(),
+                orderedBackends: orderedBackends,
+                backendModels: backendModels,
+                backendCount: orderedBackends.length,
+                hasSavedOrder: savedBackends.length > 0,
+                status: status,
+                strategyKey: strategyKey,
+                badgeHTML: badgeHTML,
+                badgeText: badgeText,
+                badgeClass: badgeClass,
+                searchText: [modelID].concat(orderedBackends).concat(aliases).join(' ').toLowerCase()
+            };
+        }
+
+        function normalizeOverlapEntries(rawEntries) {
+            return (rawEntries || []).map(function(entry) {
+                var modelID = entry.ModelID || entry.modelID || '';
+                var backends = entry.Backends || entry.backends || [];
+                var backendModels = entry.BackendModels || entry.backendModels || {};
+                return buildOverlapItem(modelID, backends, backendModels);
+            }).filter(function(item) {
+                return item.modelID && item.backends.length >= 2;
+            }).sort(function(a, b) {
+                return a.modelID.localeCompare(b.modelID);
+            });
+        }
+
+        function rebuildOverlapItemsFromModels() {
+            var byCanonical = {};
             Object.keys(allBackendModels).forEach(function(backendName) {
                 var seen = {};
                 (allBackendModels[backendName] || []).forEach(function(m) {
                     var bareID = m.BareID || m.FullID.slice(m.FullID.indexOf('/') + 1);
                     var canonical = jsLastPathSegment(bareID);
-                    if (seen[canonical]) return; // dedup within one backend
+                    if (seen[canonical]) return;
                     seen[canonical] = true;
                     if (!byCanonical[canonical]) byCanonical[canonical] = { backends: [], backendModels: {} };
                     var entry = byCanonical[canonical];
@@ -2692,63 +3221,267 @@
                 });
             });
 
-            var overlaps = Object.keys(byCanonical).filter(function(k) {
-                return byCanonical[k].backends.length >= 2;
-            }).sort();
+            return Object.keys(byCanonical).filter(function(modelID) {
+                return byCanonical[modelID].backends.length >= 2;
+            }).sort().map(function(modelID) {
+                var entry = byCanonical[modelID];
+                return buildOverlapItem(modelID, entry.backends, entry.backendModels);
+            });
+        }
 
-            var sec = document.getElementById('overlap-section');
-            if (!sec) return;
+        function updateOverlapBackendOptions(items) {
+            var select = document.getElementById('overlap-backend-filter');
+            if (!select) return;
 
-            if (overlaps.length === 0) {
-                sec.innerHTML = '';
+            var previous = overlapState.backend || '';
+            var seen = {};
+            var options = [];
+
+            items.forEach(function(item) {
+                item.orderedBackends.forEach(function(name) {
+                    if (seen[name]) return;
+                    seen[name] = true;
+                    options.push(name);
+                });
+            });
+
+            options.sort(function(a, b) { return a.localeCompare(b); });
+            if (previous && options.indexOf(previous) === -1) options.unshift(previous);
+
+            select.innerHTML = '<option value="">All backends</option>' + options.map(function(name) {
+                return '<option value="' + escHtml(name) + '">' + escHtml(name) + '</option>';
+            }).join('');
+            select.value = previous;
+        }
+
+        function syncOverlapViewButtons() {
+            document.querySelectorAll('#overlap-view-toggle .overlap-view-btn').forEach(function(btn) {
+                btn.classList.toggle('active', btn.dataset.view === overlapState.view);
+            });
+        }
+
+        function filteredOverlapItems() {
+            var q = overlapState.search.trim().toLowerCase();
+            var items = overlapState.items.filter(function(item) {
+                if (q && item.searchText.indexOf(q) === -1) return false;
+                if (overlapState.backend && item.orderedBackends.indexOf(overlapState.backend) === -1) return false;
+                if (overlapState.status && item.status !== overlapState.status) return false;
+                if (overlapState.strategy && item.strategyKey !== overlapState.strategy) return false;
+                return true;
+            });
+
+            items.sort(function(a, b) {
+                if (overlapState.sort === 'backend-count') {
+                    return (b.backendCount - a.backendCount) || a.modelID.localeCompare(b.modelID);
+                }
+                if (overlapState.sort === 'configured-first') {
+                    return (overlapStatusRank(a) - overlapStatusRank(b)) || a.modelID.localeCompare(b.modelID);
+                }
+                return a.modelID.localeCompare(b.modelID);
+            });
+
+            return items;
+        }
+
+        function renderOverlapBadge(item, includeFallback) {
+            if (item.badgeHTML) {
+                return '<span class="strat-badge ' + item.badgeClass + '">' + item.badgeHTML + '</span>';
+            }
+            if (includeFallback) {
+                return '<span class="strat-badge strat-unconfigured">Unconfigured</span>';
+            }
+            return '';
+        }
+
+        function renderOverlapBackendRows(item) {
+            return item.orderedBackends.map(function(name, index) {
+                var modelID = item.backendModels[name] || '';
+                var sameClass = modelID === item.modelID ? ' same' : '';
+                var prefix = item.hasSavedOrder ? '#' + (index + 1) + ' ' : '';
+                return '<span class="backend-row">'
+                    + '<span class="backend-name">' + escHtml(prefix + name) + '</span>'
+                    + '<span class="backend-modelid' + sameClass + '">' + escHtml(modelID) + '</span>'
+                    + '</span>';
+            }).join('');
+        }
+
+        function renderOverlapGrid(items) {
+            return '<div class="overlap-list">' + items.map(function(item) {
+                return '<div class="overlap-chip" data-overlap-action="configure" data-overlap-model="' + escHtml(item.modelID) + '" data-overlap-backends="' + escHtml(JSON.stringify(item.orderedBackends)) + '">'
+                    + '<span class="mid">' + escHtml(item.modelID) + '</span>'
+                    + renderOverlapBadge(item, false)
+                    + '<span class="backends">' + renderOverlapBackendRows(item) + '</span>'
+                    + '<span class="configure-hint">&#x2699; click to configure routing</span>'
+                    + '</div>';
+            }).join('') + '</div>';
+        }
+
+        function renderOverlapList(items) {
+            return '<div class="overlap-table-wrap"><div class="overlap-table-scroll"><table class="overlap-table">'
+                + '<thead><tr><th>Model</th><th>Backends</th><th>Strategy</th><th>Backend IDs</th><th>Action</th></tr></thead><tbody>'
+                + items.map(function(item) {
+                    return '<tr>'
+                        + '<td class="overlap-table-model">' + escHtml(item.modelID) + '</td>'
+                        + '<td><div class="overlap-table-backends">' + item.orderedBackends.map(function(name) {
+                            return '<span class="overlap-backend-pill">' + escHtml(name) + '</span>';
+                        }).join('') + '</div></td>'
+                        + '<td>' + renderOverlapBadge(item, true) + '</td>'
+                        + '<td><div class="overlap-table-ids">' + renderOverlapBackendRows(item) + '</div></td>'
+                        + '<td><button type="button" class="pill overlap-configure-btn" data-overlap-action="configure" data-overlap-model="' + escHtml(item.modelID) + '" data-overlap-backends="' + escHtml(JSON.stringify(item.orderedBackends)) + '">Configure</button></td>'
+                        + '</tr>';
+                }).join('')
+                + '</tbody></table></div></div>';
+        }
+
+        function renderOverlapSection() {
+            var section = document.getElementById('overlap-section');
+            var results = document.getElementById('overlap-results');
+            var count = document.getElementById('overlap-results-count');
+            if (!section || !results || !count) return;
+
+            updateOverlapBackendOptions(overlapState.items);
+            syncOverlapViewButtons();
+
+            if (overlapState.items.length === 0) {
+                section.hidden = true;
+                results.innerHTML = '';
+                count.textContent = '';
                 return;
             }
 
-            var html = '<div class="section-title">Overlapping Models</div>'
-                + '<p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1rem;line-height:1.6">'
-                + 'These model IDs appear in more than one backend. Click a chip to configure which backend is tried first and what happens on failure.'
-                + '</p><div class="overlap-list">';
+            section.hidden = false;
+            var visible = filteredOverlapItems();
+            count.textContent = 'Showing ' + visible.length + ' of ' + overlapState.items.length + ' overlapping models';
 
-            overlaps.forEach(function(canonicalID) {
-                var entry = byCanonical[canonicalID];
+            if (visible.length === 0) {
+                results.innerHTML = '<div class="overlap-empty-state">No overlapping models match the current search or filters.</div>';
+                return;
+            }
 
-                // Sort backends by saved routing priority, then append any unordered ones.
-                var savedEntry = routingData[canonicalID] || {};
-                var saved = savedEntry.backends || [];
-                var ordered = saved.filter(function(b) { return entry.backends.indexOf(b) !== -1; });
-                entry.backends.forEach(function(b) { if (ordered.indexOf(b) === -1) ordered.push(b); });
+            results.innerHTML = overlapState.view === 'list' ? renderOverlapList(visible) : renderOverlapGrid(visible);
+        }
 
-                var strategyLabels = { 'priority': '&#8595; Priority', 'round-robin': '&#8634; Round-Robin', 'race': '&#9889; Race', 'staggered-race': '&#9201; Staggered Race' };
-                html += '<div class="overlap-chip" data-model="' + escHtml(canonicalID) + '" data-backends="' + escHtml(JSON.stringify(ordered)) + '">';
-                html += '<span class="mid">' + escHtml(canonicalID) + '</span>';
-                if (savedEntry.strategy && strategyLabels[savedEntry.strategy]) {
-                    html += '<span class="strat-badge strat-' + savedEntry.strategy + '">' + strategyLabels[savedEntry.strategy] + '</span>';
-                } else if (savedEntry.backends && savedEntry.backends.length > 0) {
-                    var gs = globalStrategy || 'priority';
-                    var gsLabel = strategyLabels[gs] || '&#8595; Priority';
-                    html += '<span class="strat-badge strat-global">Global ' + gsLabel + '</span>';
+        function setOverlapItems(items) {
+            overlapState.items = items || [];
+            renderOverlapSection();
+        }
+
+        function hasActiveFilters() {
+            return !!(overlapState.search || overlapState.backend || overlapState.status || overlapState.strategy || overlapState.sort !== 'name');
+        }
+
+        function syncClearButton() {
+            var btn = document.getElementById('overlap-clear-filters');
+            if (btn) btn.style.display = hasActiveFilters() ? '' : 'none';
+        }
+
+        function clearOverlapFilters() {
+            overlapState.search = '';
+            overlapState.backend = '';
+            overlapState.status = '';
+            overlapState.strategy = '';
+            overlapState.sort = 'name';
+            var search = document.getElementById('overlap-search');
+            var backend = document.getElementById('overlap-backend-filter');
+            var status = document.getElementById('overlap-status-filter');
+            var strategy = document.getElementById('overlap-strategy-filter');
+            var sort = document.getElementById('overlap-sort');
+            if (search) search.value = '';
+            if (backend) backend.value = '';
+            if (status) status.value = '';
+            if (strategy) strategy.value = '';
+            if (sort) sort.value = 'name';
+            renderOverlapSection();
+        }
+
+        function initOverlapControls() {
+            if (overlapControlsInitialized) return;
+            overlapControlsInitialized = true;
+
+            var toolbar = document.getElementById('overlap-toolbar');
+            var search = document.getElementById('overlap-search');
+            var backend = document.getElementById('overlap-backend-filter');
+            var status = document.getElementById('overlap-status-filter');
+            var strategy = document.getElementById('overlap-strategy-filter');
+            var sort = document.getElementById('overlap-sort');
+            var viewToggle = document.getElementById('overlap-view-toggle');
+            var section = document.getElementById('overlap-section');
+            var toggleBtn = document.getElementById('overlap-toggle-filters');
+            var clearBtn = document.getElementById('overlap-clear-filters');
+
+            if (search) {
+                search.addEventListener('input', function() {
+                    overlapState.search = search.value || '';
+                    syncClearButton();
+                    renderOverlapSection();
+                });
+            }
+            if (backend) {
+                backend.addEventListener('change', function() {
+                    overlapState.backend = backend.value || '';
+                    syncClearButton();
+                    renderOverlapSection();
+                });
+            }
+            if (status) {
+                status.addEventListener('change', function() {
+                    overlapState.status = status.value || '';
+                    syncClearButton();
+                    renderOverlapSection();
+                });
+            }
+            if (strategy) {
+                strategy.addEventListener('change', function() {
+                    overlapState.strategy = strategy.value || '';
+                    syncClearButton();
+                    renderOverlapSection();
+                });
+            }
+            if (sort) {
+                sort.addEventListener('change', function() {
+                    overlapState.sort = sort.value || 'name';
+                    syncClearButton();
+                    renderOverlapSection();
+                });
+            }
+            if (viewToggle) {
+                viewToggle.addEventListener('click', function(e) {
+                    var btn = e.target.closest('.overlap-view-btn[data-view]');
+                    if (!btn) return;
+                    overlapState.view = btn.dataset.view === 'list' ? 'list' : 'grid';
+                    localStorage.setItem(overlapViewStorageKey, overlapState.view);
+                    renderOverlapSection();
+                });
+            }
+            if (toggleBtn) {
+                var autoExpanded = false;
+                if (overlapState.backend || overlapState.status || overlapState.strategy || overlapState.sort !== 'name') {
+                    toolbar.classList.remove('collapsed');
+                    autoExpanded = true;
                 }
-                html += '<span class="backends">';
-                ordered.forEach(function(b, i) {
-                    var mid = entry.backendModels[b] || '';
-                    var sameClass = mid === canonicalID ? ' same' : '';
-                    html += '<span class="backend-row">'
-                        + '<span class="backend-name">' + (saved.length > 0 ? '#' + (i+1) + ' ' : '') + escHtml(b) + '</span>'
-                        + '<span class="backend-modelid' + sameClass + '">' + escHtml(mid) + '</span>'
-                        + '</span>';
+                toggleBtn.addEventListener('click', function() {
+                    toolbar.classList.toggle('collapsed');
                 });
-                html += '</span><span class="configure-hint">&#x2699; click to configure routing</span></div>';
-            });
-
-            html += '</div>';
-            sec.innerHTML = html;
-
-            // Attach click handlers via data attributes to avoid inline-onclick quoting issues.
-            sec.querySelectorAll('.overlap-chip[data-model]').forEach(function(chip) {
-                chip.addEventListener('click', function() {
-                    openRoutingModal(chip.dataset.model, JSON.parse(chip.dataset.backends));
+            }
+            if (clearBtn) {
+                clearBtn.addEventListener('click', function() {
+                    clearOverlapFilters();
                 });
-            });
+            }
+            syncClearButton();
+            if (section) {
+                section.addEventListener('click', function(e) {
+                    var trigger = e.target.closest('[data-overlap-action="configure"]');
+                    if (!trigger) return;
+                    openRoutingModal(trigger.dataset.overlapModel, JSON.parse(trigger.dataset.overlapBackends || '[]'));
+                });
+            }
+        }
+
+        // Recompute overlaps from allBackendModels and re-render the overlap section.
+        // Called once all pending backend loads (success or error) have completed.
+        function recomputeOverlaps() {
+            setOverlapItems(rebuildOverlapItemsFromModels());
         }
 
         function toggleCard(ev, name) {
@@ -2894,7 +3627,11 @@
         }
 
         function escHtml(s) {
-            return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
         }
 
         function renderModelItem(m) {
@@ -3199,15 +3936,8 @@
         updateCurlExamples();
 
         document.addEventListener('DOMContentLoaded', function() {
-            // Wire up click handlers for any server-rendered overlap chips.
-            var sec = document.getElementById('overlap-section');
-            if (sec) {
-                sec.querySelectorAll('.overlap-chip[data-model]').forEach(function(chip) {
-                    chip.addEventListener('click', function() {
-                        openRoutingModal(chip.dataset.model, JSON.parse(chip.dataset.backends));
-                    });
-                });
-            }
+            initOverlapControls();
+            setOverlapItems(normalizeOverlapEntries(overlapBootstrap));
 
             var allCards = document.querySelectorAll('.backend-card[data-backend]');
             var cards = [];

@@ -1310,3 +1310,364 @@ func TestResponses_WithRoutingConfig(t *testing.T) {
 		t.Errorf("response id = %v, want %q", respData["id"], "resp_routed")
 	}
 }
+
+// --- Three-backend failover chain ---
+
+func TestThreeBackendFailover_FirstTwoFail_ThirdSucceeds(t *testing.T) {
+	err5xx := &backend.BackendError{
+		StatusCode: http.StatusInternalServerError,
+		Body:       `{"error":{"message":"Internal Server Error"}}`,
+		Err:        fmt.Errorf("backend returned 500"),
+	}
+
+	b1 := &mockBackend{name: "primary", models: []string{"gpt-4o"}, chatErr: err5xx}
+	b2 := &mockBackend{name: "secondary", models: []string{"gpt-4o"}, chatErr: err5xx}
+	b3 := &mockBackend{name: "tertiary", models: []string{"gpt-4o"}, chatResp: successResponse()}
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"primary", "secondary", "tertiary"}},
+		},
+	}
+
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"primary": b1, "secondary": b2, "tertiary": b3,
+	}, routing)
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeChatRequest(t, "gpt-4o", false, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ChatCompletions(rec, req)
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Result().StatusCode)
+	}
+	if b1.requestCount != 1 {
+		t.Errorf("primary requests = %d, want 1", b1.requestCount)
+	}
+	if b2.requestCount != 1 {
+		t.Errorf("secondary requests = %d, want 1", b2.requestCount)
+	}
+	if b3.requestCount != 1 {
+		t.Errorf("tertiary requests = %d, want 1", b3.requestCount)
+	}
+}
+
+func TestThreeBackendFailover_AllFail_Returns502(t *testing.T) {
+	err5xx := &backend.BackendError{
+		StatusCode: http.StatusInternalServerError,
+		Body:       `{"error":{"message":"Internal Server Error"}}`,
+		Err:        fmt.Errorf("backend returned 500"),
+	}
+
+	b1 := &mockBackend{name: "a", models: []string{"gpt-4o"}, chatErr: err5xx}
+	b2 := &mockBackend{name: "b", models: []string{"gpt-4o"}, chatErr: err5xx}
+	b3 := &mockBackend{name: "c", models: []string{"gpt-4o"}, chatErr: err5xx}
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"a", "b", "c"}},
+		},
+	}
+
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"a": b1, "b": b2, "c": b3,
+	}, routing)
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeChatRequest(t, "gpt-4o", false, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ChatCompletions(rec, req)
+
+	if rec.Result().StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", rec.Result().StatusCode)
+	}
+	// All three backends should have been tried.
+	if b1.requestCount != 1 || b2.requestCount != 1 || b3.requestCount != 1 {
+		t.Errorf("requests = [%d, %d, %d], want [1, 1, 1]", b1.requestCount, b2.requestCount, b3.requestCount)
+	}
+}
+
+// --- 429 Rate Limit triggers fallback ---
+
+func TestFallbackOn429_RateLimit(t *testing.T) {
+	err429 := &backend.BackendError{
+		StatusCode: http.StatusTooManyRequests,
+		Body:       `{"error":{"message":"Rate limit exceeded"}}`,
+		Err:        fmt.Errorf("rate limited"),
+	}
+
+	primary := &mockBackend{name: "primary", models: []string{"gpt-4o"}, chatErr: err429}
+	fallback := &mockBackend{name: "fallback", models: []string{"gpt-4o"}, chatResp: successResponse()}
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"primary", "fallback"}},
+		},
+	}
+
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"primary": primary, "fallback": fallback,
+	}, routing)
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeChatRequest(t, "gpt-4o", false, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ChatCompletions(rec, req)
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (fallback should succeed)", rec.Result().StatusCode)
+	}
+	if primary.requestCount != 1 {
+		t.Errorf("primary requests = %d, want 1", primary.requestCount)
+	}
+	if fallback.requestCount != 1 {
+		t.Errorf("fallback requests = %d, want 1", fallback.requestCount)
+	}
+}
+
+// --- Network error triggers fallback ---
+
+func TestFallbackOnNetworkError(t *testing.T) {
+	primary := &mockBackend{
+		name:    "primary",
+		models:  []string{"gpt-4o"},
+		chatErr: fmt.Errorf("connection refused"), // plain error, not BackendError
+	}
+	fallback := &mockBackend{name: "fallback", models: []string{"gpt-4o"}, chatResp: successResponse()}
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"primary", "fallback"}},
+		},
+	}
+
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"primary": primary, "fallback": fallback,
+	}, routing)
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeChatRequest(t, "gpt-4o", false, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ChatCompletions(rec, req)
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (fallback should succeed)", rec.Result().StatusCode)
+	}
+	if fallback.requestCount != 1 {
+		t.Errorf("fallback requests = %d, want 1", fallback.requestCount)
+	}
+}
+
+// --- Mixed backend types: explicit routing across different types ---
+
+func TestMixedBackends_ExplicitRouting_CorrectDispatch(t *testing.T) {
+	openaiBackend := &mockBackend{name: "openai", models: []string{"gpt-4o"}, chatResp: successResponse()}
+	anthropicBackend := &mockBackend{name: "anthropic", models: []string{"claude-sonnet-4"}, chatResp: successResponse()}
+	copilotBackend := &mockBackend{name: "copilot", models: []string{"gpt-4o"}, chatResp: successResponse()}
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"openai", "copilot"}},
+			{Model: "claude-sonnet-4", Backends: []string{"anthropic"}},
+		},
+	}
+
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"openai": openaiBackend, "anthropic": anthropicBackend, "copilot": copilotBackend,
+	}, routing)
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+
+	// Request gpt-4o → should go to openai (first in list).
+	req1 := makeChatRequest(t, "gpt-4o", false, "test-api-key")
+	req1 = req1.WithContext(ctx)
+	rec1 := httptest.NewRecorder()
+	handler.ChatCompletions(rec1, req1)
+
+	if rec1.Result().StatusCode != http.StatusOK {
+		t.Fatalf("gpt-4o: status = %d, want 200", rec1.Result().StatusCode)
+	}
+	if openaiBackend.requestCount != 1 {
+		t.Errorf("openai requests = %d, want 1", openaiBackend.requestCount)
+	}
+	if copilotBackend.requestCount != 0 {
+		t.Errorf("copilot requests = %d, want 0 (openai succeeded)", copilotBackend.requestCount)
+	}
+
+	// Request claude-sonnet-4 → should go to anthropic.
+	req2 := makeChatRequest(t, "claude-sonnet-4", false, "test-api-key")
+	req2 = req2.WithContext(ctx)
+	rec2 := httptest.NewRecorder()
+	handler.ChatCompletions(rec2, req2)
+
+	if rec2.Result().StatusCode != http.StatusOK {
+		t.Fatalf("claude: status = %d, want 200", rec2.Result().StatusCode)
+	}
+	if anthropicBackend.requestCount != 1 {
+		t.Errorf("anthropic requests = %d, want 1", anthropicBackend.requestCount)
+	}
+}
+
+// --- Streaming: three-backend failover ---
+
+func TestStreamingThreeBackendFailover(t *testing.T) {
+	streamErr := &backend.BackendError{
+		StatusCode: http.StatusBadGateway,
+		Body:       `{"error":"upstream error"}`,
+		Err:        fmt.Errorf("stream error"),
+	}
+
+	b1 := &mockBackend{name: "a", models: []string{"gpt-4o"}, streamErr: streamErr}
+	b2 := &mockBackend{name: "b", models: []string{"gpt-4o"}, streamErr: streamErr}
+	b3 := &mockBackend{
+		name:       "c",
+		models:     []string{"gpt-4o"},
+		streamBody: "data: {\"id\":\"chatcmpl-stream\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\ndata: [DONE]\n\n",
+	}
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"a", "b", "c"}},
+		},
+	}
+
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"a": b1, "b": b2, "c": b3,
+	}, routing)
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeChatRequest(t, "gpt-4o", true, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ChatCompletions(rec, req)
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Result().StatusCode)
+	}
+	if b1.requestCount != 1 || b2.requestCount != 1 || b3.requestCount != 1 {
+		t.Errorf("requests = [%d, %d, %d], want [1, 1, 1]", b1.requestCount, b2.requestCount, b3.requestCount)
+	}
+}
+
+// --- Unknown model returns 400 ---
+
+func TestUnknownModel_Returns400(t *testing.T) {
+	b := &mockBackend{name: "openai", models: []string{"gpt-4o"}}
+
+	handler, _, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"openai": b,
+	}, config.RoutingConfig{})
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeChatRequest(t, "nonexistent-model", false, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ChatCompletions(rec, req)
+
+	if rec.Result().StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Result().StatusCode)
+	}
+}
+
+// --- Stats record fallback flag ---
+
+func TestStats_FallbackFlag_SetWhenSecondBackendSucceeds(t *testing.T) {
+	err5xx := &backend.BackendError{
+		StatusCode: http.StatusInternalServerError,
+		Body:       `{"error":{"message":"error"}}`,
+		Err:        fmt.Errorf("backend error"),
+	}
+
+	primary := &mockBackend{name: "primary", models: []string{"gpt-4o"}, chatErr: err5xx}
+	fallback := &mockBackend{name: "fallback", models: []string{"gpt-4o"}, chatResp: successResponse()}
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"primary", "fallback"}},
+		},
+	}
+
+	handler, collector, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"primary": primary, "fallback": fallback,
+	}, routing)
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeChatRequest(t, "gpt-4o", false, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ChatCompletions(rec, req)
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Result().StatusCode)
+	}
+
+	records := collector.Recent(10)
+	if len(records) == 0 {
+		t.Fatal("expected stats records")
+	}
+	lastRecord := records[0]
+	if !lastRecord.Fallback {
+		t.Error("expected Fallback=true in stats when second backend served the response")
+	}
+	if lastRecord.Backend != "fallback" {
+		t.Errorf("backend = %q, want %q", lastRecord.Backend, "fallback")
+	}
+}
+
+func TestStats_FallbackFlag_NotSetWhenFirstBackendSucceeds(t *testing.T) {
+	primary := &mockBackend{name: "primary", models: []string{"gpt-4o"}, chatResp: successResponse()}
+	fallback := &mockBackend{name: "fallback", models: []string{"gpt-4o"}, chatResp: successResponse()}
+
+	routing := config.RoutingConfig{
+		Models: []config.ModelRoutingConfig{
+			{Model: "gpt-4o", Backends: []string{"primary", "fallback"}},
+		},
+	}
+
+	handler, collector, cleanup := setupHandlerWithBackends(t, map[string]backend.Backend{
+		"primary": primary, "fallback": fallback,
+	}, routing)
+	defer cleanup()
+
+	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test-client"})
+	req := makeChatRequest(t, "gpt-4o", false, "test-api-key")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ChatCompletions(rec, req)
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Result().StatusCode)
+	}
+
+	records := collector.Recent(10)
+	if len(records) == 0 {
+		t.Fatal("expected stats records")
+	}
+	if records[0].Fallback {
+		t.Error("expected Fallback=false when first backend succeeded")
+	}
+	if fallback.requestCount != 0 {
+		t.Errorf("fallback should not have been called, got %d requests", fallback.requestCount)
+	}
+}

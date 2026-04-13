@@ -36,8 +36,9 @@ type RouteEntry struct {
 }
 
 type Message struct {
-	Role    string          `json:"role"`
-	Content json.RawMessage `json:"content"`
+	Role      string          `json:"role"`
+	Content   json.RawMessage `json:"content"`
+	ToolCalls json.RawMessage `json:"tool_calls,omitempty"`
 }
 
 type ChatCompletionResponse struct {
