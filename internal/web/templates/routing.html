@@ -169,11 +169,6 @@
         .form-input { width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:0.45rem 0.7rem;font-size:0.85rem;outline:none;transition:border-color .15s; }
         .form-input:focus { border-color: var(--accent); }
 
-        .window-pills { display: flex; gap: 0.4rem; flex-wrap: wrap; }
-        .pill { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); border-radius: 6px; padding: 0.35rem 0.75rem; font-size: 0.8rem; font-weight: 500; cursor: pointer; transition: all 0.15s; }
-        .pill:hover { border-color: var(--accent); color: var(--accent); }
-        .pill.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
-
         .empty-state { text-align: center; padding: 4rem 2rem; color: var(--text-dim); }
         .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
         .empty-state p { font-size: 0.9rem; }
@@ -266,19 +261,7 @@
     </div>
 
     <!-- ── Analytics section ─────────────────────────────────── -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:1rem">
-        <div class="section-title" style="margin-bottom:0">Analytics</div>
-        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
-            <div class="window-pills" id="windowPills">
-                <button class="pill" data-window="1h">1h</button>
-                <button class="pill active" data-window="24h">24h</button>
-                <button class="pill" data-window="7d">7d</button>
-                <button class="pill" data-window="30d">30d</button>
-            </div>
-            <span id="loadingIndicator" style="display:none"><span class="spinner"></span></span>
-            <button class="pill" onclick="loadData()" style="border-color:var(--accent);color:var(--accent)" title="Refresh">&#8635; Refresh</button>
-        </div>
-    </div>
+    {{template "filter_bar" (dict "BarId" "routing-filter-bar" "DefaultWindow" "1d" "RefreshFn" "loadData" "ShowRefresh" true "ShowSpinner" true)}}
 
     <!-- Summary Cards -->
     <div class="summary-cards" id="summaryCards">
@@ -318,7 +301,9 @@
 </div>
 
 <script>
-    let currentWindow = '24h';
+    function getWindow() {
+        return (window.filterBarGetWindow && window.filterBarGetWindow['routing-filter-bar']) ? window.filterBarGetWindow['routing-filter-bar']() : '1d';
+    }
 
     // ── Config state (seeded from Go template) ─────────────────────
     let configState = {{.RoutingJSON}};
@@ -419,16 +404,6 @@
         }
     }
 
-    // ── Analytics: Window pills ────────────────────────────────────
-    document.getElementById('windowPills').addEventListener('click', function(e) {
-        const btn = e.target.closest('[data-window]');
-        if (!btn) return;
-        document.querySelectorAll('#windowPills .pill').forEach(p => p.classList.remove('active'));
-        btn.classList.add('active');
-        currentWindow = btn.dataset.window;
-        loadData();
-    });
-
     // ── Analytics: Helpers ─────────────────────────────────────────
     function fmtLat(ms) {
         if (ms === 0) return '—';
@@ -486,7 +461,7 @@
         const strategies = [...new Set(models.map(m => m.strategy).filter(Boolean))];
         document.getElementById('cardModels').textContent = models.length;
         document.getElementById('cardRequests').textContent = fmtNum(totalReqs);
-        document.getElementById('cardWindow').textContent = 'in last ' + currentWindow;
+        document.getElementById('cardWindow').textContent = 'in last ' + getWindow();
         document.getElementById('cardFallback').textContent = fmtPct(totalFallPct);
         document.getElementById('cardStrategies').textContent = strategies.length || '&#8212;';
         document.getElementById('cardStrategyList').textContent = strategies.length ? strategies.join(', ') : 'priority (default)';
@@ -536,9 +511,9 @@
 
     // ── Analytics: Load ────────────────────────────────────────────
     async function loadData() {
-        document.getElementById('loadingIndicator').style.display = '';
+        if (window.filterBarShowSpinner && window.filterBarShowSpinner['routing-filter-bar']) window.filterBarShowSpinner['routing-filter-bar'](true);
         try {
-            const res = await fetch('/ui/routing/data?window=' + currentWindow);
+            const res = await fetch('/ui/routing/data?window=' + getWindow());
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const data = await res.json();
             renderSummary(data.models || []);
@@ -547,7 +522,7 @@
             document.getElementById('modelList').innerHTML =
                 `<div class="empty-state"><div class="icon">&#9888;</div><p>Failed to load routing data: ${esc(e.message)}</p></div>`;
         } finally {
-            document.getElementById('loadingIndicator').style.display = 'none';
+            if (window.filterBarShowSpinner && window.filterBarShowSpinner['routing-filter-bar']) window.filterBarShowSpinner['routing-filter-bar'](false);
         }
     }
 
@@ -558,7 +533,7 @@
         content.innerHTML = '<p style="color:var(--text-dim)">Loading…</p>';
         modal.style.display = '';
         try {
-            const res = await fetch('/ui/routing/backend-fallbacks?name=' + encodeURIComponent(name) + '&window=' + currentWindow);
+            const res = await fetch('/ui/routing/backend-fallbacks?name=' + encodeURIComponent(name) + '&window=' + getWindow());
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const data = await res.json();
             renderDrilldown(data.items || [], name);

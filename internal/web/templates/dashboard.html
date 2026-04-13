@@ -293,16 +293,8 @@
                 gap: 0.75rem;
             }
 
-            .dash-controls {
+            .filter-bar {
                 width: 100%;
-            }
-
-            .refresh-controls {
-                width: 100%;
-            }
-
-            .window-selector {
-                flex-wrap: wrap;
             }
 
             .backend-grid {
@@ -324,11 +316,6 @@
         @media (max-width: 480px) {
             .cards {
                 grid-template-columns: 1fr;
-            }
-
-            .window-btn {
-                padding: 0.35rem 0.5rem;
-                font-size: 0.7rem;
             }
         }
 
@@ -515,35 +502,6 @@
             font-size: 0.875rem;
         }
 
-        .window-selector {
-            display: flex;
-            gap: 0.35rem;
-            align-items: center;
-        }
-
-        .window-btn {
-            background: none;
-            border: 1px solid var(--border);
-            color: var(--text-dim);
-            cursor: pointer;
-            padding: 0.25rem 0.65rem;
-            border-radius: 5px;
-            font-size: 0.75rem;
-            font-family: var(--mono);
-            transition: all 0.15s;
-        }
-
-        .window-btn:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-
-        .window-btn.active {
-            background: var(--accent-dim);
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-
         .dash-header {
             display: flex;
             align-items: center;
@@ -554,69 +512,6 @@
         }
 
         .dash-header h1 { margin-bottom: 0; }
-
-        .dash-controls {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            flex-wrap: wrap;
-        }
-
-        .refresh-controls {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .refresh-btn {
-            background: none;
-            border: 1px solid var(--accent);
-            color: var(--accent);
-            padding: 0.3rem 0.7rem;
-            border-radius: 5px;
-            font-size: 0.75rem;
-            font-family: var(--mono);
-            cursor: pointer;
-            transition: all 0.15s;
-            white-space: nowrap;
-        }
-
-        .refresh-btn:hover {
-            background: var(--accent-dim);
-        }
-
-        .refresh-btn:active {
-            transform: rotate(180deg);
-            transition: transform 0.3s ease;
-        }
-
-        .auto-refresh-select {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            color: var(--text-dim);
-            padding: 0.3rem 0.4rem;
-            border-radius: 5px;
-            font-size: 0.75rem;
-            font-family: var(--mono);
-            cursor: pointer;
-            transition: all 0.15s;
-            outline: none;
-        }
-
-        .auto-refresh-select:hover,
-        .auto-refresh-select:focus {
-            border-color: var(--accent);
-            color: var(--text);
-        }
-
-        .refresh-countdown {
-            font-size: 0.65rem;
-            font-family: var(--mono);
-            color: var(--text-dim);
-            opacity: 0.7;
-            min-width: 3.2em;
-            text-align: right;
-        }
 
         .pagination {
             display: flex;
@@ -723,26 +618,7 @@
     <main>
         <div class="dash-header">
             <h1>Dashboard</h1>
-            <div class="dash-controls">
-                <div class="window-selector">
-                    <button class="window-btn" data-window="5m">5m</button>
-                    <button class="window-btn" data-window="15m">15m</button>
-                    <button class="window-btn" data-window="30m">30m</button>
-                    <button class="window-btn" data-window="1h">1h</button>
-                    <button class="window-btn" data-window="2h">2h</button>
-                </div>
-                <div class="refresh-controls">
-                    <button class="refresh-btn" onclick="fetchDash()" title="Refresh now">&#x21bb; Refresh</button>
-                    <select class="auto-refresh-select" id="autoRefreshSelect" onchange="setAutoRefresh(this.value)" title="Auto-refresh interval">
-                        <option value="5000">5s</option>
-                        <option value="15000">15s</option>
-                        <option value="30000">30s</option>
-                        <option value="60000">1m</option>
-                        <option value="0">Off</option>
-                    </select>
-                    <span class="refresh-countdown" id="refreshCountdown"></span>
-                </div>
-            </div>
+            {{template "filter_bar" (dict "BarId" "dash-filter-bar" "DefaultWindow" "1h" "RefreshFn" "fetchDash" "ShowRefresh" true "ShowAutoRefresh" true "AutoRefreshOptions" "5000:5s,15000:15s,30000:30s,60000:1m,0:Off" "DefaultAutoRefresh" "5000" "AutoRefreshKey" "dashAutoRefresh" "WindowStorageKey" "dashWindow")}}
         </div>
 
         <!-- Summary cards — the card <div> elements are permanent; only inner text is updated -->
@@ -873,105 +749,29 @@ function esc(s) {
 function setText(id, val) { document.getElementById(id).textContent = val; }
 
 // ── State ─────────────────────────────────────────────────────────────────
-var dashWin       = localStorage.getItem('dashWindow') || '1h';
-var dashPage      = 0;
-var dashTimer     = null;
-var dashAutoMs    = parseInt(localStorage.getItem('dashAutoRefresh') || '5000', 10);
-var dashCountdown = 0;
-var dashTickInterval = null;
-
-// ── Boot ──────────────────────────────────────────────────────────────────
-(function() {
-    document.querySelectorAll('.window-btn').forEach(function(btn) {
-        btn.classList.toggle('active', btn.dataset.window === dashWin);
-        btn.addEventListener('click', function() {
-            dashWin  = btn.dataset.window;
-            dashPage = 0;
-            localStorage.setItem('dashWindow', dashWin);
-            document.querySelectorAll('.window-btn').forEach(function(b) {
-                b.classList.toggle('active', b.dataset.window === dashWin);
-            });
-            fetchDash();
-        });
-    });
-
-    // Restore auto-refresh selector from localStorage
-    var sel = document.getElementById('autoRefreshSelect');
-    if (sel) sel.value = String(dashAutoMs);
-
-    fetchDash();
-})();
-
-// ── Auto-refresh ──────────────────────────────────────────────────────────
-function updateCountdownDisplay() {
-    var el = document.getElementById('refreshCountdown');
-    if (!el) return;
-    if (dashAutoMs <= 0 || dashCountdown <= 0) {
-        el.textContent = '';
-        return;
-    }
-    var sec = Math.ceil(dashCountdown / 1000);
-    el.textContent = sec + 's';
-}
-
-function startCountdown() {
-    clearInterval(dashTickInterval);
-    if (dashAutoMs <= 0) {
-        dashCountdown = 0;
-        updateCountdownDisplay();
-        return;
-    }
-    dashCountdown = dashAutoMs;
-    updateCountdownDisplay();
-    dashTickInterval = setInterval(function() {
-        dashCountdown -= 1000;
-        if (dashCountdown <= 0) {
-            dashCountdown = 0;
-            clearInterval(dashTickInterval);
-        }
-        updateCountdownDisplay();
-    }, 1000);
-}
-
-function setAutoRefresh(ms) {
-    dashAutoMs = parseInt(ms, 10);
-    localStorage.setItem('dashAutoRefresh', String(dashAutoMs));
-    clearTimeout(dashTimer);
-    if (dashAutoMs > 0) {
-        dashTimer = setTimeout(fetchDash, dashAutoMs);
-        startCountdown();
-    } else {
-        dashCountdown = 0;
-        clearInterval(dashTickInterval);
-        updateCountdownDisplay();
-    }
-}
-
-function scheduleNext() {
-    clearTimeout(dashTimer);
-    if (dashAutoMs > 0) {
-        dashTimer = setTimeout(fetchDash, dashAutoMs);
-        startCountdown();
-    }
-}
+var dashPage = 0;
 
 // ── Fetch ─────────────────────────────────────────────────────────────────
 function fetchDash(page) {
     if (page !== undefined) dashPage = page;
-    clearTimeout(dashTimer);
+    var dashWin = (window.filterBarGetWindow && window.filterBarGetWindow['dash-filter-bar']) ? window.filterBarGetWindow['dash-filter-bar']() : '1h';
     fetch('/ui/dashboard/data?window=' + dashWin + '&page=' + dashPage)
         .then(function(r) { return r.json(); })
         .then(function(d) {
             renderDash(d);
-            scheduleNext();
+            if (window.filterBarReschedule && window.filterBarReschedule['dash-filter-bar']) window.filterBarReschedule['dash-filter-bar']();
         })
         .catch(function() {
-            scheduleNext();
+            if (window.filterBarReschedule && window.filterBarReschedule['dash-filter-bar']) window.filterBarReschedule['dash-filter-bar']();
         });
 }
 
+// Initial fetch
+fetchDash();
+
 // ── Render ────────────────────────────────────────────────────────────────
 function renderDash(d) {
+    var dashWin = (window.filterBarGetWindow && window.filterBarGetWindow['dash-filter-bar']) ? window.filterBarGetWindow['dash-filter-bar']() : '1h';
     var lbl = d.window_label || dashWin;
     var ws  = d.window_stats || {};
     var td  = d.today        || {};

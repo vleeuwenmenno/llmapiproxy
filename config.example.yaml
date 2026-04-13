@@ -121,18 +121,15 @@ backends:
   # Low-cost subscription for open coding models. $5 first month, $10/month.
   # Uses the same API key as Zen.
   # Models: go/glm-5.1, go/kimi-k2.5, go/minimax-m2.5, etc.
+  #
+  # Note: The Go endpoint does not expose a /models endpoint (returns 404).
+  # Use models_url to point to the Zen endpoint for model discovery.
+  # Chat completions still route to the Go endpoint via base_url.
   - name: go
     type: openai
     base_url: https://opencode.ai/zen/go/v1
     api_key: "your-opencode-go-key"
-    models:
-      - glm-5.1
-      - glm-5
-      - kimi-k2.5
-      - mimo-v2-pro
-      - mimo-v2-omni
-      - minimax-m2.5
-      - minimax-m2.7
+    models_url: https://opencode.ai/zen/v1
 
   # ── GitHub Copilot ────────────────────────────────────────
   # Uses GitHub Device Code Flow for authentication.

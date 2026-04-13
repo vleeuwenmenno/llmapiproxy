@@ -100,6 +100,12 @@ func init() {
 			}
 			return b
 		},
+		"splitList": func(sep, s string) []string {
+			if s == "" {
+				return nil
+			}
+			return strings.Split(s, sep)
+		},
 		// routeChain renders an HTML snippet showing the attempted backend chain.
 		// attempted is a comma-separated list; winner is the backend that succeeded.
 		// If winner is empty (all failed), the last entry in attempted is shown as failed.

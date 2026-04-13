@@ -25,6 +25,10 @@ type OpenAIBackend struct {
 	models       []config.ModelConfig
 	client       *http.Client
 
+	// modelsURL overrides the URL for model discovery (/models endpoint).
+	// When empty, models are fetched from baseURL + "/models".
+	modelsURL string
+
 	// Model list cache
 	modelCacheTTL time.Duration
 	cacheMu       sync.RWMutex
@@ -43,6 +47,7 @@ func NewOpenAI(cfg config.BackendConfig, cacheTTL time.Duration) *OpenAIBackend 
 			Timeout: 5 * time.Minute,
 		},
 		modelCacheTTL: cacheTTL,
+		modelsURL:     strings.TrimRight(cfg.ModelsURL, "/"),
 	}
 }
 
@@ -339,9 +344,18 @@ func (b *OpenAIBackend) applyConfigOverrides(m *Model, mc config.ModelConfig) {
 	}
 }
 
+// modelsEndpoint returns the URL for the /models endpoint.
+// If modelsURL is configured, it takes precedence over baseURL + "/models".
+func (b *OpenAIBackend) modelsEndpoint() string {
+	if b.modelsURL != "" {
+		return b.modelsURL + "/models"
+	}
+	return b.baseURL + "/models"
+}
+
 // fetchUpstreamModels fetches and returns the raw upstream model list.
 func (b *OpenAIBackend) fetchUpstreamModels(ctx context.Context) ([]upstreamModel, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, b.baseURL+"/models", nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, b.modelsEndpoint(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -377,7 +391,7 @@ func (b *OpenAIBackend) fetchUpstreamModelMap(ctx context.Context) map[string]up
 
 // FetchUpstreamModelsRaw returns the raw HTTP response body from the upstream models endpoint.
 func (b *OpenAIBackend) FetchUpstreamModelsRaw(ctx context.Context) (*UpstreamModelsResponse, error) {
-	modelsURL := b.baseURL + "/models"
+	modelsURL := b.modelsEndpoint()
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)

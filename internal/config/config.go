@@ -113,6 +113,13 @@ type BackendConfig struct {
 	Models       []ModelConfig     `yaml:"models,omitempty"`
 	Enabled      *bool             `yaml:"enabled,omitempty"`
 	OAuth        *OAuthConfig      `yaml:"oauth,omitempty"`
+
+	// ModelsURL overrides the URL used for model discovery (/models endpoint).
+	// When set, the proxy fetches the model list from this URL instead of
+	// base_url + "/models". Useful for backends like OpenCode Go that don't
+	// expose their own /models endpoint but share a model catalog with another
+	// endpoint (e.g. OpenCode Zen). Chat completions still route to base_url.
+	ModelsURL string `yaml:"models_url,omitempty"`
 }
 
 // ModelIDs returns the list of model IDs as plain strings (backward compat).
@@ -239,6 +246,7 @@ func (bc *BackendConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 		ModelsRaw    interface{}       `yaml:"models,omitempty"`
 		Enabled      *bool             `yaml:"enabled,omitempty"`
 		OAuth        *OAuthConfig      `yaml:"oauth,omitempty"`
+		ModelsURL    string            `yaml:"models_url,omitempty"`
 	}
 	var r raw
 	if err := unmarshal(&r); err != nil {
@@ -251,6 +259,7 @@ func (bc *BackendConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	bc.ExtraHeaders = r.ExtraHeaders
 	bc.Enabled = r.Enabled
 	bc.OAuth = r.OAuth
+	bc.ModelsURL = r.ModelsURL
 
 	if r.ModelsRaw != nil {
 		models, err := parseModelsField(r.ModelsRaw)

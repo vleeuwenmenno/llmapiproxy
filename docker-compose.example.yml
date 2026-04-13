@@ -15,10 +15,13 @@ services:
   llmapiproxy:
     image: ghcr.io/vleeuwenmenno/llmapiproxy:latest
     ports:
-      - "8000:8000"
+      - "8000:8000" # Used for the API and web UI
+      - "1455:1455" # Used for the optional OAuth redirect server (if any backends require it)
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
-      - llmapiproxy_data:/data
+      - ./config.yaml:/app/config.yaml
+      - ./stats.db:/app/stats.db
+      - ./chat.db:/app/chat.db
+      - ./tokens:/app/tokens
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -26,6 +29,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
-
-volumes:
-  llmapiproxy_data:

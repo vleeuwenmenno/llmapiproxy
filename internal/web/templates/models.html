@@ -559,12 +559,6 @@
             margin: 0.5rem 1.1rem;
             display: inline-block;
             font-family: var(--mono);
-            cursor: pointer;
-            transition: background 0.15s, border-color 0.15s;
-        }
-        .dynamic-badge:hover {
-            background: rgba(167,139,250,0.3);
-            border-color: rgba(167,139,250,0.5);
         }
 
         .backend-dropdown-container {
@@ -1470,6 +1464,215 @@
         .curl-key-select:focus { border-color: var(--accent); }
         .curl-key-select option { background: var(--surface); color: var(--text); }
 
+        /* ── Quick-connect shared selector ───────────────────────── */
+        .connect-configurator {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 0.9rem;
+            margin-bottom: 1rem;
+        }
+        .connect-configurator-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+            gap: 0.9rem;
+            align-items: start;
+        }
+        .connect-configurator-panel {
+            min-width: 0;
+        }
+        .connect-selector-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.8rem;
+        }
+        .connect-selector-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+            align-items: center;
+        }
+        .connect-meta-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.25rem 0.55rem;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text-dim);
+            font-size: 0.72rem;
+            font-family: var(--mono);
+        }
+        .connect-selector-actions {
+            display: flex;
+            gap: 0.45rem;
+            flex-wrap: wrap;
+        }
+        .connect-action-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            border-radius: 6px;
+            padding: 0.3rem 0.55rem;
+            cursor: pointer;
+            font-size: 0.72rem;
+            font-family: var(--mono);
+            transition: all 0.15s;
+        }
+        .connect-action-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .connect-selector-search {
+            width: 100%;
+            padding: 0.55rem 0.75rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            outline: none;
+            transition: border-color 0.15s;
+            margin-bottom: 0.8rem;
+        }
+        .connect-selector-search:focus { border-color: var(--accent); }
+        .connect-selector-group-label {
+            display: block;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.45rem;
+        }
+        .connect-backend-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+            margin-bottom: 0.85rem;
+        }
+        .connect-backend-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.32rem 0.6rem;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--bg);
+            color: var(--text-dim);
+            font-size: 0.76rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .connect-backend-chip input { accent-color: var(--accent); cursor: pointer; }
+        .connect-backend-chip.active {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-dim);
+        }
+        .connect-model-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            max-height: 320px;
+            overflow: auto;
+            padding-right: 0.15rem;
+        }
+        .connect-model-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.7rem;
+            padding: 0.7rem 0.8rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+        .connect-model-row input[type="checkbox"] {
+            margin-top: 0.2rem;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+        .connect-model-main {
+            min-width: 0;
+            flex: 1;
+        }
+        .connect-model-head {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 0.3rem;
+        }
+        .connect-model-name {
+            font-family: var(--mono);
+            font-size: 0.82rem;
+            color: var(--text);
+            font-weight: 600;
+            word-break: break-word;
+        }
+        .connect-model-sources {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            line-height: 1.45;
+        }
+        .connect-model-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            margin-top: 0.4rem;
+        }
+        .connect-side-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 0.85rem;
+        }
+        .connect-control-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 0.8rem;
+        }
+        .connect-control-card label {
+            display: block;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.4rem;
+        }
+        .connect-select {
+            width: 100%;
+            padding: 0.5rem 0.7rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            outline: none;
+        }
+        .connect-select:focus { border-color: var(--accent); }
+        .connect-help-text {
+            margin-top: 0.45rem;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            line-height: 1.5;
+        }
+        .connect-empty-state {
+            padding: 1rem;
+            border: 1px dashed var(--border);
+            border-radius: 10px;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            background: var(--bg);
+        }
+        @media (max-width: 980px) {
+            .connect-configurator-grid { grid-template-columns: 1fr; }
+        }
+
         .copy-block-btn {
             background: transparent;
             border: 1px solid var(--border);
@@ -2064,7 +2267,7 @@
                     {{if and $oauth (not $oauth.Authenticated) .Enabled}}
                     <div style="padding:0.85rem 1.1rem;font-size:0.8rem;color:var(--text-dim);font-style:italic">Authentication required — connect below to load models.</div>
                     {{else if .IsDynamic}}
-                    <span class="dynamic-badge" onclick="showUpstreamModels('{{.Name}}')" title="Click to inspect raw upstream /models response">&#x221E; dynamic &#x2014; uses /v1/models from upstream</span>
+                    <span class="dynamic-badge">&#x221E; dynamic &#x2014; uses /v1/models from upstream</span>
                     {{if .Enabled}}<div class="model-loading"><div class="spinner"></div><span>Loading models&#x2026;</span></div>{{else}}<div style="padding:0.85rem 1.1rem;font-size:0.75rem;color:var(--text-dim);font-family:var(--mono)">Enable this backend to load models.</div>{{end}}
                     {{else}}
                     {{range .Models}}
@@ -2164,6 +2367,14 @@
             <button class="connect-btn" onclick="openModal('modal-curl')">
                 <img class="connect-icon" src="/ui/static/icons/terminal.svg" alt="API">
                 curl / HTTP
+            </button>
+            <button class="connect-btn" onclick="openModal('modal-opencode')">
+                <img class="connect-icon" src="/ui/static/icons/opencode.svg" alt="OpenCode">
+                OpenCode
+            </button>
+            <button class="connect-btn" onclick="openModal('modal-droid')">
+                <img class="connect-icon" src="/ui/static/icons/droid.svg" alt="Droid">
+                Droid
             </button>
         </div>
     </main>
@@ -2438,11 +2649,8 @@
             <div class="modal-body">
                 <p>Zed uses the OpenAI-compatible provider for custom endpoints. Add the following to your <strong>~/.config/zed/settings.json</strong>:</p>
 
-                <div class="step">Step 1 — Add to settings.json</div>
-                <div id="zed-backend-filter" style="display:none;margin-bottom:0.75rem">
-                    <div style="font-size:0.8rem;color:var(--text);margin-bottom:0.5rem">Include backends:</div>
-                    <div id="zed-backend-checkboxes" style="display:flex;flex-wrap:wrap;gap:0.4rem"></div>
-                </div>
+                <div class="step">Step 1 — Choose flattened models</div>
+                <div class="connect-configurator" id="zed-selector"></div>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>~/.config/zed/settings.json</span>
@@ -2461,7 +2669,79 @@
                     <pre id="zed-env">export LLM_API_PROXY_API_KEY="your-proxy-api-key"</pre>
                 </div>
 
-                <p>Reload Zed after saving. The models will appear in the Agent Panel under <strong>LLM API Proxy</strong>.</p>
+                <p>Reload Zed after saving. The generated config uses flattened model IDs, so the proxy decides which backend should serve each request.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── OpenCode Modal ────────────────────────────────────────── -->
+    <div class="modal-overlay" id="modal-opencode" onclick="closeOnBackdrop(event, 'modal-opencode')">
+        <div class="modal">
+            <div class="modal-header">
+                <h2><img src="/ui/static/icons/opencode.svg" style="width:18px;height:18px;vertical-align:middle;margin-right:0.4rem" alt="OpenCode">Connect OpenCode</h2>
+                <button class="modal-close" onclick="closeModal('modal-opencode')">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+                <p>OpenCode can use this proxy as an OpenAI-compatible provider. Add the following to your <strong>~/.config/opencode/opencode.json</strong>:</p>
+
+                <div class="step">Step 1 — Choose flattened models</div>
+                <div class="connect-configurator" id="opencode-selector"></div>
+                <div class="code-block">
+                    <div class="code-block-header">
+                        <span>~/.config/opencode/opencode.json</span>
+                        <button class="copy-block-btn" onclick="copyBlock(this, 'opencode-config')">copy</button>
+                    </div>
+                    <pre id="opencode-config">Loading models…</pre>
+                </div>
+
+                <div class="step">Step 2 — Set your API key</div>
+                <p>OpenCode should read the key from the environment variable <strong>LLM_API_PROXY_API_KEY</strong>. Set it in your shell profile:</p>
+                <div class="code-block">
+                    <div class="code-block-header">
+                        <span>~/.zshrc or ~/.bashrc</span>
+                        <button class="copy-block-btn" onclick="copyBlock(this, 'opencode-env')">copy</button>
+                    </div>
+                    <pre id="opencode-env">export LLM_API_PROXY_API_KEY="your-proxy-api-key"</pre>
+                </div>
+
+                <div class="step">Step 3 — Reload OpenCode</div>
+                <p>Restart OpenCode after saving. The generated config points at a single proxy provider and uses flattened model IDs so routing stays inside the proxy.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Droid Modal ───────────────────────────────────────────── -->
+    <div class="modal-overlay" id="modal-droid" onclick="closeOnBackdrop(event, 'modal-droid')">
+        <div class="modal">
+            <div class="modal-header">
+                <h2><img src="/ui/static/icons/droid.svg" style="width:18px;height:18px;vertical-align:middle;margin-right:0.4rem" alt="Droid">Connect Droid</h2>
+                <button class="modal-close" onclick="closeModal('modal-droid')">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+                <p>Droid/Factory can load custom OpenAI-compatible models. Add the following to your <strong>~/.factory/settings.json</strong>:</p>
+
+                <div class="step">Step 1 — Choose flattened models</div>
+                <div class="connect-configurator" id="droid-selector"></div>
+                <div class="code-block">
+                    <div class="code-block-header">
+                        <span>~/.factory/settings.json</span>
+                        <button class="copy-block-btn" onclick="copyBlock(this, 'droid-config')">copy</button>
+                    </div>
+                    <pre id="droid-config">Loading models…</pre>
+                </div>
+
+                <div class="step">Step 2 — Set your API key</div>
+                <p>Droid supports environment variable interpolation in <strong>settings.json</strong>. Set <strong>LLM_API_PROXY_API_KEY</strong> in your shell profile:</p>
+                <div class="code-block">
+                    <div class="code-block-header">
+                        <span>~/.zshrc or ~/.bashrc</span>
+                        <button class="copy-block-btn" onclick="copyBlock(this, 'droid-env')">copy</button>
+                    </div>
+                    <pre id="droid-env">export LLM_API_PROXY_API_KEY="your-proxy-api-key"</pre>
+                </div>
+
+                <div class="step">Step 3 — Refresh Droid</div>
+                <p>Restart Droid or reload its settings. The generated models are flattened bare IDs, and the proxy handles backend routing internally.</p>
             </div>
         </div>
     </div>
@@ -2476,12 +2756,8 @@
             <div class="modal-body">
                 <div class="curl-config">
                     <div class="curl-field">
-                        <label for="curl-model-input">Model</label>
-                        <div class="curl-combo-wrap" id="curl-model-combo">
-                            <input type="text" class="curl-combo-input" id="curl-model-input" placeholder="Search or select a model…" autocomplete="off">
-                            <svg class="curl-combo-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                            <div class="curl-combo-list" id="curl-model-list"></div>
-                        </div>
+                        <label>Flattened model selector</label>
+                        <div class="connect-configurator" id="curl-selector" style="margin-bottom:0"></div>
                     </div>
                     <div class="curl-field">
                         <label for="curl-key-select">API Key</label>
@@ -2532,23 +2808,6 @@
                     </div>
                     <pre id="curl-health">curl http://{{.DisplayAddr}}/health</pre>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ── Upstream Models Inspector Modal ────────────────────────── -->
-    <div class="modal-overlay" id="modal-upstream-models" onclick="closeOnBackdrop(event, 'modal-upstream-models')">
-        <div class="modal" style="max-width:720px">
-            <div class="modal-header">
-                <h2 id="upstream-title">Raw Upstream Models</h2>
-                <button class="modal-close" onclick="closeModal('modal-upstream-models')">&#x2715;</button>
-            </div>
-            <div class="modal-body">
-                <pre id="upstream-body" style="max-height:60vh;overflow:auto;font-size:0.8rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;background:var(--bg-alt);padding:1rem;border-radius:6px;border:1px solid var(--border)">Fetching upstream /models response&#x2026;</pre>
-            </div>
-            <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:0.5rem">
-                <button id="upstream-copy-btn" class="copy-block-btn" onclick="copyUpstreamModels()" style="display:none">Copy</button>
-                <button class="modal-close" onclick="closeModal('modal-upstream-models')">Close</button>
             </div>
         </div>
     </div>
@@ -2611,63 +2870,13 @@
             document.getElementById(id).classList.add('open');
             document.body.style.overflow = 'hidden';
             if (id === 'modal-zed' && !zedConfigBuilt) buildZedConfig();
+            if (id === 'modal-opencode' && !opencodeConfigBuilt) buildOpenCodeConfig();
+            if (id === 'modal-droid' && !droidConfigBuilt) buildDroidConfig();
             if (id === 'modal-add-backend') resetWizard();
         }
         function closeModal(id) {
             document.getElementById(id).classList.remove('open');
             document.body.style.overflow = '';
-        }
-
-        function showUpstreamModels(name) {
-            var modal = document.getElementById('modal-upstream-models');
-            var title = document.getElementById('upstream-title');
-            var body = document.getElementById('upstream-body');
-            var copyBtn = document.getElementById('upstream-copy-btn');
-            if (title) title.textContent = 'Raw Upstream Models \u2014 ' + name;
-            if (body) body.textContent = 'Fetching upstream /models response\u2026';
-            if (copyBtn) copyBtn.style.display = 'none';
-            openModal('modal-upstream-models');
-
-            fetch('/ui/backends/' + encodeURIComponent(name) + '/upstream-models')
-                .then(function(res) { return res.json(); })
-                .then(function(data) {
-                    if (!body) return;
-                    if (data.status === 'unsupported') {
-                        body.textContent = data.error || 'This backend type does not support raw upstream model inspection.';
-                        return;
-                    }
-                    // Pretty-print the raw response
-                    var rawBody = data.raw_body || '';
-                    var textBody = '';
-                    if (rawBody) {
-                        try {
-                            var parsed = JSON.parse(rawBody);
-                            textBody = JSON.stringify(parsed, null, 2);
-                        } catch(e) {
-                            textBody = rawBody;
-                        }
-                    }
-                    var header = '';
-                    if (data.url) header += 'URL: ' + data.url + '\n';
-                    if (data.status_code) header += 'Status: ' + data.status_code + '\n';
-                    if (data.content_type) header += 'Content-Type: ' + data.content_type + '\n';
-                    if (data.error) header += 'Error: ' + data.error + '\n';
-                    if (header) header += '\n';
-                    body.textContent = header + textBody;
-                    if (copyBtn && textBody) copyBtn.style.display = '';
-                })
-                .catch(function(err) {
-                    if (body) body.textContent = 'Fetch error: ' + err.message;
-                });
-        }
-
-        function copyUpstreamModels() {
-            var body = document.getElementById('upstream-body');
-            if (!body || !body.textContent) return;
-            navigator.clipboard.writeText(body.textContent).then(function() {
-                var btn = document.getElementById('upstream-copy-btn');
-                if (btn) { btn.textContent = 'Copied!'; setTimeout(function() { btn.textContent = 'Copy'; }, 1500); }
-            });
         }
         function closeOnBackdrop(e, id) {
             if (e.target === document.getElementById(id)) closeModal(id);
@@ -3569,129 +3778,378 @@
         // proxy can route to the best matching backend — same flat list as /v1/models
         // and what the VS Code extension exposes.
         var zedConfigBuilt = false;
-        var zedSelectedBackends = null; // Set of backend names; null = all selected
+        var opencodeConfigBuilt = false;
+        var droidConfigBuilt = false;
+        var connectSelectors = {};
+
+        function selectableBackends() {
+            return Object.keys(allBackendModels).filter(function(name) {
+                return (allBackendModels[name] || []).length > 0;
+            }).sort(function(a, b) { return a.localeCompare(b); });
+        }
+
+        function flattenModels(selectedBackends) {
+            var seen = {};
+            var order = [];
+
+            Object.keys(allBackendModels).forEach(function(backendName) {
+                if (selectedBackends && !selectedBackends.has(backendName)) return;
+                (allBackendModels[backendName] || []).forEach(function(m) {
+                    var bareID = m && m.BareID;
+                    if (!bareID) return;
+                    if (!seen[bareID]) {
+                        seen[bareID] = {
+                            bareID: bareID,
+                            fullID: m.FullID || bareID,
+                            contextLength: m.ContextLength || 0,
+                            maxOutputTokens: m.MaxOutputTokens || 0,
+                            capabilities: (m.Capabilities || []).slice(),
+                            backends: [backendName],
+                            displayName: titleizeModelID(bareID)
+                        };
+                        order.push(bareID);
+                        return;
+                    }
+                    var entry = seen[bareID];
+                    if (entry.backends.indexOf(backendName) === -1) entry.backends.push(backendName);
+                    if (m.ContextLength && m.ContextLength > entry.contextLength) entry.contextLength = m.ContextLength;
+                    if (m.MaxOutputTokens && m.MaxOutputTokens > entry.maxOutputTokens) entry.maxOutputTokens = m.MaxOutputTokens;
+                    (m.Capabilities || []).forEach(function(cap) {
+                        if (entry.capabilities.indexOf(cap) === -1) entry.capabilities.push(cap);
+                    });
+                });
+            });
+
+            return order.map(function(id) { return seen[id]; });
+        }
+
+        function ensureDefaultModel(state) {
+            if (!state.selectedModels.length) {
+                state.defaultModel = '';
+                return;
+            }
+            if (state.selectedModels.indexOf(state.defaultModel) === -1) {
+                state.defaultModel = state.selectedModels[0];
+            }
+        }
+
+        function ensureSelectorState(key, options) {
+            if (!connectSelectors[key]) {
+                connectSelectors[key] = {
+                    key: key,
+                    rootId: options.rootId,
+                    search: '',
+                    allowDefault: !!options.allowDefault,
+                    selectedBackends: new Set(selectableBackends()),
+                    selectedModels: [],
+                    defaultModel: '',
+                    activeModel: '',
+                    renderConfig: options.renderConfig,
+                    configTargetId: options.configTargetId,
+                    onActiveModelChange: options.onActiveModelChange || null
+                };
+            }
+            return connectSelectors[key];
+        }
+
+        function refreshSelectorState(state) {
+            var availableBackends = selectableBackends();
+            state.selectedBackends = new Set(Array.from(state.selectedBackends).filter(function(name) {
+                return availableBackends.indexOf(name) !== -1;
+            }));
+            if (state.selectedBackends.size === 0) {
+                availableBackends.forEach(function(name) { state.selectedBackends.add(name); });
+            }
+
+            var flat = flattenModels(state.selectedBackends);
+            var flatIDs = flat.map(function(m) { return m.bareID; });
+            state.selectedModels = state.selectedModels.filter(function(id) { return flatIDs.indexOf(id) !== -1; });
+            if (state.selectedModels.length === 0) state.selectedModels = flatIDs.slice();
+            state.activeModel = state.activeModel && flatIDs.indexOf(state.activeModel) !== -1 ? state.activeModel : (state.selectedModels[0] || flatIDs[0] || '');
+            ensureDefaultModel(state);
+        }
+
+        function renderSelector(key) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            refreshSelectorState(state);
+
+            var root = document.getElementById(state.rootId);
+            if (!root) return;
+
+            var flat = flattenModels(state.selectedBackends);
+            var selectedSet = new Set(state.selectedModels);
+            var filtered = flat.filter(function(model) {
+                if (!state.search) return true;
+                var q = state.search.toLowerCase();
+                var hay = [model.bareID, model.displayName].concat(model.backends).join(' ').toLowerCase();
+                return hay.indexOf(q) !== -1;
+            });
+
+            root.innerHTML = '<div class="connect-configurator-grid">'
+                + '<div class="connect-configurator-panel">'
+                + '  <div class="connect-selector-toolbar">'
+                + '    <div class="connect-selector-meta">'
+                + '      <span class="connect-meta-pill">backends ' + state.selectedBackends.size + '/' + selectableBackends().length + '</span>'
+                + '      <span class="connect-meta-pill">models ' + state.selectedModels.length + '/' + flat.length + '</span>'
+                + '    </div>'
+                + '    <div class="connect-selector-actions">'
+                + '      <button type="button" class="connect-action-btn" onclick="selectorSelectAllModels(\'' + key + '\')">all models</button>'
+                + '      <button type="button" class="connect-action-btn" onclick="selectorClearModelSearch(\'' + key + '\')">clear search</button>'
+                + '    </div>'
+                + '  </div>'
+                + '  <label class="connect-selector-group-label" for="' + state.rootId + '-search">Search flattened models</label>'
+                + '  <input id="' + state.rootId + '-search" class="connect-selector-search" type="text" placeholder="Search model ID, display name, or backend…" value="' + escHtml(state.search) + '" oninput="selectorSearch(\'' + key + '\', this.value)">'
+                + '  <div class="connect-selector-group-label">Included backends</div>'
+                + '  <div class="connect-backend-chips">'
+                + selectableBackends().map(function(name) {
+                    var active = state.selectedBackends.has(name);
+                    var count = (allBackendModels[name] || []).length;
+                    return '<label class="connect-backend-chip' + (active ? ' active' : '') + '">'
+                        + '<input type="checkbox" ' + (active ? 'checked' : '') + ' onchange="selectorToggleBackend(\'' + key + '\', \'' + escHtml(name) + '\', this.checked)">'
+                        + '<span>' + escHtml(name) + '</span>'
+                        + '<span style="opacity:.65">(' + count + ')</span>'
+                        + '</label>';
+                }).join('')
+                + '  </div>'
+                + '  <div class="connect-selector-group-label">Flattened models</div>'
+                + '  <div class="connect-model-list">'
+                + (filtered.length ? filtered.map(function(model) {
+                    var checked = selectedSet.has(model.bareID);
+                    return '<label class="connect-model-row">'
+                        + '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="selectorToggleModel(\'' + key + '\', \'' + escHtml(model.bareID) + '\', this.checked)">'
+                        + '<div class="connect-model-main">'
+                        + '  <div class="connect-model-head">'
+                        + '    <span class="connect-model-name">' + escHtml(model.bareID) + '</span>'
+                        + '    <span class="connect-meta-pill">' + escHtml(model.displayName) + '</span>'
+                        + '  </div>'
+                        + '  <div class="connect-model-sources">Backends: ' + escHtml(model.backends.join(', ')) + '</div>'
+                        + '  <div class="connect-model-badges">'
+                        + (model.contextLength ? '<span class="ctx-badge">' + fmtN(model.contextLength) + 'ctx</span>' : '')
+                        + (model.maxOutputTokens ? '<span class="out-badge">' + fmtN(model.maxOutputTokens) + 'out</span>' : '')
+                        + model.capabilities.map(function(cap) { return '<span class="cap-badge">' + escHtml(cap) + '</span>'; }).join('')
+                        + '  </div>'
+                        + '</div>'
+                        + '</label>';
+                }).join('') : '<div class="connect-empty-state">No flattened models match the current backend filters and search.</div>')
+                + '  </div>'
+                + '</div>'
+                + '<div class="connect-side-controls">'
+                + '  <div class="connect-control-card">'
+                + '    <label for="' + state.rootId + '-default">Default model</label>'
+                + '    <select id="' + state.rootId + '-default" class="connect-select" ' + (state.allowDefault ? '' : 'disabled') + ' onchange="selectorSetDefaultModel(\'' + key + '\', this.value)">'
+                + state.selectedModels.map(function(id) {
+                    return '<option value="' + escHtml(id) + '"' + (id === state.defaultModel ? ' selected' : '') + '>' + escHtml(id) + '</option>';
+                }).join('')
+                + '    </select>'
+                + '    <div class="connect-help-text">'
+                + (state.allowDefault ? 'Use a flattened model ID here and let the proxy resolve the actual backend at request time.' : 'This target format does not use a default model field.')
+                + '    </div>'
+                + '  </div>'
+                + '</div>'
+                + '</div>';
+
+            if (state.onActiveModelChange) state.onActiveModelChange(state.activeModel || state.defaultModel || '');
+            rebuildSelectorConfig(key);
+        }
+
+        function rebuildSelectorConfig(key) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            refreshSelectorState(state);
+            var target = document.getElementById(state.configTargetId);
+            if (!target) return;
+            var flat = flattenModels(state.selectedBackends).filter(function(model) {
+                return state.selectedModels.indexOf(model.bareID) !== -1;
+            });
+            if (!flat.length) {
+                target.textContent = state.selectedBackends.size === 0 ? 'No backends selected.' : 'No models selected.';
+                return;
+            }
+            target.textContent = state.renderConfig(flat, state);
+        }
+
+        function selectorToggleBackend(key, name, checked) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            if (checked) state.selectedBackends.add(name); else state.selectedBackends.delete(name);
+            renderSelector(key);
+        }
+
+        function selectorToggleModel(key, bareID, checked) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            var idx = state.selectedModels.indexOf(bareID);
+            if (checked && idx === -1) state.selectedModels.push(bareID);
+            if (!checked && idx !== -1) state.selectedModels.splice(idx, 1);
+            ensureDefaultModel(state);
+            renderSelector(key);
+        }
+
+        function selectorSetDefaultModel(key, bareID) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            state.defaultModel = bareID;
+            rebuildSelectorConfig(key);
+        }
+
+        function selectorSearch(key, value) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            state.search = value || '';
+            renderSelector(key);
+        }
+
+        function selectorClearModelSearch(key) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            state.search = '';
+            renderSelector(key);
+        }
+
+        function selectorSelectAllModels(key) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            state.selectedModels = flattenModels(state.selectedBackends).map(function(model) { return model.bareID; });
+            ensureDefaultModel(state);
+            renderSelector(key);
+        }
 
         function buildZedConfig() {
             if (zedConfigBuilt) return;
             zedConfigBuilt = true;
-
-            // Initialise selection on first build; preserve on subsequent calls
-            // (zedSelectedBackends is reset to null when models are refreshed)
-            if (zedSelectedBackends === null) {
-                zedSelectedBackends = new Set(Object.keys(allBackendModels));
-            } else {
-                // Pick up any backends that appeared after a partial refresh
-                Object.keys(allBackendModels).forEach(function(n) { zedSelectedBackends.add(n); });
-            }
-
-            initZedBackendFilter();
-            rebuildZedConfig();
-        }
-
-        function initZedBackendFilter() {
-            var container = document.getElementById('zed-backend-checkboxes');
-            var wrapper   = document.getElementById('zed-backend-filter');
-            if (!container || !wrapper) return;
-
-            var backends = Object.keys(allBackendModels).filter(function(n) {
-                return (allBackendModels[n] || []).length > 0;
+            ensureSelectorState('zed', {
+                rootId: 'zed-selector',
+                configTargetId: 'zed-config',
+                allowDefault: true,
+                renderConfig: function(models, state) {
+                    var displayAddr = '{{.DisplayAddr}}';
+                    var sampleModel = state.defaultModel || (models[0] ? models[0].bareID : '');
+                    return JSON.stringify({
+                        language_models: {
+                            openai_compatible: {
+                                'LLM API Proxy': {
+                                    api_url: 'http://' + displayAddr + '/v1',
+                                    available_models: models.map(function(model) {
+                                        return {
+                                            name: model.bareID,
+                                            max_tokens: model.contextLength || 128000,
+                                            max_output_tokens: model.maxOutputTokens || undefined,
+                                            capabilities: {
+                                                tools: true,
+                                                images: model.capabilities.indexOf('vision') !== -1,
+                                                parallel_tool_calls: true,
+                                                prompt_cache_key: false
+                                            }
+                                        };
+                                    })
+                                }
+                            }
+                        },
+                        agent: {
+                            default_model: {
+                                provider: 'openai_compatible',
+                                model: sampleModel
+                            }
+                        }
+                    }, null, 2);
+                }
             });
-
-            if (backends.length <= 1) { wrapper.style.display = 'none'; return; }
-
-            wrapper.style.display = 'block';
-            container.innerHTML = backends.map(function(name) {
-                var checked = zedSelectedBackends.has(name) ? ' checked' : '';
-                var count   = (allBackendModels[name] || []).length;
-                return '<label style="display:inline-flex;align-items:center;gap:0.3rem;font-size:0.8rem;cursor:pointer;padding:0.2rem 0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:4px">'
-                    + '<input type="checkbox"' + checked + ' onchange="toggleZedBackend(\'' + escHtml(name) + '\', this.checked)" style="cursor:pointer">'
-                    + escHtml(name)
-                    + ' <span style="opacity:0.55;font-size:0.75em">(' + count + ')</span>'
-                    + '</label>';
-            }).join('');
-        }
-
-        function toggleZedBackend(name, checked) {
-            if (!zedSelectedBackends) return;
-            if (checked) { zedSelectedBackends.add(name); } else { zedSelectedBackends.delete(name); }
-            rebuildZedConfig();
+            renderSelector('zed');
         }
 
         function rebuildZedConfig() {
-            var displayAddr = '{{.DisplayAddr}}';
-            var selected = zedSelectedBackends || new Set(Object.keys(allBackendModels));
+            rebuildSelectorConfig('zed');
+        }
 
-            // Deduplicate by BareID across selected backends.
-            // NOTE: allBackendModels entries use PascalCase fields because Go's
-            // json.Encode preserves struct field names when there are no json tags.
-            var seen  = {};  // BareID → { ContextLength, MaxOutputTokens, Capabilities }
-            var order = [];  // preserves first-seen insertion order
+        function titleizeModelID(id) {
+            return (id || '').split(/[\/-]+/).filter(Boolean).map(function(part) {
+                if (/^[a-z]{2,}\d*$/i.test(part) && part === part.toUpperCase()) return part;
+                return part.charAt(0).toUpperCase() + part.slice(1);
+            }).join(' ');
+        }
 
-            Object.keys(allBackendModels).forEach(function(backendName) {
-                if (!selected.has(backendName)) return;
-                (allBackendModels[backendName] || []).forEach(function(m) {
-                    var bareID = m.BareID;
-                    if (!bareID) return;
-                    if (!seen[bareID]) {
-                        seen[bareID] = { ContextLength: m.ContextLength || 0, MaxOutputTokens: m.MaxOutputTokens || 0, Capabilities: (m.Capabilities || []).slice() };
-                        order.push(bareID);
-                    } else {
-                        var e = seen[bareID];
-                        if (m.ContextLength   && m.ContextLength   > e.ContextLength)   e.ContextLength   = m.ContextLength;
-                        if (m.MaxOutputTokens && m.MaxOutputTokens > e.MaxOutputTokens) e.MaxOutputTokens = m.MaxOutputTokens;
-                        (m.Capabilities || []).forEach(function(c) { if (e.Capabilities.indexOf(c) === -1) e.Capabilities.push(c); });
-                    }
-                });
-            });
+        function sanitizeProviderName(name) {
+            var safe = String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+            return safe || 'llm-api-proxy';
+        }
 
-            if (order.length === 0) {
-                document.getElementById('zed-config').textContent =
-                    selected.size === 0 ? 'No backends selected.' : 'No models loaded yet. Try refreshing the page.';
-                return;
-            }
-
-            var sampleModel = order[0];
-            var modelLines  = order.map(function(id) {
-                var meta = seen[id];
-                var ctxTokens = meta.ContextLength || 128000;
-                var hasVision = meta.Capabilities.indexOf('vision') !== -1;
-                var capLines = [
-                    '              "tools": true',
-                    '              "images": ' + hasVision,
-                    '              "parallel_tool_calls": true',
-                    '              "prompt_cache_key": false'
-                ];
-                var parts = [
-                    '          "name": "' + escHtml(id) + '"',
-                    '          "max_tokens": ' + ctxTokens
-                ];
-                if (meta.MaxOutputTokens) {
-                    parts.push('          "max_output_tokens": ' + meta.MaxOutputTokens);
+        function buildOpenCodeConfig() {
+            if (opencodeConfigBuilt) return;
+            opencodeConfigBuilt = true;
+            ensureSelectorState('opencode', {
+                rootId: 'opencode-selector',
+                configTargetId: 'opencode-config',
+                allowDefault: true,
+                renderConfig: function(models, state) {
+                    var displayAddr = '{{.DisplayAddr}}';
+                    return JSON.stringify({
+                        $schema: 'https://opencode.ai/config.json',
+                        provider: {
+                            llmapiproxy: {
+                                name: 'LLM API Proxy',
+                                npm: '@ai-sdk/openai-compatible',
+                                options: {
+                                    apiKey: '${LLM_API_PROXY_API_KEY}',
+                                    baseURL: 'http://' + displayAddr + '/v1'
+                                },
+                                models: models.reduce(function(acc, model) {
+                                    acc[model.bareID] = {
+                                        name: model.displayName,
+                                        limit: {
+                                            context: model.contextLength || 128000,
+                                            output: model.maxOutputTokens || 16384
+                                        }
+                                    };
+                                    return acc;
+                                }, {})
+                            }
+                        },
+                        opencode: {
+                            whitelist: models.map(function(model) { return model.bareID; })
+                        },
+                        agent: {
+                            model: state.defaultModel || (models[0] ? models[0].bareID : '')
+                        }
+                    }, null, 2);
                 }
-                parts.push('          "capabilities": {\n' + capLines.join(',\n') + '\n          }');
-                return '        {\n' + parts.join(',\n') + '\n        }';
             });
+            renderSelector('opencode');
+        }
 
-            var config = '{\n'
-                + '  "language_models": {\n'
-                + '    "openai_compatible": {\n'
-                + '      "LLM API Proxy": {\n'
-                + '        "api_url": "http://' + escHtml(displayAddr) + '/v1",\n'
-                + '        "available_models": [\n'
-                + modelLines.join(',\n') + '\n'
-                + '        ]\n'
-                + '      }\n'
-                + '    }\n'
-                + '  },\n'
-                + '  "agent": {\n'
-                + '    "default_model": {\n'
-                + '      "provider": "openai_compatible",\n'
-                + '      "model": "' + escHtml(sampleModel) + '"\n'
-                + '    }\n'
-                + '  }\n'
-                + '}';
+        function rebuildOpenCodeConfig() {
+            rebuildSelectorConfig('opencode');
+        }
 
-            document.getElementById('zed-config').textContent = config;
+        function buildDroidConfig() {
+            if (droidConfigBuilt) return;
+            droidConfigBuilt = true;
+            ensureSelectorState('droid', {
+                rootId: 'droid-selector',
+                configTargetId: 'droid-config',
+                allowDefault: true,
+                renderConfig: function(models, state) {
+                    var displayAddr = '{{.DisplayAddr}}';
+                    return JSON.stringify({
+                        customModels: models.map(function(model) {
+                            return {
+                                model: model.bareID,
+                                displayName: model.displayName,
+                                baseUrl: 'http://' + displayAddr + '/v1',
+                                apiKey: '${LLM_API_PROXY_API_KEY}',
+                                provider: 'generic-chat-completion-api',
+                                maxOutputTokens: model.maxOutputTokens || 16384
+                            };
+                        }),
+                        defaultModel: state.defaultModel || (models[0] ? models[0].bareID : '')
+                    }, null, 2);
+                }
+            });
+            renderSelector('droid');
+        }
+
+        function rebuildDroidConfig() {
+            rebuildSelectorConfig('droid');
         }
 
         function fmtN(n) {
@@ -3763,7 +4221,9 @@
                     });
                     allBackendModels[name] = normalized;
                     zedConfigBuilt = false;
-                    zedSelectedBackends = null; // reset so new backend list is picked up on rebuild
+                    opencodeConfigBuilt = false;
+                    droidConfigBuilt = false;
+                    Object.keys(connectSelectors).forEach(function(key) { renderSelector(key); });
                     recomputeOverlaps();
                     buildZedConfig();
                     var countEl = document.getElementById('count-' + name);
@@ -3782,10 +4242,8 @@
                 })
                 .catch(function(err) {
                     if (listEl) {
-                        var hint = dynBadgeEl ? '<div style="padding:0.5rem 1.1rem 0.2rem;font-size:0.7rem;color:var(--text-dim);font-style:italic">&#x2139; Click the dynamic badge to inspect the raw upstream response</div>' : '';
                         listEl.innerHTML = baseUrlHtml + dynHtml
-                            + '<div style="padding:0.75rem 1.1rem;font-size:0.75rem;color:var(--red);font-family:var(--mono)">&#x2717; Refresh failed: ' + escHtml(err.message) + '</div>'
-                            + hint;
+                            + '<div style="padding:0.75rem 1.1rem;font-size:0.75rem;color:var(--red);font-family:var(--mono)">&#x2717; Refresh failed: ' + escHtml(err.message) + '</div>';
                     }
                 })
                 .finally(function() {
@@ -3847,8 +4305,7 @@
                     if (pendingLoads <= 0) { recomputeOverlaps(); buildZedConfig(); }
 
                     listEl.innerHTML = baseUrlHtml + dynHtml
-                        + '<div style="padding:0.75rem 1.1rem;font-size:0.75rem;color:var(--red);font-family:var(--mono)">\u2717 ' + escHtml(e.message) + '</div>'
-                        + (dynBadgeEl ? '<div style="padding:0.5rem 1.1rem 0.2rem;font-size:0.7rem;color:var(--text-dim);font-style:italic">&#x2139; Click the dynamic badge to inspect the raw upstream response</div>' : '');
+                        + '<div style="padding:0.75rem 1.1rem;font-size:0.75rem;color:var(--red);font-family:var(--mono)">\u2717 ' + escHtml(e.message) + '</div>';
                     if (countEl) countEl.textContent = 'error';
                 });
         }
@@ -3868,77 +4325,30 @@
             return sel.options[sel.selectedIndex].text;
         }
         function curlGetModel() {
-            var inp = document.getElementById('curl-model-input');
-            return inp && inp.value.trim() ? inp.value.trim() : '{{.SampleModel}}';
+            var state = connectSelectors.curl;
+            return state ? (state.activeModel || state.defaultModel || '{{.SampleModel}}') : '{{.SampleModel}}';
         }
 
-        function curlFilteredModels(q) {
-            if (!q) return curlAllModels;
-            var lq = q.toLowerCase();
-            return curlAllModels.filter(function(m) { return m.toLowerCase().indexOf(lq) !== -1; });
-        }
-
-        function curlRenderList(items) {
-            var list = document.getElementById('curl-model-list');
-            list.innerHTML = '';
-            curlActiveIdx = -1;
-            if (items.length === 0) {
-                var e = document.createElement('div');
-                e.className = 'curl-combo-empty';
-                e.textContent = 'No matches — your input will be used as-is';
-                list.appendChild(e);
-            } else {
-                items.forEach(function(m) {
-                    var el = document.createElement('div');
-                    el.className = 'curl-combo-item';
-                    el.textContent = m;
-                    el.addEventListener('mousedown', function(ev) {
-                        ev.preventDefault();
-                        document.getElementById('curl-model-input').value = m;
-                        curlCloseList();
-                        updateCurlExamples();
-                    });
-                    list.appendChild(el);
-                });
-            }
-        }
-
-        function curlOpenList(items) {
-            curlRenderList(items);
-            document.getElementById('curl-model-list').classList.add('open');
-        }
-        function curlCloseList() {
-            document.getElementById('curl-model-list').classList.remove('open');
-            curlActiveIdx = -1;
-        }
-
-        (function() {
-            var input = document.getElementById('curl-model-input');
-            var list  = document.getElementById('curl-model-list');
-
-            input.addEventListener('focus', function() { curlOpenList(curlFilteredModels(input.value)); });
-            input.addEventListener('input', function() { curlOpenList(curlFilteredModels(input.value)); });
-            input.addEventListener('blur', function() { setTimeout(curlCloseList, 150); });
-            input.addEventListener('keydown', function(e) {
-                var items = list.querySelectorAll('.curl-combo-item');
-                if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    curlActiveIdx = Math.min(curlActiveIdx + 1, items.length - 1);
-                    items.forEach(function(el, i) { el.classList.toggle('active', i === curlActiveIdx); });
-                } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    curlActiveIdx = Math.max(curlActiveIdx - 1, 0);
-                    items.forEach(function(el, i) { el.classList.toggle('active', i === curlActiveIdx); });
-                } else if (e.key === 'Enter' && curlActiveIdx >= 0) {
-                    e.preventDefault();
-                    input.value = items[curlActiveIdx].textContent;
-                    curlCloseList();
+        function buildCurlSelector() {
+            ensureSelectorState('curl', {
+                rootId: 'curl-selector',
+                configTargetId: 'curl-models',
+                allowDefault: true,
+                onActiveModelChange: function(model) {
+                    var state = connectSelectors.curl;
+                    if (state) state.activeModel = model;
                     updateCurlExamples();
-                } else if (e.key === 'Escape') {
-                    curlCloseList();
+                },
+                renderConfig: function(models, state) {
+                    var chosen = state.activeModel || state.defaultModel || (models[0] ? models[0].bareID : '{{.SampleModel}}');
+                    if (state.selectedModels.indexOf(chosen) === -1) chosen = state.selectedModels[0] || chosen;
+                    state.activeModel = chosen;
+                    updateCurlExamples();
+                    return 'curl examples below use flattened model: ' + chosen;
                 }
             });
-        })();
+            renderSelector('curl');
+        }
 
         document.getElementById('curl-key-select').addEventListener('change', updateCurlExamples);
 
@@ -4016,6 +4426,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             initOverlapControls();
             setOverlapItems(normalizeOverlapEntries(overlapBootstrap));
+            buildCurlSelector();
 
             var allCards = document.querySelectorAll('.backend-card[data-backend]');
             var cards = [];
@@ -4024,7 +4435,7 @@
                 if (!c.dataset.disabled && !c.dataset.oauthUnauthed) cards.push(c);
             });
             pendingLoads = cards.length;
-            if (pendingLoads === 0) { recomputeOverlaps(); buildZedConfig(); return; }
+            if (pendingLoads === 0) { recomputeOverlaps(); buildZedConfig(); buildOpenCodeConfig(); buildDroidConfig(); buildCurlSelector(); return; }
             cards.forEach(function(card) {
                 loadBackendModels(card.dataset.backend);
             });

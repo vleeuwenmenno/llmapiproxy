@@ -133,6 +133,10 @@ type codexRequest struct {
 	Instructions string          `json:"instructions"`
 	Store        bool            `json:"store"`
 
+	// Tools and tool_choice in Responses API format (transformed from Chat Completions format).
+	Tools      json.RawMessage `json:"-"`
+	ToolChoice json.RawMessage `json:"-"`
+
 	// Preserve extra fields from the original request body.
 	Extra map[string]json.RawMessage `json:"-"`
 }
@@ -167,6 +171,19 @@ func (r codexRequest) MarshalJSON() ([]byte, error) {
 
 	// Always send store=false (Codex API rejects requests where store defaults to true).
 	m["store"] = json.RawMessage(`false`)
+
+	// Tools and tool_choice (already transformed to Responses API format).
+	if r.Tools != nil {
+		m["tools"] = r.Tools
+	}
+	if r.ToolChoice != nil {
+		m["tool_choice"] = r.ToolChoice
+	}
+
+	// Always enable parallel tool calls when tools are present.
+	if r.Tools != nil {
+		m["parallel_tool_calls"] = json.RawMessage(`true`)
+	}
 
 	// Add extra fields (not overwriting known fields).
 	for k, v := range r.Extra {
@@ -204,6 +221,10 @@ type codexOutputItem struct {
 	Role    string               `json:"role"`
 	Status  string               `json:"status"`
 	Content []codexOutputContent `json:"content"`
+	// For function_call items:
+	CallID    string `json:"call_id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
 }
 
 // codexOutputContent is a content part in the output.
@@ -231,34 +252,119 @@ func translateToCodexRequest(req *ChatCompletionRequest) (*codexRequest, error) 
 		return nil, fmt.Errorf("messages array is empty; at least one message is required")
 	}
 
-	// Separate system messages from conversation messages.
-	var instructions string
-	var conversationMessages []codexInputMessage
+	// Parse raw body first so we can access tool_call_id and full tool_calls.
+	var raw map[string]json.RawMessage
+	if len(req.RawBody) > 0 {
+		_ = json.Unmarshal(req.RawBody, &raw)
+	}
 
-	for _, msg := range req.Messages {
+	// Parse raw messages for full field access (tool_call_id, tool_calls).
+	type rawToolCallFn struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	}
+	type rawToolCall struct {
+		ID       string        `json:"id"`
+		Type     string        `json:"type"`
+		Function rawToolCallFn `json:"function"`
+	}
+	type rawMsg struct {
+		Role       string          `json:"role"`
+		Content    json.RawMessage `json:"content"`
+		ToolCalls  []rawToolCall   `json:"tool_calls,omitempty"`
+		ToolCallID string          `json:"tool_call_id,omitempty"`
+	}
+	var rawMessages []rawMsg
+	if msgsJSON, ok := raw["messages"]; ok {
+		_ = json.Unmarshal(msgsJSON, &rawMessages)
+	}
+	if len(rawMessages) == 0 {
+		for _, m := range req.Messages {
+			rawMessages = append(rawMessages, rawMsg{Role: m.Role, Content: m.Content})
+		}
+	}
+
+	// Build input items for the Responses API.
+	// The Responses API uses a different format for tool calls:
+	//   - assistant tool_calls  → {"type":"function_call", "id":..., "call_id":..., "name":..., "arguments":...}
+	//   - tool result messages  → {"type":"function_call_output", "call_id":..., "output":...}
+	//   - regular messages      → {"type":"message", "role":..., "content":...}
+	//
+	// Codex requires function_call IDs to start with "fc_". Remap incoming "call_XXX"
+	// IDs consistently so function_call and function_call_output stay in sync.
+	callIDMap := make(map[string]string) // original → remapped
+	remapCallID := func(id string) string {
+		if strings.HasPrefix(id, "fc") {
+			return id // already valid
+		}
+		if mapped, ok := callIDMap[id]; ok {
+			return mapped
+		}
+		mapped := "fc_" + id
+		callIDMap[id] = mapped
+		return mapped
+	}
+
+	var instructions string
+	var inputItems []map[string]json.RawMessage
+
+	for _, msg := range rawMessages {
 		if msg.Role == "system" || msg.Role == "developer" {
-			// Use the last system/developer message as instructions.
 			var contentStr string
 			_ = json.Unmarshal(msg.Content, &contentStr)
 			instructions = contentStr
 			continue
 		}
-		conversationMessages = append(conversationMessages, codexInputMessage{
-			Role:    msg.Role,
-			Content: func() string { var s string; _ = json.Unmarshal(msg.Content, &s); return s }(),
-			Type:    "message",
-		})
+
+		if msg.Role == "tool" {
+			// Convert tool result to function_call_output item.
+			var contentStr string
+			_ = json.Unmarshal(msg.Content, &contentStr)
+			item := map[string]json.RawMessage{}
+			item["type"], _ = json.Marshal("function_call_output")
+			item["call_id"], _ = json.Marshal(remapCallID(msg.ToolCallID))
+			item["output"], _ = json.Marshal(contentStr)
+			inputItems = append(inputItems, item)
+			continue
+		}
+
+		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
+			// Emit text content first if non-empty.
+			var contentStr string
+			_ = json.Unmarshal(msg.Content, &contentStr)
+			if contentStr != "" {
+				item := map[string]json.RawMessage{}
+				item["type"], _ = json.Marshal("message")
+				item["role"], _ = json.Marshal("assistant")
+				item["content"], _ = json.Marshal(contentStr)
+				inputItems = append(inputItems, item)
+			}
+			// Emit each tool call as a function_call item.
+			for _, tc := range msg.ToolCalls {
+				remapped := remapCallID(tc.ID)
+				item := map[string]json.RawMessage{}
+				item["type"], _ = json.Marshal("function_call")
+				item["id"], _ = json.Marshal(remapped)
+				item["call_id"], _ = json.Marshal(remapped)
+				item["name"], _ = json.Marshal(tc.Function.Name)
+				item["arguments"], _ = json.Marshal(tc.Function.Arguments)
+				inputItems = append(inputItems, item)
+			}
+			continue
+		}
+
+		// Regular user/assistant message.
+		var contentStr string
+		_ = json.Unmarshal(msg.Content, &contentStr)
+		item := map[string]json.RawMessage{}
+		item["type"], _ = json.Marshal("message")
+		item["role"], _ = json.Marshal(msg.Role)
+		item["content"], _ = json.Marshal(contentStr)
+		inputItems = append(inputItems, item)
 	}
 
-	// Build the input for the Responses API.
-	// Always send as a list of messages — the Codex API requires a list.
 	var input json.RawMessage
-	input, _ = json.Marshal(conversationMessages)
-
-	var raw map[string]json.RawMessage
-	if len(req.RawBody) > 0 {
-		_ = json.Unmarshal(req.RawBody, &raw)
-	}
+	input, _ = json.Marshal(inputItems)
 
 	supportsSampling := codexSupportsSampling(req.Model, raw)
 
@@ -283,19 +389,37 @@ func translateToCodexRequest(req *ChatCompletionRequest) (*codexRequest, error) 
 
 	// Preserve extra fields from the raw body.
 	if len(raw) > 0 {
-		knownFields := map[string]bool{
+		// Strip fields that are unsupported by the Codex Responses API, or that
+		// we handle explicitly below. Everything else passes through via Extra.
+		strippedFields := map[string]bool{
 			"model": true, "messages": true, "stream": true,
 			"temperature": true, "max_tokens": true, "max_output_tokens": true,
 			"store": true, "top_p": true, "frequency_penalty": true,
 			"presence_penalty": true, "n": true, "stop": true,
 			"user": true, "logprobs": true, "top_logprobs": true,
-			"response_format": true, "seed": true, "tools": true,
-			"tool_choice": true, "parallel_tool_calls": true,
+			"response_format": true, "seed": true,
+			"tools": true, "tool_choice": true, "parallel_tool_calls": true,
+			"stream_options":        true, // not supported by Responses API
+			"max_completion_tokens": true, // not supported by Responses API
 		}
 		for k, v := range raw {
-			if !knownFields[k] {
+			if !strippedFields[k] {
 				codexReq.Extra[k] = v
 			}
+		}
+
+		// Transform tools from Chat Completions format to Responses API format.
+		// Chat Completions: [{"type":"function","function":{"name":"x","description":"y","parameters":{}}}]
+		// Responses API:    [{"type":"function","name":"x","description":"y","parameters":{}}]
+		if toolsRaw, ok := raw["tools"]; ok {
+			codexReq.Tools = transformCodexTools(toolsRaw)
+		}
+
+		// Transform tool_choice from Chat Completions format to Responses API format.
+		// Chat Completions: {"type":"function","function":{"name":"x"}}
+		// Responses API:    {"type":"function","name":"x"}
+		if tcRaw, ok := raw["tool_choice"]; ok {
+			codexReq.ToolChoice = transformCodexToolChoice(tcRaw)
 		}
 
 		// Extract top_p only for models that currently support sampling params.
@@ -355,6 +479,89 @@ func codexReasoningEffort(raw map[string]json.RawMessage) string {
 	return ""
 }
 
+// transformCodexTools converts a Chat Completions tools array to Responses API format.
+// Chat Completions: [{"type":"function","function":{"name":"x","description":"y","parameters":{}}}]
+// Responses API:    [{"type":"function","name":"x","description":"y","parameters":{}}]
+func transformCodexTools(toolsRaw json.RawMessage) json.RawMessage {
+	var tools []map[string]json.RawMessage
+	if err := json.Unmarshal(toolsRaw, &tools); err != nil {
+		return toolsRaw
+	}
+	result := make([]map[string]json.RawMessage, 0, len(tools))
+	for _, tool := range tools {
+		toolTypeRaw, ok := tool["type"]
+		if !ok {
+			continue
+		}
+		var toolType string
+		if err := json.Unmarshal(toolTypeRaw, &toolType); err != nil {
+			continue
+		}
+		if toolType != "function" {
+			// Pass non-function (built-in) tools through unchanged.
+			result = append(result, tool)
+			continue
+		}
+		fnRaw, ok := tool["function"]
+		if !ok {
+			continue
+		}
+		var fn map[string]json.RawMessage
+		if err := json.Unmarshal(fnRaw, &fn); err != nil {
+			continue
+		}
+		item := map[string]json.RawMessage{"type": toolTypeRaw}
+		for _, field := range []string{"name", "description", "parameters", "strict"} {
+			if v, ok := fn[field]; ok {
+				item[field] = v
+			}
+		}
+		result = append(result, item)
+	}
+	out, _ := json.Marshal(result)
+	return out
+}
+
+// transformCodexToolChoice converts a Chat Completions tool_choice to Responses API format.
+// String values ("auto", "none", "required") pass through unchanged.
+// {"type":"function","function":{"name":"x"}} → {"type":"function","name":"x"}
+func transformCodexToolChoice(tcRaw json.RawMessage) json.RawMessage {
+	var s string
+	if json.Unmarshal(tcRaw, &s) == nil {
+		return tcRaw // string value, pass through
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(tcRaw, &obj); err != nil {
+		return tcRaw
+	}
+	tcTypeRaw, ok := obj["type"]
+	if !ok {
+		return tcRaw
+	}
+	var tcType string
+	if err := json.Unmarshal(tcTypeRaw, &tcType); err != nil {
+		return tcRaw
+	}
+	if tcType != "function" {
+		// Built-in tool choices pass through unchanged.
+		return tcRaw
+	}
+	fnRaw, ok := obj["function"]
+	if !ok {
+		return tcRaw
+	}
+	var fn map[string]json.RawMessage
+	if err := json.Unmarshal(fnRaw, &fn); err != nil {
+		return tcRaw
+	}
+	result := map[string]json.RawMessage{"type": tcTypeRaw}
+	if name, ok := fn["name"]; ok {
+		result["name"] = name
+	}
+	out, _ := json.Marshal(result)
+	return out
+}
+
 // translateFromCodexResponse converts a Codex Responses API response to a ChatCompletion response.
 func translateFromCodexResponse(codexResp *codexResponse) (*ChatCompletionResponse, error) {
 	chatResp := &ChatCompletionResponse{
@@ -379,32 +586,67 @@ func translateFromCodexResponse(codexResp *codexResponse) (*ChatCompletionRespon
 		// We'll still try to extract the output.
 	}
 
-	// Extract the assistant message from the output.
+	// Extract the assistant message from the output (text and/or function calls).
+	var contentParts []string
+	var functionCalls []codexOutputItem
 	for _, item := range codexResp.Output {
 		if item.Type == "message" && item.Role == "assistant" {
-			var contentParts []string
 			for _, c := range item.Content {
 				if c.Type == "output_text" {
 					contentParts = append(contentParts, c.Text)
 				}
 			}
-			content := strings.Join(contentParts, "")
-
-			finishReason := "stop"
-			if codexResp.Status == "incomplete" {
-				finishReason = "length"
-			}
-
-			contentBytes, _ := json.Marshal(content)
-			chatResp.Choices = append(chatResp.Choices, Choice{
-				Index: 0,
-				Message: &Message{
-					Role:    "assistant",
-					Content: contentBytes,
-				},
-				FinishReason: &finishReason,
-			})
 		}
+		if item.Type == "function_call" {
+			functionCalls = append(functionCalls, item)
+		}
+	}
+
+	if len(contentParts) > 0 || len(functionCalls) > 0 {
+		content := strings.Join(contentParts, "")
+		var contentBytes json.RawMessage
+		if content != "" {
+			contentBytes, _ = json.Marshal(content)
+		} else {
+			contentBytes = json.RawMessage(`null`)
+		}
+
+		msg := &Message{
+			Role:    "assistant",
+			Content: contentBytes,
+		}
+
+		finishReason := "stop"
+		if len(functionCalls) > 0 {
+			finishReason = "tool_calls"
+			type tcFn struct {
+				Name      string `json:"name"`
+				Arguments string `json:"arguments"`
+			}
+			type tcEntry struct {
+				ID       string `json:"id"`
+				Type     string `json:"type"`
+				Function tcFn   `json:"function"`
+			}
+			tcs := make([]tcEntry, 0, len(functionCalls))
+			for _, fc := range functionCalls {
+				tcs = append(tcs, tcEntry{
+					ID:       fc.CallID,
+					Type:     "function",
+					Function: tcFn{Name: fc.Name, Arguments: fc.Arguments},
+				})
+			}
+			msg.ToolCalls, _ = json.Marshal(tcs)
+		}
+		if codexResp.Status == "incomplete" {
+			finishReason = "length"
+		}
+
+		chatResp.Choices = append(chatResp.Choices, Choice{
+			Index:        0,
+			Message:      msg,
+			FinishReason: &finishReason,
+		})
 	}
 
 	// If no message was found, return an empty choice with stop.
@@ -984,6 +1226,28 @@ func (b *CodexBackend) setHeaders(httpReq *http.Request, accessToken string) {
 
 // --- Codex stream reader (translates Codex SSE → ChatCompletion SSE) ---
 
+// streamToolCallFn is the function portion of a streaming tool call delta.
+type streamToolCallFn struct {
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+}
+
+// streamToolCallEntry is a single tool call entry in a streaming response delta.
+type streamToolCallEntry struct {
+	Index    int              `json:"index"`
+	ID       string           `json:"id,omitempty"`
+	Type     string           `json:"type,omitempty"`
+	Function streamToolCallFn `json:"function"`
+}
+
+// streamFuncCallState tracks an in-progress function call while streaming.
+type streamFuncCallState struct {
+	index        int
+	callID       string
+	name         string
+	hasArgsDelta bool // true once at least one arguments.delta event was received
+}
+
 // codexStreamReader translates Codex Responses API SSE events into
 // OpenAI ChatCompletion SSE chunks in real time.
 type codexStreamReader struct {
@@ -997,17 +1261,43 @@ type codexStreamReader struct {
 
 	// Accumulated usage from the response.completed event.
 	usage *codexUsage
+
+	// Tool call streaming state (mirrors CLIProxyAPI's ConvertCliToOpenAIParams).
+	toolCallCount     int                            // sequential index; starts at -1
+	toolCalls         map[string]*streamFuncCallState // keyed by Codex item ID
+	toolCallAnnounced bool                           // true after output_item.added processed
+	hasFunctionCall   bool                           // true if any function_call seen
 }
 
 func newCodexStreamReader(source io.ReadCloser, responseID string, modelName string) *codexStreamReader {
 	s := &codexStreamReader{
-		source:     source,
-		responseID: responseID,
-		modelName:  modelName,
+		source:        source,
+		responseID:    responseID,
+		modelName:     modelName,
+		toolCallCount: -1,
 	}
 	s.scanner = bufio.NewScanner(source)
 	s.scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	return s
+}
+
+// handleCreated caches the real response ID and model name from the response.created event.
+func (r *codexStreamReader) handleCreated(data string) {
+	var event struct {
+		Response struct {
+			ID    string `json:"id"`
+			Model string `json:"model"`
+		} `json:"response"`
+	}
+	if err := json.Unmarshal([]byte(data), &event); err != nil {
+		return
+	}
+	if event.Response.ID != "" {
+		r.responseID = event.Response.ID
+	}
+	if event.Response.Model != "" {
+		r.modelName = event.Response.Model
+	}
 }
 
 // Read implements io.Reader. It reads translated SSE chunks.
@@ -1054,9 +1344,19 @@ func (r *codexStreamReader) Read(p []byte) (int, error) {
 		}
 
 		switch event.Type {
+		case "response.created":
+			r.handleCreated(data)
 		case "response.output_text.delta":
 			r.handleTextDelta(data)
-		case "response.output_text.done", "response.completed":
+		case "response.output_item.added":
+			r.handleOutputItemAdded(data)
+		case "response.function_call_arguments.delta":
+			r.handleFunctionCallArgsDelta(data)
+		case "response.function_call_arguments.done":
+			r.handleFunctionCallArgsDone(data)
+		case "response.output_item.done":
+			r.handleOutputItemDone(data)
+		case "response.completed":
 			r.handleCompleted(data)
 		}
 	}
@@ -1101,9 +1401,210 @@ func (r *codexStreamReader) handleTextDelta(data string) {
 	r.buf.WriteString("\n\n")
 }
 
+// handleOutputItemAdded processes a response.output_item.added event.
+// If the item is a function_call, it emits an initial tool_calls delta chunk.
+func (r *codexStreamReader) handleOutputItemAdded(data string) {
+	var event struct {
+		Item struct {
+			Type   string `json:"type"`
+			ID     string `json:"id"`
+			CallID string `json:"call_id"`
+			Name   string `json:"name"`
+		} `json:"item"`
+	}
+	if err := json.Unmarshal([]byte(data), &event); err != nil || event.Item.Type != "function_call" {
+		return
+	}
+
+	if r.toolCalls == nil {
+		r.toolCalls = make(map[string]*streamFuncCallState)
+	}
+	r.toolCallCount++
+	r.toolCallAnnounced = true
+	r.hasFunctionCall = true
+	r.toolCalls[event.Item.ID] = &streamFuncCallState{
+		index:  r.toolCallCount,
+		callID: event.Item.CallID,
+		name:   event.Item.Name,
+	}
+
+	// Emit initial chunk with role + function name + empty arguments.
+	toolCallsJSON, _ := json.Marshal([]streamToolCallEntry{{
+		Index: r.toolCallCount,
+		ID:    event.Item.CallID,
+		Type:  "function",
+		Function: streamToolCallFn{
+			Name:      event.Item.Name,
+			Arguments: "",
+		},
+	}})
+
+	chunk := ChatCompletionStreamChunk{
+		ID:      r.responseID,
+		Object:  "chat.completion.chunk",
+		Created: time.Now().Unix(),
+		Model:   r.modelName,
+		Choices: []ChunkChoice{{
+			Index: 0,
+			Delta: &Message{
+				Role:      "assistant",
+				Content:   json.RawMessage(`null`),
+				ToolCalls: toolCallsJSON,
+			},
+		}},
+	}
+	b, _ := json.Marshal(chunk)
+	r.buf.WriteString("data: ")
+	r.buf.Write(b)
+	r.buf.WriteString("\n\n")
+}
+
+// handleFunctionCallArgsDelta processes a response.function_call_arguments.delta event.
+// It emits an OpenAI-format tool_call streaming delta chunk.
+func (r *codexStreamReader) handleFunctionCallArgsDelta(data string) {
+	var event struct {
+		ItemID string `json:"item_id"`
+		Delta  string `json:"delta"`
+	}
+	if err := json.Unmarshal([]byte(data), &event); err != nil {
+		return
+	}
+
+	tc, ok := r.toolCalls[event.ItemID]
+	if !ok {
+		return
+	}
+	tc.hasArgsDelta = true
+
+	toolCallsJSON, _ := json.Marshal([]streamToolCallEntry{{
+		Index:    tc.index,
+		Function: streamToolCallFn{Arguments: event.Delta},
+	}})
+
+	chunk := ChatCompletionStreamChunk{
+		ID:      r.responseID,
+		Object:  "chat.completion.chunk",
+		Created: time.Now().Unix(),
+		Model:   r.modelName,
+		Choices: []ChunkChoice{{
+			Index: 0,
+			Delta: &Message{ToolCalls: toolCallsJSON},
+		}},
+	}
+	b, _ := json.Marshal(chunk)
+	r.buf.WriteString("data: ")
+	r.buf.Write(b)
+	r.buf.WriteString("\n\n")
+}
+
+// handleFunctionCallArgsDone is a fallback for when no arguments.delta events were received.
+// When delta events did arrive (hasArgsDelta=true), this is silently skipped.
+func (r *codexStreamReader) handleFunctionCallArgsDone(data string) {
+	var event struct {
+		ItemID    string `json:"item_id"`
+		Arguments string `json:"arguments"`
+	}
+	if err := json.Unmarshal([]byte(data), &event); err != nil {
+		return
+	}
+
+	tc, ok := r.toolCalls[event.ItemID]
+	if !ok || tc.hasArgsDelta {
+		return // delta events already handled; skip
+	}
+
+	toolCallsJSON, _ := json.Marshal([]streamToolCallEntry{{
+		Index:    tc.index,
+		Function: streamToolCallFn{Arguments: event.Arguments},
+	}})
+
+	chunk := ChatCompletionStreamChunk{
+		ID:      r.responseID,
+		Object:  "chat.completion.chunk",
+		Created: time.Now().Unix(),
+		Model:   r.modelName,
+		Choices: []ChunkChoice{{
+			Index: 0,
+			Delta: &Message{ToolCalls: toolCallsJSON},
+		}},
+	}
+	b, _ := json.Marshal(chunk)
+	r.buf.WriteString("data: ")
+	r.buf.Write(b)
+	r.buf.WriteString("\n\n")
+}
+
+// handleOutputItemDone is a fallback for when response.output_item.added was not received.
+// When output_item.added WAS processed (toolCallAnnounced=true), resets the flag and returns.
+func (r *codexStreamReader) handleOutputItemDone(data string) {
+	var event struct {
+		Item struct {
+			Type      string `json:"type"`
+			ID        string `json:"id"`
+			CallID    string `json:"call_id"`
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		} `json:"item"`
+	}
+	if err := json.Unmarshal([]byte(data), &event); err != nil || event.Item.Type != "function_call" {
+		return
+	}
+
+	if r.toolCallAnnounced {
+		// Already announced via output_item.added; just reset the flag.
+		r.toolCallAnnounced = false
+		return
+	}
+
+	// Fallback: model skipped output_item.added — emit full tool call in one chunk.
+	if r.toolCalls == nil {
+		r.toolCalls = make(map[string]*streamFuncCallState)
+	}
+	r.toolCallCount++
+	r.hasFunctionCall = true
+	r.toolCalls[event.Item.ID] = &streamFuncCallState{
+		index:        r.toolCallCount,
+		callID:       event.Item.CallID,
+		name:         event.Item.Name,
+		hasArgsDelta: true, // suppress args.done fallback
+	}
+
+	toolCallsJSON, _ := json.Marshal([]streamToolCallEntry{{
+		Index: r.toolCallCount,
+		ID:    event.Item.CallID,
+		Type:  "function",
+		Function: streamToolCallFn{
+			Name:      event.Item.Name,
+			Arguments: event.Item.Arguments,
+		},
+	}})
+
+	chunk := ChatCompletionStreamChunk{
+		ID:      r.responseID,
+		Object:  "chat.completion.chunk",
+		Created: time.Now().Unix(),
+		Model:   r.modelName,
+		Choices: []ChunkChoice{{
+			Index: 0,
+			Delta: &Message{
+				Role:      "assistant",
+				Content:   json.RawMessage(`null`),
+				ToolCalls: toolCallsJSON,
+			},
+		}},
+	}
+	b, _ := json.Marshal(chunk)
+	r.buf.WriteString("data: ")
+	r.buf.Write(b)
+	r.buf.WriteString("\n\n")
+}
+
 // handleCompleted writes the final chunk with finish_reason.
 func (r *codexStreamReader) handleCompleted(data string) {
 	finishReason := "stop"
+	if r.hasFunctionCall {
+		finishReason = "tool_calls"
+	}
 
 	// Try to extract usage from response.completed.
 	var completedEvent struct {

@@ -203,60 +203,6 @@
 
         main { max-width: 1400px; margin: 0 auto; padding: 2rem; }
 
-        /* ── Filter bar ── */
-        .filter-bar {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 1rem 1.25rem;
-            margin-bottom: 1.5rem;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.75rem;
-            align-items: center;
-        }
-
-        .filter-group { display: flex; flex-direction: column; gap: 0.2rem; }
-        .filter-group label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); font-weight: 600; }
-
-        .filter-select, .filter-input {
-            background: var(--bg);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 0.3rem 0.6rem;
-            border-radius: 5px;
-            font-size: 0.8rem;
-            font-family: var(--mono);
-            cursor: pointer;
-            outline: none;
-            transition: border-color 0.15s;
-        }
-        .filter-select:focus, .filter-input:focus { border-color: var(--accent); }
-
-        .window-pills { display: flex; gap: 0.25rem; }
-        .pill {
-            background: none;
-            border: 1px solid var(--border);
-            color: var(--text-dim);
-            padding: 0.25rem 0.6rem;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-family: var(--mono);
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-        .pill:hover { border-color: var(--accent); color: var(--accent); }
-        .pill.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
-
-        .filter-toggle {
-            display: flex; align-items: center; gap: 0.4rem;
-            font-size: 0.8rem; color: var(--text-dim); cursor: pointer;
-            user-select: none; margin-left: auto;
-        }
-        .filter-toggle input[type=checkbox] { accent-color: var(--accent); }
-
-        .filter-sep { width: 1px; height: 28px; background: var(--border); margin: 0 0.25rem; }
-
         /* ── Summary cards ── */
         .cards {
             display: grid;
@@ -379,15 +325,11 @@
             .card { padding: 1rem; }
             .card .value { font-size: 1.25rem; }
             .charts-row { grid-template-columns: 1fr; }
-            .filter-bar { flex-direction: column; align-items: stretch; }
-            .filter-sep { display: none; }
-            .filter-toggle { margin-left: 0; margin-top: 0.5rem; }
             table { display: block; overflow-x: auto; white-space: nowrap; }
         }
 
         @media (max-width: 480px) {
             .cards { grid-template-columns: 1fr; }
-            .pill { padding: 0.25rem 0.4rem; font-size: 0.7rem; }
         }
     </style>
 </head>
@@ -446,53 +388,37 @@
     {{end}}
 
     <!-- Filter bar -->
-    <div class="filter-bar">
-        <div class="filter-group">
-            <label>Time Window</label>
-            <div class="window-pills">
-                <button class="pill" data-window="1h">1h</button>
-                <button class="pill" data-window="6h">6h</button>
-                <button class="pill active" data-window="24h">24h</button>
-                <button class="pill" data-window="7d">7d</button>
-                <button class="pill" data-window="30d">30d</button>
-                <button class="pill" data-window="">All</button>
+    {{template "filter_bar" (dict "BarId" "analytics-filter-bar" "DefaultWindow" "1d" "RefreshFn" "fetchData" "ShowRefresh" true "ShowFilters" true "ShowWipe" true "WipeFn" "openWipeModal" "WindowStorageKey" "analyticsWindow" "HasSecondary" true "PageData" .)}}
+
+{{define "filter_bar_secondary"}}
+            <div class="filter-group">
+                <label>Backend</label>
+                <select class="filter-select" id="filter-backend">
+                    <option value="">All backends</option>
+                    {{range .Backends}}<option value="{{.}}">{{.}}</option>{{end}}
+                </select>
             </div>
-        </div>
 
-        <div class="filter-sep"></div>
+            <div class="filter-group">
+                <label>Model</label>
+                <select class="filter-select" id="filter-model">
+                    <option value="">All models</option>
+                    {{range .Models}}<option value="{{.}}">{{.}}</option>{{end}}
+                </select>
+            </div>
 
-        <div class="filter-group">
-            <label>Backend</label>
-            <select class="filter-select" id="filter-backend">
-                <option value="">All backends</option>
-                {{range .Backends}}<option value="{{.}}">{{.}}</option>{{end}}
-            </select>
-        </div>
+            <div class="filter-group">
+                <label>Client</label>
+                <select class="filter-select" id="filter-client">
+                    <option value="">All clients</option>
+                    {{range .Clients}}<option value="{{.}}">{{.}}</option>{{end}}
+                </select>
+            </div>
 
-        <div class="filter-group">
-            <label>Model</label>
-            <select class="filter-select" id="filter-model">
-                <option value="">All models</option>
-                {{range .Models}}<option value="{{.}}">{{.}}</option>{{end}}
-            </select>
-        </div>
-
-        <div class="filter-group">
-            <label>Client</label>
-            <select class="filter-select" id="filter-client">
-                <option value="">All clients</option>
-                {{range .Clients}}<option value="{{.}}">{{.}}</option>{{end}}
-            </select>
-        </div>
-
-        <label class="filter-toggle">
-            <input type="checkbox" id="filter-errors"> Errors only
-        </label>
-
-        <div class="filter-sep"></div>
-
-        <button class="pill" style="background:rgba(248,113,113,0.1);color:var(--red);border:1px solid rgba(248,113,113,0.2);cursor:pointer" onclick="openWipeModal()" title="Delete analytics data matching current filters">&#128465; Wipe</button>
-    </div>
+            <label class="filter-toggle">
+                <input type="checkbox" id="filter-errors"> Errors only
+            </label>
+{{end}}
 
     <!-- Summary cards -->
     <div class="cards" id="summary-cards">
@@ -651,29 +577,18 @@ document.addEventListener('keydown', function(e) {
 
 // ── State ──────────────────────────────────────────────────────────────────
 var state = {
-    window: localStorage.getItem('analyticsWindow') || '24h',
     backend: '', model: '', client: '', errors: false,
     page: 0
 };
+function getWindow() {
+    return (window.filterBarGetWindow && window.filterBarGetWindow['analytics-filter-bar']) ? window.filterBarGetWindow['analytics-filter-bar']() : '1d';
+}
 var rankData = { models: [], backends: [], clients: [] };
 var sortState = { models: {col:'req',asc:false}, backends: {col:'req',asc:false}, clients: {col:'req',asc:false} };
 var fetchTimer = null;
 
 // ── Init ───────────────────────────────────────────────────────────────────
 (function() {
-    // Restore pill active state
-    document.querySelectorAll('.pill').forEach(function(p) {
-        p.classList.toggle('active', p.dataset.window === state.window);
-        p.addEventListener('click', function() {
-            state.window = p.dataset.window;
-            state.page = 0;
-            localStorage.setItem('analyticsWindow', state.window);
-            document.querySelectorAll('.pill').forEach(function(x) { x.classList.remove('active'); });
-            p.classList.add('active');
-            scheduleFetch(0);
-        });
-    });
-
     document.getElementById('filter-backend').addEventListener('change', function() {
         state.backend = this.value; state.page = 0; scheduleFetch(200);
     });
@@ -696,8 +611,9 @@ function scheduleFetch(delay) {
 }
 
 function buildURL(extraPage) {
+    var w = getWindow();
     var p = new URLSearchParams();
-    if (state.window) p.set('window', state.window);
+    if (w) p.set('window', w);
     if (state.backend) p.set('backend', state.backend);
     if (state.model)   p.set('model',   state.model);
     if (state.client)  p.set('client',  state.client);
@@ -708,10 +624,11 @@ function buildURL(extraPage) {
 
 function fetchData(p) {
     if (p !== undefined) state.page = p;
+    var w = getWindow();
     var url = buildURL();
     // Update browser URL (deep-link)
     var params = new URLSearchParams();
-    if (state.window)  params.set('window', state.window);
+    if (w)           params.set('window', w);
     if (state.backend) params.set('backend', state.backend);
     if (state.model)   params.set('model',   state.model);
     if (state.client)  params.set('client',  state.client);

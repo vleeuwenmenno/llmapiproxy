@@ -712,6 +712,349 @@ func TestCodexBackend_Streaming_FinishReason(t *testing.T) {
 	}
 }
 
+// --- Tool call streaming tests ---
+
+func TestCodexBackend_Streaming_ToolCall(t *testing.T) {
+	b, upstream, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+
+		// Simulate Codex streaming a single function call.
+		events := []string{
+			`{"type":"response.created","response":{"id":"resp-tool-1","status":"in_progress","model":"o4-mini","output":[]}}`,
+			`{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_abc123","call_id":"fc_abc123","name":"get_weather","arguments":""}}`,
+			`{"type":"response.function_call_arguments.delta","item_id":"fc_abc123","output_index":0,"delta":"{\"city\":"}`,
+			`{"type":"response.function_call_arguments.delta","item_id":"fc_abc123","output_index":0,"delta":"\"Boston\"}"}`,
+			`{"type":"response.function_call_arguments.done","item_id":"fc_abc123","output_index":0,"arguments":"{\"city\":\"Boston\"}"}`,
+			`{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_abc123","call_id":"fc_abc123","name":"get_weather","arguments":"{\"city\":\"Boston\"}"}}`,
+			`{"type":"response.completed","response":{"id":"resp-tool-1","status":"completed","model":"o4-mini","output":[{"type":"function_call","id":"fc_abc123","call_id":"fc_abc123","name":"get_weather","arguments":"{\"city\":\"Boston\"}"}],"usage":{"input_tokens":20,"output_tokens":10,"total_tokens":30}}}`,
+		}
+
+		for _, event := range events {
+			fmt.Fprintf(w, "data: %s\n\n", event)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	})
+
+	stream, err := b.ChatCompletionStream(context.Background(), &ChatCompletionRequest{
+		Model: "o4-mini",
+		Messages: []Message{
+			{Role: "user", Content: json.RawMessage(`"What's the weather in Boston?"`)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletionStream: %v", err)
+	}
+	defer stream.Close()
+
+	body, err := io.ReadAll(stream)
+	if err != nil {
+		t.Fatalf("reading stream: %v", err)
+	}
+
+	bodyStr := string(body)
+
+	// Should contain SSE format markers.
+	if !strings.Contains(bodyStr, "data: ") {
+		t.Error("expected SSE data lines in stream")
+	}
+	if !strings.Contains(bodyStr, "[DONE]") {
+		t.Error("expected [DONE] sentinel in stream")
+	}
+
+	// Should contain tool_calls in the delta.
+	if !strings.Contains(bodyStr, "tool_calls") {
+		t.Error("expected tool_calls field in streaming delta")
+	}
+	if !strings.Contains(bodyStr, "get_weather") {
+		t.Error("expected function name 'get_weather' in streaming delta")
+	}
+	if !strings.Contains(bodyStr, "fc_abc123") {
+		t.Error("expected tool call id 'fc_abc123' in streaming delta")
+	}
+
+	// Should contain argument delta chunks.
+	if !strings.Contains(bodyStr, "Boston") {
+		t.Error("expected argument delta content in stream")
+	}
+
+	// Final chunk should have finish_reason: tool_calls.
+	lines := strings.Split(bodyStr, "\n")
+	var hasToolCallsFinish bool
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "data: ") || line == "data: [DONE]" {
+			continue
+		}
+		data := line[6:]
+		var chunk map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+		if choicesRaw, ok := chunk["choices"]; ok {
+			var choices []struct {
+				FinishReason *string `json:"finish_reason"`
+			}
+			json.Unmarshal(choicesRaw, &choices)
+			for _, c := range choices {
+				if c.FinishReason != nil && *c.FinishReason == "tool_calls" {
+					hasToolCallsFinish = true
+				}
+			}
+		}
+	}
+	if !hasToolCallsFinish {
+		t.Error("expected final chunk with finish_reason: tool_calls")
+	}
+}
+
+func TestCodexBackend_NonStreaming_ToolCall(t *testing.T) {
+	b, upstream, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Return a response with a function_call output item.
+		response := map[string]any{
+			"id":         "resp-tool-ns-1",
+			"object":     "response",
+			"created_at": int64(1234567890),
+			"status":     "completed",
+			"model":      "o4-mini",
+			"output": []map[string]any{
+				{
+					"type":      "function_call",
+					"id":        "fc_xyz789",
+					"call_id":   "fc_xyz789",
+					"name":      "search_code",
+					"arguments": `{"query":"http handler"}`,
+					"status":    "completed",
+				},
+			},
+			"usage": map[string]any{
+				"input_tokens":  15,
+				"output_tokens": 25,
+				"total_tokens":  40,
+			},
+		}
+		codexRespondWithJSON(w, r, response)
+	})
+
+	resp, err := b.ChatCompletion(context.Background(), &ChatCompletionRequest{
+		Model: "o4-mini",
+		Messages: []Message{
+			{Role: "user", Content: json.RawMessage(`"Find HTTP handler code"`)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletion: %v", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		t.Fatal("expected at least one choice")
+	}
+	choice := resp.Choices[0]
+	if choice.Message == nil {
+		t.Fatal("expected message in choice")
+	}
+	if choice.FinishReason == nil || *choice.FinishReason != "tool_calls" {
+		got := "<nil>"
+		if choice.FinishReason != nil {
+			got = *choice.FinishReason
+		}
+		t.Errorf("finish_reason = %q, want %q", got, "tool_calls")
+	}
+	if len(choice.Message.ToolCalls) == 0 {
+		t.Fatal("expected tool_calls in message")
+	}
+
+	var toolCalls []struct {
+		ID       string `json:"id"`
+		Type     string `json:"type"`
+		Function struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		} `json:"function"`
+	}
+	if err := json.Unmarshal(choice.Message.ToolCalls, &toolCalls); err != nil {
+		t.Fatalf("parsing tool_calls: %v", err)
+	}
+	if len(toolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(toolCalls))
+	}
+	if toolCalls[0].Function.Name != "search_code" {
+		t.Errorf("tool call name = %q, want %q", toolCalls[0].Function.Name, "search_code")
+	}
+	if toolCalls[0].ID != "fc_xyz789" {
+		t.Errorf("tool call id = %q, want %q", toolCalls[0].ID, "fc_xyz789")
+	}
+}
+
+// TestCodexBackend_Streaming_ToolCall_ArgsDoneFallback tests the path where
+// Codex emits function_call_arguments.done instead of .delta events.
+func TestCodexBackend_Streaming_ToolCall_ArgsDoneFallback(t *testing.T) {
+	b, upstream, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+
+		// No .delta events — only .done
+		events := []string{
+			`{"type":"response.created","response":{"id":"resp-done-fallback","status":"in_progress","model":"o4-mini","output":[]}}`,
+			`{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_done1","call_id":"fc_done1","name":"list_files","arguments":""}}`,
+			`{"type":"response.function_call_arguments.done","item_id":"fc_done1","output_index":0,"arguments":"{\"path\":\"/src\"}"}`,
+			`{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_done1","call_id":"fc_done1","name":"list_files","arguments":"{\"path\":\"/src\"}"}}`,
+			`{"type":"response.completed","response":{"id":"resp-done-fallback","status":"completed","model":"o4-mini","output":[{"type":"function_call","id":"fc_done1","call_id":"fc_done1","name":"list_files","arguments":"{\"path\":\"/src\"}"}],"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}}}`,
+		}
+		for _, event := range events {
+			fmt.Fprintf(w, "data: %s\n\n", event)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	})
+
+	stream, err := b.ChatCompletionStream(context.Background(), &ChatCompletionRequest{
+		Model:    "o4-mini",
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"list src"`)}},
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletionStream: %v", err)
+	}
+	defer stream.Close()
+
+	body, _ := io.ReadAll(stream)
+	bodyStr := string(body)
+
+	if !strings.Contains(bodyStr, "list_files") {
+		t.Error("expected function name 'list_files' in stream")
+	}
+	if !strings.Contains(bodyStr, "/src") {
+		t.Error("expected argument content in stream")
+	}
+	if !strings.Contains(bodyStr, "tool_calls") {
+		t.Error("expected tool_calls in stream delta")
+	}
+
+	// Verify tool_calls finish_reason.
+	lines := strings.Split(bodyStr, "\n")
+	var hasToolCallsFinish bool
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "data: ") || line == "data: [DONE]" {
+			continue
+		}
+		var chunk map[string]json.RawMessage
+		if json.Unmarshal([]byte(line[6:]), &chunk) != nil {
+			continue
+		}
+		choicesRaw, ok := chunk["choices"]
+		if !ok {
+			continue
+		}
+		var choices []struct {
+			FinishReason *string `json:"finish_reason"`
+		}
+		json.Unmarshal(choicesRaw, &choices)
+		for _, c := range choices {
+			if c.FinishReason != nil && *c.FinishReason == "tool_calls" {
+				hasToolCallsFinish = true
+			}
+		}
+	}
+	if !hasToolCallsFinish {
+		t.Error("expected finish_reason: tool_calls")
+	}
+}
+
+// TestCodexBackend_Streaming_ToolCall_OutputItemDoneFallback tests the path where
+// Codex skips output_item.added entirely and only emits output_item.done.
+func TestCodexBackend_Streaming_ToolCall_OutputItemDoneFallback(t *testing.T) {
+	b, upstream, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+
+		// No output_item.added — only output_item.done
+		events := []string{
+			`{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_only_done","call_id":"fc_only_done","name":"read_file","arguments":"{\"file\":\"main.go\"}"}}`,
+			`{"type":"response.completed","response":{"id":"resp-only-done","status":"completed","model":"o4-mini","output":[{"type":"function_call","id":"fc_only_done","call_id":"fc_only_done","name":"read_file","arguments":"{\"file\":\"main.go\"}"}],"usage":{"input_tokens":8,"output_tokens":4,"total_tokens":12}}}`,
+		}
+		for _, event := range events {
+			fmt.Fprintf(w, "data: %s\n\n", event)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	})
+
+	stream, err := b.ChatCompletionStream(context.Background(), &ChatCompletionRequest{
+		Model:    "o4-mini",
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"read main"`)}},
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletionStream: %v", err)
+	}
+	defer stream.Close()
+
+	body, _ := io.ReadAll(stream)
+	bodyStr := string(body)
+
+	if !strings.Contains(bodyStr, "read_file") {
+		t.Error("expected function name 'read_file' in stream")
+	}
+	if !strings.Contains(bodyStr, "main.go") {
+		t.Error("expected argument content in stream")
+	}
+	if !strings.Contains(bodyStr, "tool_calls") {
+		t.Error("expected tool_calls in stream delta")
+	}
+}
+
+// TestCodexBackend_Streaming_ResponseCreatedSetsID verifies that the response.created
+// event causes the real response ID to be used in subsequent chunks.
+func TestCodexBackend_Streaming_ResponseCreatedSetsID(t *testing.T) {
+	b, upstream, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+
+		events := []string{
+			`{"type":"response.created","response":{"id":"real-resp-id-xyz","model":"o4-mini","created_at":9999}}`,
+			`{"type":"response.output_text.delta","delta":"hi","item_id":"m1","output_index":0,"content_index":0}`,
+			`{"type":"response.completed","response":{"id":"real-resp-id-xyz","status":"completed","model":"o4-mini","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`,
+		}
+		for _, event := range events {
+			fmt.Fprintf(w, "data: %s\n\n", event)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	})
+
+	stream, err := b.ChatCompletionStream(context.Background(), &ChatCompletionRequest{
+		Model:    "o4-mini",
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletionStream: %v", err)
+	}
+	defer stream.Close()
+
+	body, _ := io.ReadAll(stream)
+	if !strings.Contains(string(body), "real-resp-id-xyz") {
+		t.Error("expected real response ID 'real-resp-id-xyz' in stream chunks")
+	}
+}
+
 // --- VAL-CODEX-008/009: Model listing ---
 
 func TestCodexBackend_ListModels(t *testing.T) {
@@ -2380,4 +2723,97 @@ func TestCodexBackend_DeviceCodeLogin_SupportsInterface(t *testing.T) {
 
 	// CodexBackend should implement the OAuthDeviceCodeLoginHandler interface.
 	var _ OAuthDeviceCodeLoginHandler = b
+}
+
+func TestTransformCodexTools_FlattensFunctionNesting(t *testing.T) {
+	input := []byte(`[{"type":"function","function":{"name":"get_weather","description":"Get weather","parameters":{"type":"object","properties":{}}}}]`)
+	out := transformCodexTools(input)
+
+	var tools []map[string]json.RawMessage
+	if err := json.Unmarshal(out, &tools); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(tools) != 1 {
+		t.Fatalf("want 1 tool, got %d", len(tools))
+	}
+	tool := tools[0]
+	if _, ok := tool["function"]; ok {
+		t.Error("transformed tool should not have a 'function' key")
+	}
+	if _, ok := tool["name"]; !ok {
+		t.Error("transformed tool should have a top-level 'name' key")
+	}
+	var name string
+	json.Unmarshal(tool["name"], &name)
+	if name != "get_weather" {
+		t.Errorf("want name=get_weather, got %q", name)
+	}
+	if _, ok := tool["description"]; !ok {
+		t.Error("transformed tool should have a top-level 'description' key")
+	}
+	if _, ok := tool["parameters"]; !ok {
+		t.Error("transformed tool should have a top-level 'parameters' key")
+	}
+}
+
+func TestTransformCodexTools_MultipleTools(t *testing.T) {
+	input := []byte(`[{"type":"function","function":{"name":"tool_a","parameters":{}}},{"type":"function","function":{"name":"tool_b","parameters":{}}}]`)
+	out := transformCodexTools(input)
+
+	var tools []map[string]json.RawMessage
+	if err := json.Unmarshal(out, &tools); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(tools) != 2 {
+		t.Fatalf("want 2 tools, got %d", len(tools))
+	}
+	var n0, n1 string
+	json.Unmarshal(tools[0]["name"], &n0)
+	json.Unmarshal(tools[1]["name"], &n1)
+	if n0 != "tool_a" || n1 != "tool_b" {
+		t.Errorf("unexpected names: %q, %q", n0, n1)
+	}
+}
+
+func TestTransformCodexTools_PassthroughOnInvalidJSON(t *testing.T) {
+	input := []byte(`not-json`)
+	out := transformCodexTools(input)
+	if string(out) != string(input) {
+		t.Errorf("expected pass-through on invalid JSON, got %s", out)
+	}
+}
+
+func TestTransformCodexToolChoice_StringPassthrough(t *testing.T) {
+	for _, s := range []string{`"auto"`, `"none"`, `"required"`} {
+		out := transformCodexToolChoice(json.RawMessage(s))
+		if string(out) != s {
+			t.Errorf("want %s pass-through, got %s", s, out)
+		}
+	}
+}
+
+func TestTransformCodexToolChoice_FlattensFunction(t *testing.T) {
+	input := []byte(`{"type":"function","function":{"name":"get_weather"}}`)
+	out := transformCodexToolChoice(input)
+
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(out, &obj); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, ok := obj["function"]; ok {
+		t.Error("transformed tool_choice should not have a 'function' key")
+	}
+	var name string
+	json.Unmarshal(obj["name"], &name)
+	if name != "get_weather" {
+		t.Errorf("want name=get_weather, got %q", name)
+	}
+}
+
+func TestTransformCodexToolChoice_PassthroughOnInvalidJSON(t *testing.T) {
+	input := []byte(`not-json`)
+	out := transformCodexToolChoice(input)
+	if string(out) != string(input) {
+		t.Errorf("expected pass-through, got %s", out)
+	}
 }

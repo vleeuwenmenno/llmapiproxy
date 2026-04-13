@@ -1,0 +1,593 @@
+{{define "filter_bar"}}
+{{/* ──────────────────────────────────────────────────────────────────────────
+  Shared filter bar partial. Include via: {{template "filter_bar" (dict ...)}}
+
+  Required dict keys:
+    BarId          string         — HTML id for the filter-bar div
+    RefreshFn      string         — JS function name called on refresh button click
+
+  Optional dict keys:
+    DefaultWindow  string         — initially active window (default: "1h")
+    ShowRefresh     bool          — show refresh button (default: true)
+    ShowAutoRefresh bool          — show auto-refresh dropdown + countdown (default: false)
+    AutoRefreshOptions string     — comma-separated "ms:label" e.g. "5000:5s,15000:15s,30000:30s,60000:1m,0:Off"
+    DefaultAutoRefresh string     — default auto-refresh ms value (default: "0")
+    AutoRefreshKey  string        — localStorage key for auto-refresh persistence
+    ShowFilters     bool          — show collapsible "Filters" toggle button (default: false)
+    ShowWipe        bool          — show destructive "Wipe" button (default: false)
+    ShowSpinner     bool          — show loading spinner (default: false)
+    WipeFn          string        — JS function name called on wipe button click
+    HasSecondary    bool          — include secondary collapsible section (default: false)
+    PageData        any           — original page data passed to {{template "filter_bar_secondary"}}
+    WindowStorageKey string       — localStorage key for window persistence (default: none)
+    Compact         bool          — compact split-button mode (no filter bar, just refresh dropdown)
+
+  Time windows are unified across all pages:
+    Primary pills: 5m, 1h, 6h, 1d, 7d, 30d
+    "More" dropdown: 15m, 30m, 2h, 3h, 12h, 3d, 14d (plus all primary options)
+────────────────────────────────────────────────────────────────────────── */}}
+<style>
+    /* ── Filter bar ── */
+    .filter-bar {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.5rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: center;
+    }
+    .filter-primary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: center;
+        flex: 1 1 auto;
+    }
+    .filter-group { display: flex; flex-direction: column; gap: 0.2rem; }
+    .filter-group label {
+        font-size: 0.65rem; text-transform: uppercase;
+        letter-spacing: 0.08em; color: var(--text-dim); font-weight: 600;
+    }
+    .window-pills { display: flex; gap: 0.25rem; }
+    .pill {
+        background: none; border: 1px solid var(--border); color: var(--text-dim);
+        padding: 0.25rem 0.6rem; border-radius: 4px; font-size: 0.75rem;
+        font-family: var(--mono); cursor: pointer; transition: all 0.15s;
+    }
+    .pill:hover { border-color: var(--accent); color: var(--accent); }
+    .pill.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+    .filter-sep { width: 1px; height: 28px; background: var(--border); margin: 0 0.25rem; }
+    .filter-actions { display: flex; gap: 0.5rem; align-items: center; margin-left: auto; }
+
+    /* ── Time window "More" dropdown ── */
+    .window-more {
+        position: relative;
+        display: inline-flex;
+    }
+    .window-more-btn {
+        background: none; border: 1px solid var(--border); color: var(--text-dim);
+        padding: 0.25rem 0.6rem; border-radius: 4px; font-size: 0.75rem;
+        font-family: var(--mono); cursor: pointer; transition: all 0.15s;
+        display: flex; align-items: center; gap: 0.25rem;
+    }
+    .window-more-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .window-more-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+    .window-more-btn .arrow { font-size: 0.6rem; transition: transform 0.15s; }
+    .window-more.open .window-more-btn .arrow { transform: rotate(180deg); }
+    .window-more-dropdown {
+        display: none; position: absolute; top: 100%; left: 0; margin-top: 0.35rem;
+        background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+        padding: 0.35rem; min-width: 120px; z-index: 100;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    }
+    .window-more.open .window-more-dropdown { display: block; }
+    .window-more-dropdown button {
+        display: block; width: 100%; text-align: left;
+        background: none; border: none; color: var(--text-dim);
+        padding: 0.3rem 0.6rem; border-radius: 4px; font-size: 0.75rem;
+        font-family: var(--mono); cursor: pointer; transition: all 0.15s;
+    }
+    .window-more-dropdown button:hover { background: var(--accent-dim); color: var(--accent); }
+    .window-more-dropdown button.active { background: var(--accent-dim); color: var(--accent); font-weight: 600; }
+
+    /* ── Refresh button ── */
+    .filter-refresh-btn {
+        background: none; border: 1px solid rgba(34,211,238,0.3); color: var(--accent);
+        padding: 0.3rem 0.65rem; border-radius: 5px; font-size: 0.75rem;
+        font-family: var(--sans); cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .filter-refresh-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
+
+    /* ── Auto-refresh ── */
+    .auto-refresh-select {
+        background: var(--surface); border: 1px solid var(--border); color: var(--text-dim);
+        padding: 0.3rem 0.4rem; border-radius: 5px; font-size: 0.75rem;
+        font-family: var(--mono); cursor: pointer; transition: all 0.15s; outline: none;
+    }
+    .auto-refresh-select:hover, .auto-refresh-select:focus { border-color: var(--accent); color: var(--text); }
+    .refresh-countdown {
+        font-size: 0.65rem; font-family: var(--mono); color: var(--text-dim);
+        opacity: 0.7; min-width: 3.2em; text-align: right;
+    }
+
+    /* ── Collapsible filters toggle ── */
+    .filter-toggle-filters {
+        background: none; border: 1px solid var(--border); color: var(--text-dim);
+        padding: 0.3rem 0.65rem; border-radius: 5px; font-size: 0.75rem;
+        font-family: var(--sans); cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .filter-toggle-filters:hover { border-color: var(--accent); color: var(--accent); }
+    .filter-toggle-filters .toggle-arrow {
+        display: inline-block; transition: transform 0.2s; margin-left: 0.2rem; font-size: 0.65rem;
+    }
+    .filter-bar:not(.collapsed) .filter-toggle-filters .toggle-arrow { transform: rotate(180deg); }
+
+    /* ── Wipe button ── */
+    .filter-wipe-btn {
+        background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.2);
+        color: var(--red); padding: 0.3rem 0.65rem; border-radius: 5px; font-size: 0.75rem;
+        font-family: var(--sans); cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .filter-wipe-btn:hover { background: rgba(248,113,113,0.18); border-color: rgba(248,113,113,0.4); }
+
+    /* ── Secondary filters (collapsible) ── */
+    .filter-secondary {
+        display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; padding-top: 0.6rem;
+    }
+    .filter-bar.collapsed .filter-secondary { display: none; }
+
+    .filter-select, .filter-input {
+        background: var(--bg); border: 1px solid var(--border); color: var(--text);
+        padding: 0.3rem 0.6rem; border-radius: 5px; font-size: 0.8rem;
+        font-family: var(--mono); cursor: pointer; outline: none; transition: border-color 0.15s;
+    }
+    .filter-select:focus, .filter-input:focus { border-color: var(--accent); }
+    .filter-toggle {
+        display: flex; align-items: center; gap: 0.4rem;
+        font-size: 0.8rem; color: var(--text-dim); cursor: pointer; user-select: none;
+    }
+    .filter-toggle input[type=checkbox] { accent-color: var(--accent); }
+
+    /* ── Spinner ── */
+    .filter-spinner {
+        display: inline-block; width: 18px; height: 18px;
+        border: 2px solid var(--border); border-top-color: var(--accent);
+        border-radius: 50%; animation: filter-spin 0.7s linear infinite;
+        vertical-align: middle;
+    }
+    @keyframes filter-spin { to { transform: rotate(360deg); } }
+
+    /* ── Mobile Responsive ── */
+    @media (max-width: 768px) {
+        .filter-bar { flex-direction: column; align-items: stretch; }
+        .filter-sep { display: none; }
+    }
+    @media (max-width: 480px) {
+        .pill { padding: 0.25rem 0.4rem; font-size: 0.7rem; }
+    }
+
+    /* ── Compact split-button mode ── */
+    .filter-compact {
+        position: relative;
+        display: inline-flex;
+    }
+    .filter-compact-main {
+        background: none; border: 1px solid var(--accent); color: var(--accent);
+        padding: 0.4rem 0.75rem; border-radius: 5px 0 0 5px;
+        font-size: 0.8rem; font-family: var(--sans); cursor: pointer;
+        transition: all 0.15s; white-space: nowrap; display: flex; align-items: center; gap: 0.35rem;
+    }
+    .filter-compact-main:hover { background: var(--accent-dim); }
+    .filter-compact-main .compact-window {
+        font-family: var(--mono); font-size: 0.7rem; opacity: 0.7;
+    }
+    .filter-compact-arrow {
+        background: none; border: 1px solid var(--accent); border-left: none;
+        color: var(--accent); padding: 0.4rem 0.45rem; border-radius: 0 5px 5px 0;
+        cursor: pointer; transition: all 0.15s; display: flex; align-items: center;
+    }
+    .filter-compact-arrow:hover { background: var(--accent-dim); }
+    .filter-compact-arrow .arrow { font-size: 0.6rem; transition: transform 0.2s; }
+    .filter-compact.open .filter-compact-arrow .arrow { transform: rotate(180deg); }
+    .filter-compact-panel {
+        display: none; position: absolute; top: calc(100% + 0.5rem); right: 0;
+        background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+        padding: 1rem 1.15rem; min-width: 340px; z-index: 100;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    }
+    .filter-compact.open .filter-compact-panel { display: block; }
+    .compact-panel-section { margin-bottom: 0.85rem; }
+    .compact-panel-section:last-child { margin-bottom: 0; }
+    .compact-panel-label {
+        font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em;
+        color: var(--text-dim); font-weight: 600; margin-bottom: 0.4rem;
+    }
+    .compact-panel-pills { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+    .compact-panel-pills .pill { border-radius: 4px; }
+    .compact-panel-more { position: relative; display: inline-flex; }
+    .compact-panel-more-dropdown {
+        display: none; position: absolute; top: calc(100% + 0.35rem); left: 0;
+        background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+        padding: 0.3rem; min-width: 100px; z-index: 101;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    }
+    .compact-panel-more.open .compact-panel-more-dropdown { display: block; }
+    .compact-panel-more-dropdown button {
+        display: block; width: 100%; text-align: left; background: none; border: none;
+        color: var(--text-dim); padding: 0.3rem 0.6rem; border-radius: 4px;
+        font-size: 0.75rem; font-family: var(--mono); cursor: pointer; transition: all 0.15s;
+    }
+    .compact-panel-more-dropdown button:hover { background: var(--accent-dim); color: var(--accent); }
+    .compact-panel-more-dropdown button.active { background: var(--accent-dim); color: var(--accent); font-weight: 600; }
+    .compact-autorefresh-row {
+        display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+    }
+    .compact-autorefresh-row .auto-refresh-select {
+        background: var(--surface); border: 1px solid var(--border); color: var(--text-dim);
+        padding: 0.25rem 0.4rem; border-radius: 4px; font-size: 0.75rem;
+        font-family: var(--mono); cursor: pointer; outline: none;
+    }
+    .compact-autorefresh-row .auto-refresh-select:hover,
+    .compact-autorefresh-row .auto-refresh-select:focus { border-color: var(--accent); color: var(--text); }
+    .compact-autorefresh-row .refresh-countdown {
+        font-size: 0.65rem; font-family: var(--mono); color: var(--text-dim); opacity: 0.7;
+    }
+    @media (max-width: 768px) {
+        .filter-compact-panel { right: auto; left: 0; min-width: 300px; }
+    }
+    @media (max-width: 480px) {
+        .filter-compact-panel { min-width: 280px; }
+    }
+</style>
+
+{{if .Compact}}
+{{/* ── Compact split-button mode (e.g. Dashboard) ── */}}
+<div class="filter-compact" id="{{.BarId}}">
+    <button type="button" class="filter-compact-main" id="{{.BarId}}-refresh-btn" title="Refresh data">
+        &#8635; Refresh <span class="compact-window" id="{{.BarId}}-window-label">1h</span>
+    </button>
+    <button type="button" class="filter-compact-arrow" id="{{.BarId}}-arrow" title="Settings">
+        <span class="arrow">&#x25BE;</span>
+    </button>
+    <div class="filter-compact-panel">
+        <div class="compact-panel-section">
+            <div class="compact-panel-label">Time Window</div>
+            <div class="compact-panel-pills" id="{{.BarId}}-pills">
+                <button class="pill" data-window="5m">5m</button>
+                <button class="pill" data-window="1h">1h</button>
+                <button class="pill" data-window="6h">6h</button>
+                <button class="pill" data-window="1d">1d</button>
+                <button class="pill" data-window="7d">7d</button>
+                <button class="pill" data-window="30d">30d</button>
+                <div class="compact-panel-more" id="{{.BarId}}-more">
+                    <button type="button" class="window-more-btn" title="More time windows">More <span class="arrow">&#x25BE;</span></button>
+                    <div class="compact-panel-more-dropdown">
+                        <button data-window="15m">15m</button>
+                        <button data-window="30m">30m</button>
+                        <button data-window="2h">2h</button>
+                        <button data-window="3h">3h</button>
+                        <button data-window="12h">12h</button>
+                        <button data-window="3d">3d</button>
+                        <button data-window="14d">14d</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{if .ShowAutoRefresh}}
+        <div class="compact-panel-section">
+            <div class="compact-panel-label">Auto-Refresh</div>
+            <div class="compact-autorefresh-row">
+                <select class="auto-refresh-select" id="{{.BarId}}-auto-refresh" title="Auto-refresh interval">
+                    {{range $i, $opt := splitList "," .AutoRefreshOptions}}{{if $opt}}
+                    {{$parts := splitList ":" $opt}}
+                    <option value="{{index $parts 0}}"{{if eq (index $parts 0) $.DefaultAutoRefresh}} selected{{end}}>{{index $parts 1}}</option>
+                    {{end}}{{end}}
+                </select>
+                <span class="refresh-countdown" id="{{.BarId}}-countdown"></span>
+            </div>
+        </div>
+        {{end}}
+    </div>
+</div>
+{{else}}
+{{/* ── Full filter bar mode (Analytics, Routing) ── */}}
+<div class="filter-bar{{if .ShowFilters}} collapsed{{end}}" id="{{.BarId}}">
+    <div class="filter-primary">
+        <div class="filter-group">
+            <label>Time Window</label>
+            <div class="window-pills" id="{{.BarId}}-pills">
+                <button class="pill" data-window="5m">5m</button>
+                <button class="pill" data-window="1h">1h</button>
+                <button class="pill" data-window="6h">6h</button>
+                <button class="pill" data-window="1d">1d</button>
+                <button class="pill" data-window="7d">7d</button>
+                <button class="pill" data-window="30d">30d</button>
+                <div class="window-more" id="{{.BarId}}-more">
+                    <button type="button" class="window-more-btn" title="More time windows">More <span class="arrow">&#x25BE;</span></button>
+                    <div class="window-more-dropdown">
+                        <button data-window="15m">15m</button>
+                        <button data-window="30m">30m</button>
+                        <button data-window="2h">2h</button>
+                        <button data-window="3h">3h</button>
+                        <button data-window="12h">12h</button>
+                        <button data-window="3d">3d</button>
+                        <button data-window="14d">14d</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="filter-sep"></div>
+
+        <div class="filter-actions">
+            {{if .ShowRefresh}}
+            <button type="button" class="filter-refresh-btn" id="{{.BarId}}-refresh-btn" title="Refresh data">&#8635; Refresh</button>
+            {{end}}
+
+            {{if .ShowAutoRefresh}}
+            <select class="auto-refresh-select" id="{{.BarId}}-auto-refresh" title="Auto-refresh interval">
+                {{range $i, $opt := splitList "," .AutoRefreshOptions}}{{if $opt}}
+                {{$parts := splitList ":" $opt}}
+                <option value="{{index $parts 0}}"{{if eq (index $parts 0) $.DefaultAutoRefresh}} selected{{end}}>{{index $parts 1}}</option>
+                {{end}}{{end}}
+            </select>
+            <span class="refresh-countdown" id="{{.BarId}}-countdown"></span>
+            {{end}}
+
+            {{if .ShowFilters}}
+            <button type="button" class="filter-toggle-filters" id="{{.BarId}}-toggle-filters">Filters<span class="toggle-arrow">&#x25BE;</span></button>
+            {{end}}
+
+            {{if .ShowWipe}}
+            <button type="button" class="filter-wipe-btn" id="{{.BarId}}-wipe-btn" title="Delete data matching current filters">&#128465; Wipe</button>
+            {{end}}
+
+            {{if .ShowSpinner}}
+            <span id="{{.BarId}}-spinner" style="display:none"><span class="filter-spinner"></span></span>
+            {{end}}
+        </div>
+    </div>
+
+    {{if .HasSecondary}}
+    <div class="filter-secondary">
+        {{template "filter_bar_secondary" .PageData}}
+    </div>
+    {{end}}
+</div>
+{{end}}{{/* end if Compact */}}
+
+<script>
+(function() {
+    var barId = {{.BarId | json}};
+    var refreshFn = {{.RefreshFn | json}};
+    var windowStorageKey = {{if .WindowStorageKey}}{{.WindowStorageKey | json}}{{else}}""{{end}};
+    var showAutoRefresh = {{if .ShowAutoRefresh}}true{{else}}false{{end}};
+    var autoRefreshKey = {{if .AutoRefreshKey}}{{.AutoRefreshKey | json}}{{else}}""{{end}};
+    var isCompact = {{if .Compact}}true{{else}}false{{end}};
+
+    var bar = document.getElementById(barId);
+    var pillsContainer = document.getElementById(barId + '-pills');
+
+    // ── Button event bindings ──
+    var refreshBtn = document.getElementById(barId + '-refresh-btn');
+    var compactWindowLabel = document.getElementById(barId + '-window-label');
+
+    if (refreshBtn && typeof window[refreshFn] === 'function') {
+        refreshBtn.addEventListener('click', function() {
+            window[refreshFn]();
+            if (isCompact) bar.classList.remove('open');
+        });
+    }
+    {{if .Compact}}
+    // Arrow button toggles compact panel
+    var arrowBtn = document.getElementById(barId + '-arrow');
+    if (arrowBtn) {
+        arrowBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            bar.classList.toggle('open');
+        });
+    }
+    // Close panel on outside click
+    document.addEventListener('click', function(e) {
+        if (!bar.contains(e.target)) bar.classList.remove('open');
+    });
+    {{end}}
+    {{if .ShowWipe}}
+    var wipeFn = {{.WipeFn | json}};
+    var wipeBtn = document.getElementById(barId + '-wipe-btn');
+    if (wipeBtn && typeof window[wipeFn] === 'function') {
+        wipeBtn.addEventListener('click', function() { window[wipeFn](); });
+    }
+    {{end}}
+    {{if .ShowAutoRefresh}}
+    var autoRefreshSelect = document.getElementById(barId + '-auto-refresh');
+    if (autoRefreshSelect) {
+        autoRefreshSelect.addEventListener('change', function() {
+            filterBarSetAutoRefresh(barId, this.value);
+        });
+    }
+    {{end}}
+
+    // ── Window pills + More dropdown ──
+    var currentWindow = {{if .DefaultWindow}}{{.DefaultWindow | json}}{{else}}"1h"{{end}};
+    var moreContainer = document.getElementById(barId + '-more');
+    var moreBtn = moreContainer ? moreContainer.querySelector('.window-more-btn') : null;
+
+    // All valid windows (primary + dropdown)
+    var allWindows = ['5m','15m','30m','1h','2h','3h','6h','12h','1d','3d','7d','14d','30d'];
+    var primaryWindows = ['5m','1h','6h','1d','7d','30d'];
+
+    function setActiveWindow(win) {
+        currentWindow = win;
+        if (windowStorageKey) localStorage.setItem(windowStorageKey, currentWindow);
+        // Clear all active states
+        pillsContainer.querySelectorAll('.pill').forEach(function(p) { p.classList.remove('active'); });
+        if (moreContainer) moreContainer.querySelectorAll('button[data-window]').forEach(function(b) { b.classList.remove('active'); });
+        // Set active on matching primary pill
+        var primaryMatch = pillsContainer.querySelector('.pill[data-window="' + win + '"]');
+        if (primaryMatch) {
+            primaryMatch.classList.add('active');
+            if (moreBtn) moreBtn.classList.remove('active');
+        } else if (moreContainer) {
+            var ddMatch = moreContainer.querySelector('button[data-window="' + win + '"]');
+            if (ddMatch) ddMatch.classList.add('active');
+            if (moreBtn) moreBtn.classList.add('active');
+        }
+        // Update compact mode label
+        if (compactWindowLabel) compactWindowLabel.textContent = win;
+    }
+
+    // Restore from localStorage if key provided
+    if (windowStorageKey) {
+        var stored = localStorage.getItem(windowStorageKey);
+        if (stored !== null && allWindows.indexOf(stored) !== -1) {
+            currentWindow = stored;
+        }
+    }
+    // Set initial active state
+    setActiveWindow(currentWindow);
+
+    // Primary pill clicks
+    pillsContainer.addEventListener('click', function(e) {
+        var btn = e.target.closest('.pill');
+        if (!btn) return;
+        setActiveWindow(btn.dataset.window);
+        if (typeof window[refreshFn] === 'function') window[refreshFn]();
+    });
+
+    // Dropdown item clicks
+    if (moreContainer) {
+        var ddClass = isCompact ? '.compact-panel-more-dropdown' : '.window-more-dropdown';
+        var dropdown = moreContainer.querySelector(ddClass);
+        if (dropdown) {
+            dropdown.addEventListener('click', function(e) {
+                var btn = e.target.closest('button[data-window]');
+                if (!btn) return;
+                setActiveWindow(btn.dataset.window);
+                moreContainer.classList.remove('open');
+                if (typeof window[refreshFn] === 'function') window[refreshFn]();
+            });
+        }
+        if (moreBtn) {
+            moreBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                moreContainer.classList.toggle('open');
+            });
+        }
+    }
+    // Close "More" dropdown on outside click (not in compact panel, handled separately)
+    if (!isCompact) {
+        document.addEventListener('click', function(e) {
+            if (moreContainer && !moreContainer.contains(e.target)) {
+                moreContainer.classList.remove('open');
+            }
+        });
+    }
+
+    // Expose getter for page JS
+    window['filterBarGetWindow'] = window['filterBarGetWindow'] || {};
+    window['filterBarGetWindow'][barId] = function() { return currentWindow; };
+
+    // ── Collapsible filters toggle ──
+    {{if .ShowFilters}}
+    var toggleBtn = document.getElementById(barId + '-toggle-filters');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+            bar.classList.toggle('collapsed');
+        });
+    }
+    {{end}}
+
+    // ── Auto-refresh ──
+    if (showAutoRefresh) {
+        var autoMs = 0;
+        var autoTimer = null;
+        var countdownInterval = null;
+        var countdownMs = 0;
+
+        // Restore from localStorage
+        if (autoRefreshKey) {
+            var storedMs = localStorage.getItem(autoRefreshKey);
+            if (storedMs !== null) autoMs = parseInt(storedMs, 10) || 0;
+            var sel = document.getElementById(barId + '-auto-refresh');
+            if (sel && autoMs > 0) sel.value = String(autoMs);
+        }
+
+        function updateCountdown() {
+            var el = document.getElementById(barId + '-countdown');
+            if (!el) return;
+            if (autoMs <= 0 || countdownMs <= 0) { el.textContent = ''; return; }
+            el.textContent = Math.ceil(countdownMs / 1000) + 's';
+        }
+
+        function startCountdown() {
+            clearInterval(countdownInterval);
+            if (autoMs <= 0) { countdownMs = 0; updateCountdown(); return; }
+            countdownMs = autoMs;
+            updateCountdown();
+            countdownInterval = setInterval(function() {
+                countdownMs -= 1000;
+                if (countdownMs <= 0) { countdownMs = 0; clearInterval(countdownInterval); }
+                updateCountdown();
+            }, 1000);
+        }
+
+        function scheduleAutoRefresh() {
+            clearTimeout(autoTimer);
+            if (autoMs > 0) {
+                autoTimer = setTimeout(function() {
+                    if (typeof window[refreshFn] === 'function') window[refreshFn]();
+                    scheduleAutoRefresh();
+                }, autoMs);
+                startCountdown();
+            } else {
+                countdownMs = 0;
+                clearInterval(countdownInterval);
+                updateCountdown();
+            }
+        }
+
+        window.filterBarSetAutoRefresh = function(id, ms) {
+            if (id !== barId) return;
+            autoMs = parseInt(ms, 10) || 0;
+            if (autoRefreshKey) localStorage.setItem(autoRefreshKey, String(autoMs));
+            scheduleAutoRefresh();
+        };
+
+        // Schedule initial auto-refresh if restored
+        if (autoMs > 0) scheduleAutoRefresh();
+
+        // Expose reschedule function for page JS to call after manual refresh
+        window['filterBarReschedule'] = window['filterBarReschedule'] || {};
+        window['filterBarReschedule'][barId] = function() { scheduleAutoRefresh(); };
+    }
+
+    // ── Spinner helper ──
+    {{if .ShowSpinner}}
+    window['filterBarShowSpinner'] = window['filterBarShowSpinner'] || {};
+    window['filterBarShowSpinner'][barId] = function(show) {
+        var el = document.getElementById(barId + '-spinner');
+        if (el) el.style.display = show ? 'inline-block' : 'none';
+    };
+    {{end}}
+
+    // ── Auto-expand secondary if any filter has a value ──
+    {{if .ShowFilters}}
+    var secondary = bar.querySelector('.filter-secondary');
+    if (secondary) {
+        var hasValue = false;
+        secondary.querySelectorAll('select').forEach(function(sel) {
+            if (sel.value && sel.value !== '') hasValue = true;
+        });
+        secondary.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
+            if (cb.checked) hasValue = true;
+        });
+        if (hasValue) bar.classList.remove('collapsed');
+    }
+    {{end}}
+})();
+</script>
+{{end}}
