@@ -191,11 +191,11 @@ var knownModels = map[string]knownModelInfo{
 	"moonshot-v1":  {DisplayName: "Moonshot v1", ContextLength: 128000, MaxOutputTokens: 8192},
 
 	// ── MiniMax ─────────────────────────────────────────────────
-	"minimax-m2.7": {DisplayName: "MiniMax M2.7", ContextLength: 1048576, MaxOutputTokens: 16384},
-	"minimax-m2.5": {DisplayName: "MiniMax M2.5", ContextLength: 1048576, MaxOutputTokens: 16384},
-	"minimax-m2-":  {DisplayName: "MiniMax M2", ContextLength: 1048576, MaxOutputTokens: 16384},
-	"minimax-m1-":  {DisplayName: "MiniMax M1", ContextLength: 1048576, MaxOutputTokens: 16384},
-	"minimax-":     {DisplayName: "MiniMax", ContextLength: 245000, MaxOutputTokens: 8192},
+	"minimax-m2.7": {DisplayName: "MiniMax M2.7", ContextLength: 200000, MaxOutputTokens: 65536},
+	"minimax-m2.5": {DisplayName: "MiniMax M2.5", ContextLength: 200000, MaxOutputTokens: 65536},
+	"minimax-m2-":  {DisplayName: "MiniMax M2", ContextLength: 200000, MaxOutputTokens: 65536},
+	"minimax-m1-":  {DisplayName: "MiniMax M1", ContextLength: 200000, MaxOutputTokens: 65536},
+	"minimax-":     {DisplayName: "MiniMax", ContextLength: 200000, MaxOutputTokens: 8192},
 
 	// ── xAI Grok ────────────────────────────────────────────────
 	"grok-3-": {DisplayName: "Grok 3", ContextLength: 131072, MaxOutputTokens: 32768},
