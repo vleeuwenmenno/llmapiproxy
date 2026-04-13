@@ -304,15 +304,15 @@ func (u *UI) Dashboard(w http.ResponseWriter, r *http.Request) {
 
 // unifiedDashResponse is the JSON payload for the consolidated dashboard data endpoint.
 type unifiedDashResponse struct {
-	Summary     stats.Summary              `json:"summary"`
-	Percentiles stats.Percentiles          `json:"percentiles"`
-	TimeSeries  []stats.TimePoint          `json:"time_series"`
-	TopModels   []stats.RankRow            `json:"top_models"`
-	TopBackends []stats.RankRow            `json:"top_backends"`
-	TopClients  []stats.RankRow            `json:"top_clients"`
-	Routing     []stats.ModelRoutingStats  `json:"routing"`
-	Records     unifiedRecPage             `json:"records"`
-	Filters     unifiedFilters             `json:"filters"`
+	Summary     stats.Summary             `json:"summary"`
+	Percentiles stats.Percentiles         `json:"percentiles"`
+	TimeSeries  []stats.TimePoint         `json:"time_series"`
+	TopModels   []stats.RankRow           `json:"top_models"`
+	TopBackends []stats.RankRow           `json:"top_backends"`
+	TopClients  []stats.RankRow           `json:"top_clients"`
+	Routing     []stats.ModelRoutingStats `json:"routing"`
+	Records     unifiedRecPage            `json:"records"`
+	Filters     unifiedFilters            `json:"filters"`
 }
 
 type unifiedRecPage struct {
@@ -2259,8 +2259,6 @@ func bucketSecsForFilter(f stats.StatsFilter) int64 {
 		return 4 * 3600 // 4-hour buckets
 	}
 }
-
-
 
 // OAuthCheckStatus proactively checks and refreshes the OAuth status for a
 // specific backend. Unlike OAuthStatus which only reads cached state, this
