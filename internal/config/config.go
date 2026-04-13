@@ -619,6 +619,59 @@ func (m *Manager) UpdateAPIKeys(keys []string) error {
 	return m.Reload()
 }
 
+// SwitchBackendType changes a backend's type between "openai" and "anthropic",
+// updates its base URL and API key, persists the file, and reloads.
+// Only openai ↔ anthropic switching is supported.
+func (m *Manager) SwitchBackendType(name, newType, baseURL, apiKey string) error {
+	switch newType {
+	case "openai", "anthropic":
+		// ok
+	default:
+		return fmt.Errorf("unsupported target type %q; only openai and anthropic are allowed", newType)
+	}
+
+	m.mu.Lock()
+	found := false
+	for i, b := range m.current.Backends {
+		if b.Name == name {
+			switch b.Type {
+			case "openai", "anthropic":
+				// ok — allowed to switch
+			default:
+				m.mu.Unlock()
+				return fmt.Errorf("cannot switch backend %q of type %q; only openai and anthropic backends can be switched", name, b.Type)
+			}
+			m.current.Backends[i].Type = newType
+			if baseURL != "" {
+				m.current.Backends[i].BaseURL = baseURL
+			}
+			if apiKey != "" {
+				m.current.Backends[i].APIKey = apiKey
+			}
+			// Clear OAuth — switching to a non-OAuth type.
+			m.current.Backends[i].OAuth = nil
+			found = true
+			break
+		}
+	}
+	cfg := m.current
+	m.mu.Unlock()
+
+	if !found {
+		return fmt.Errorf("backend %q not found", name)
+	}
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
 // ToggleBackend sets the enabled state of a backend by name and persists.
 func (m *Manager) ToggleBackend(name string, enabled bool) error {
 	m.mu.Lock()

@@ -81,6 +81,30 @@ backends:
       - gpt-4-turbo
 ```
 
+## OpenAI Codex
+
+[chatgpt.com](https://chatgpt.com) — OpenAI's Codex backend for agentic coding models.
+
+The proxy authenticates via OAuth PKCE (browser) or Device Code Flow (headless/SSH).
+Models are **dynamically fetched** from the Codex API when a valid token is available,
+falling back to a built-in default list when offline or unauthenticated.
+
+```yaml
+backends:
+  - name: codex
+    type: codex
+    # base_url defaults to https://chatgpt.com/backend-api/codex
+    # models:   # optional — omit to auto-discover
+    #   - gpt-5.4
+    #   - gpt-5.4-mini
+    #   - gpt-5.3-codex
+```
+
+Available models include `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex`, `gpt-5.2-codex`,
+`gpt-5.2`, `gpt-5.1-codex`, `gpt-5.1-codex-max`, `gpt-5.1-codex-mini`, `gpt-5-codex`,
+and `codex-mini-latest`. The default list is refreshed from the upstream API when
+authentication is available; configure `model_cache_ttl` to control refresh frequency.
+
 ## Anthropic (via OpenRouter or OpenAI-compatible proxy)
 
 Direct Anthropic API support is planned. For now, route through OpenRouter:

@@ -373,8 +373,9 @@ func renderConfigMessage(w http.ResponseWriter, configText string, message strin
 // BackendEntry holds display info for the models page.
 type BackendEntry struct {
 	Name        string
-	Type        string // "openai", "copilot", "codex"
+	Type        string // "openai", "anthropic", "copilot", "codex"
 	BaseURL     string
+	APIKey      string // masked API key for pre-filling the switch-type modal
 	Models      []ModelEntry // enriched model metadata (nil for dynamic backends)
 	IsDynamic   bool         // true when no explicit model list (accepts all)
 	IconURL     string       // path to SVG icon, empty if unknown
@@ -475,6 +476,7 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 			Name:        bc.Name,
 			Type:        bc.Type,
 			BaseURL:     bc.BaseURL,
+			APIKey:      maskKey(bc.APIKey),
 			Models:      modelEntries, // nil for dynamic; IDs-only for static
 			IsDynamic:   isDynamic,
 			IconURL:     iconForBackend(bc.Name),
@@ -1653,6 +1655,10 @@ func (u *UI) RequestDetail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid id", http.StatusBadRequest)
 		return
 	}
+	if id == 0 {
+		http.Error(w, "detail not available for in-memory records", http.StatusNotFound)
+		return
+	}
 	if u.store == nil {
 		http.Error(w, "store not available", http.StatusServiceUnavailable)
 		return
@@ -1804,6 +1810,30 @@ func (u *UI) ToggleBackend(w http.ResponseWriter, r *http.Request) {
 		status = "enabled"
 	}
 	http.Redirect(w, r, redirectTo+"?msg=Backend+"+name+"+"+status+".", http.StatusSeeOther)
+}
+
+// SwitchBackendType changes a backend's type between openai and anthropic,
+// updating its base URL and API key. Only openai ↔ anthropic is supported.
+func (u *UI) SwitchBackendType(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/ui/models?msg=Failed+to+parse+form.", http.StatusSeeOther)
+		return
+	}
+	name := r.FormValue("name")
+	newType := r.FormValue("type")
+	baseURL := r.FormValue("base_url")
+	apiKey := r.FormValue("api_key")
+
+	redirectTo := r.FormValue("redirect")
+	if redirectTo == "" {
+		redirectTo = "/ui/models"
+	}
+
+	if err := u.cfgMgr.SwitchBackendType(name, newType, baseURL, apiKey); err != nil {
+		http.Redirect(w, r, redirectTo+"?msg=Error:"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, redirectTo+"?msg=Backend+"+name+"+switched+to+"+newType+".", http.StatusSeeOther)
 }
 
 // AddBackendPage adds a new backend from the Models page form.

@@ -21,7 +21,7 @@ type Record struct {
 	Stream           bool      `json:"stream"`
 	ResponseBody     string    `json:"response_body,omitempty"`
 	Client           string    `json:"client,omitempty"`
-	ID               int64     `json:"id,omitempty"`
+	ID               int64     `json:"id"`
 
 	// Routing metadata (set when multiple backends are configured for the model).
 	Strategy          string `json:"strategy,omitempty"`           // e.g. "priority", "round-robin", "race"

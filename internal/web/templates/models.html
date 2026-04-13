@@ -581,6 +581,61 @@
             border-radius: 10px;
         }
 
+        /* ── Type badge ── */
+        .type-badge {
+            font-family: var(--mono);
+            font-size: 0.55rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            font-weight: 600;
+            vertical-align: middle;
+        }
+        .type-badge.type-openai {
+            background: rgba(34,211,238,0.12);
+            color: var(--accent);
+            border: 1px solid rgba(34,211,238,0.3);
+        }
+        .type-badge.type-anthropic {
+            background: rgba(167,139,250,0.12);
+            color: var(--purple);
+            border: 1px solid rgba(167,139,250,0.3);
+        }
+        .type-badge.type-copilot {
+            background: rgba(52,211,153,0.12);
+            color: var(--green);
+            border: 1px solid rgba(52,211,153,0.3);
+        }
+        .type-badge.type-codex {
+            background: rgba(251,191,36,0.12);
+            color: var(--amber);
+            border: 1px solid rgba(251,191,36,0.3);
+        }
+
+        /* ── Switch-type button ── */
+        .switch-type-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            font-size: 0.6rem;
+            font-family: var(--mono);
+            cursor: pointer;
+            padding: 0.15rem 0.4rem;
+            border-radius: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        .switch-type-btn:hover {
+            color: var(--purple);
+            border-color: var(--purple);
+            background: rgba(167,139,250,0.08);
+        }
+
         /* ── Spinner ─────────────────────────────────────────── */
         .model-loading {
             display: flex;
@@ -1519,9 +1574,13 @@
                     <div class="backend-name">
                         {{if .IconURL}}<img class="backend-icon" src="{{.IconURL}}" alt="{{.Name}}">{{else}}<div class="dot"></div>{{end}}
                         {{.Name}}
+                        <span class="type-badge type-{{.Type}}">{{.Type}}</span>
                         <span class="collapse-chevron">&#x25BE;</span>
                     </div>
                     <div style="display:flex;align-items:center;gap:0.5rem" onclick="event.stopPropagation()">
+                    {{if or (eq .Type "openai") (eq .Type "anthropic")}}
+                    <button class="switch-type-btn" onclick="openSwitchTypeModal('{{.Name}}', '{{.Type}}', '{{.BaseURL}}', '{{.APIKey}}')" title="Switch to {{if eq .Type "openai"}}Anthropic{{else}}OpenAI{{end}} API format">&#x21C4; {{if eq .Type "openai"}}Anthropic{{else}}OpenAI{{end}}</button>
+                    {{end}}
                     {{if $oauth}}
                     <span class="oauth-status-dot oauth-status-dot-{{$oauth.TokenState}}" title="{{$oauth.TokenState}}"></span>
                     <span class="oauth-status-text oauth-text-{{if eq $oauth.TokenState `valid`}}valid{{else if eq $oauth.TokenState `expiring`}}expiring{{else}}missing{{end}}">
@@ -1670,6 +1729,54 @@
             <div class="modal-footer" style="border-top:1px solid var(--border);padding:0.75rem 1.25rem">
                 <button class="btn btn-secondary" onclick="closeModal('modal-delete-backend')">Cancel</button>
                 <button class="btn btn-danger" id="delete-backend-confirm" onclick="confirmDeleteBackend()">Delete Backend</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Switch Backend Type Modal ──────────────────────────────── -->
+    <div class="modal-overlay" id="modal-switch-type" onclick="closeOnBackdrop(event, 'modal-switch-type')">
+        <div class="modal" style="max-width:520px">
+            <div class="modal-header">
+                <h2 id="switch-type-title">Switch Backend Type</h2>
+                <button class="modal-close" onclick="closeModal('modal-switch-type')">&#x2715;</button>
+            </div>
+            <div class="modal-body" style="padding:1.25rem">
+                <p id="switch-type-desc" style="margin-bottom:1rem;font-size:0.85rem;color:var(--text-dim);line-height:1.6">
+                    This will change the API format the proxy uses to communicate with this backend. The base URL and API key can be updated at the same time.
+                </p>
+                <div id="switch-type-warning" style="display:none;padding:0.6rem 0.85rem;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);border-radius:6px;margin-bottom:1rem;font-size:0.8rem;color:var(--amber)">
+                    Switching format warning.
+                </div>
+                <form id="switch-type-form" method="POST" action="/ui/settings/backends/switch-type">
+                    <input type="hidden" name="name" id="switch-type-name">
+                    <input type="hidden" name="type" id="switch-type-target">
+                    <input type="hidden" name="redirect" value="/ui/models">
+                    <div style="margin-bottom:1rem">
+                        <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:0.35rem;color:var(--text-dim)">New Type</label>
+                        <div style="display:flex;gap:0.5rem;align-items:center">
+                            <span id="switch-type-current-badge" class="type-badge" style="opacity:0.4;text-decoration:line-through"></span>
+                            <span style="color:var(--text-dim);font-size:1.2rem">&#x2192;</span>
+                            <span id="switch-type-target-badge" class="type-badge"></span>
+                        </div>
+                    </div>
+                    <div style="margin-bottom:1rem">
+                        <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:0.35rem;color:var(--text-dim)">Base URL</label>
+                        <input type="text" name="base_url" id="switch-type-base-url" style="width:100%;padding:0.5rem 0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:0.8rem;outline:none;transition:border-color 0.15s" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                        <span style="font-size:0.7rem;color:var(--text-dim)">Leave unchanged or edit to update the upstream endpoint URL.</span>
+                    </div>
+                    <div style="margin-bottom:1rem">
+                        <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:0.35rem;color:var(--text-dim)">API Key</label>
+                        <input type="text" name="api_key" id="switch-type-api-key" placeholder="Leave empty to keep current key" style="width:100%;padding:0.5rem 0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:0.8rem;outline:none;transition:border-color 0.15s" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                        <span style="font-size:0.7rem;color:var(--text-dim)">Leave empty to keep the current API key. Enter a new key to replace it.</span>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid var(--border);padding:0.75rem 1.25rem;display:flex;justify-content:space-between;align-items:center">
+                <span class="hint" style="font-size:0.75rem;color:var(--text-dim)">The proxy will reload the backend automatically.</span>
+                <div style="display:flex;gap:0.5rem">
+                    <button class="btn btn-secondary" onclick="closeModal('modal-switch-type')">Cancel</button>
+                    <button class="btn btn-primary" id="switch-type-confirm" onclick="document.getElementById('switch-type-form').submit()">Switch Type</button>
+                </div>
             </div>
         </div>
     </div>
@@ -2058,6 +2165,36 @@
             var wipe = document.getElementById('delete-wipe-stats').checked;
             document.getElementById('delete-wipe-' + deleteBackendTarget).value = wipe ? 'on' : '';
             form.submit();
+        }
+
+        // ── Switch Backend Type Modal ─────────────────────────────
+        function openSwitchTypeModal(name, currentType, baseURL, maskedKey) {
+            var targetType = currentType === 'openai' ? 'anthropic' : 'openai';
+            document.getElementById('switch-type-name').value = name;
+            document.getElementById('switch-type-target').value = targetType;
+            document.getElementById('switch-type-title').textContent = 'Switch ' + name + ' to ' + targetType;
+            document.getElementById('switch-type-base-url').value = baseURL;
+            document.getElementById('switch-type-api-key').value = '';
+            document.getElementById('switch-type-api-key').placeholder = maskedKey ? 'Current: ' + maskedKey : 'Leave empty to keep current key';
+
+            // Update type badges
+            var currentBadge = document.getElementById('switch-type-current-badge');
+            var targetBadge = document.getElementById('switch-type-target-badge');
+            currentBadge.textContent = currentType;
+            currentBadge.className = 'type-badge type-' + currentType;
+            targetBadge.textContent = targetType;
+            targetBadge.className = 'type-badge type-' + targetType;
+
+            // Show format warning
+            var warning = document.getElementById('switch-type-warning');
+            if (targetType === 'anthropic') {
+                warning.innerHTML = 'Switching to Anthropic format means the proxy will send requests using the Anthropic Messages API (<code>/v1/messages</code>) instead of OpenAI Chat Completions (<code>/v1/chat/completions</code>). Make sure your provider supports the Anthropic API format.';
+            } else {
+                warning.innerHTML = 'Switching to OpenAI format means the proxy will send requests using the OpenAI Chat Completions API (<code>/v1/chat/completions</code>) instead of the Anthropic Messages API (<code>/v1/messages</code>). Make sure your provider supports the OpenAI API format.';
+            }
+            warning.style.display = 'block';
+
+            openModal('modal-switch-type');
         }
 
         // ── Add Backend Wizard ───────────────────────────────────

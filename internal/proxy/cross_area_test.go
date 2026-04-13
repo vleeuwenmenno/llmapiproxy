@@ -795,7 +795,7 @@ func TestCrossArea_OAuthTokenExpiry_NoRefresh(t *testing.T) {
 			Name: "codex", Type: "codex", BaseURL: "https://chatgpt.com/backend-api/codex",
 			Models: []config.ModelConfig{{ID: "o4-mini"}},
 		},
-		oauthHandler, ts, nil)
+		oauthHandler, ts, nil, 0)
 
 	status := b.OAuthStatus()
 	if status.Authenticated {
@@ -856,7 +856,7 @@ func TestCrossArea_SimultaneousOAuthFlows(t *testing.T) {
 			Name: "codex", Type: "codex", BaseURL: codexUpstream.URL,
 			Models: []config.ModelConfig{{ID: "o4-mini"}},
 		},
-		codexHandler, codexTS, nil)
+		codexHandler, codexTS, nil, 0)
 
 	// Both report independent OAuth statuses.
 	if copilotB.OAuthStatus().BackendName != "copilot" {

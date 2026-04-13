@@ -642,7 +642,7 @@ func (b *AnthropicBackend) staticModelList() []Model {
 		if mc.MaxOutputTokens != nil {
 			m.MaxOutputTokens = mc.MaxOutputTokens
 		}
-		b.applyKnownDefaults(&m, mc.ID)
+		applyKnownDefaults(&m, mc.ID)
 		out = append(out, m)
 	}
 	return out
@@ -697,29 +697,10 @@ func (b *AnthropicBackend) buildModelList(ctx context.Context) ([]Model, error) 
 			OwnedBy:     b.name,
 			DisplayName: item.DisplayName,
 		}
-		b.applyKnownDefaults(&m, item.ID)
+		applyKnownDefaults(&m, item.ID)
 		models = append(models, m)
 	}
 	return models, nil
-}
-
-func (b *AnthropicBackend) applyKnownDefaults(m *Model, modelID string) {
-	info := LookupKnownModel(modelID)
-	if info == nil {
-		return
-	}
-	if m.DisplayName == "" && info.DisplayName != "" {
-		m.DisplayName = info.DisplayName
-	}
-	if m.ContextLength == nil {
-		m.ContextLength = &info.ContextLength
-	}
-	if m.MaxOutputTokens == nil {
-		m.MaxOutputTokens = &info.MaxOutputTokens
-	}
-	if info.Vision {
-		m.Capabilities = append(m.Capabilities, "vision")
-	}
 }
 
 func (b *AnthropicBackend) ClearModelCache() {

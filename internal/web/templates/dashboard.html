@@ -1058,7 +1058,7 @@ function renderDash(d) {
             var tokDetail = fmtNum(r.total_tokens);
             if (r.cached_tokens > 0) tokDetail += ' <span title="Cached tokens" style="color:var(--amber);font-size:0.7rem">⚡' + fmtNum(r.cached_tokens) + '</span>';
             if (r.reasoning_tokens > 0) tokDetail += ' <span title="Reasoning tokens" style="color:#a78bfa;font-size:0.7rem">🧠' + fmtNum(r.reasoning_tokens) + '</span>';
-            return '<tr style="cursor:pointer" onclick="showDetail(' + r.id + ')">'
+            return '<tr' + (r.id ? ' style="cursor:pointer" onclick="showDetail(' + r.id + ')"' : '') + '>'
                 + '<td>' + (r.error ? '<span class="status-err" title="' + esc(r.error) + '"></span>' : '<span class="status-ok"></span>') + '</td>'
                 + '<td>' + fmtTime(r.timestamp) + '</td>'
                 + '<td>' + esc(r.backend) + (r.fallback ? ' <span title="Fallback: tried ' + esc(r.attempted_backends) + '" style="color:var(--amber);font-size:0.75rem">↩</span>' : '') + '</td>'

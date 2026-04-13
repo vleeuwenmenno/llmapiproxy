@@ -92,7 +92,7 @@ func (r *Registry) createBackend(bc config.BackendConfig, existingTS *oauth.Toke
 		}
 		return b, ts, nil
 	case "codex":
-		b, ts, err := r.createCodexBackend(bc, existingTS)
+		b, ts, err := r.createCodexBackend(bc, existingTS, cacheTTL)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -148,7 +148,7 @@ func (r *Registry) createCopilotBackend(bc config.BackendConfig, existingTS *oau
 // if provided. The OAuth redirect URI is derived from the server's listen
 // address and the backend name. A device code handler is also created to
 // support device code flow as an alternative login method.
-func (r *Registry) createCodexBackend(bc config.BackendConfig, existingTS *oauth.TokenStore) (*CodexBackend, *oauth.TokenStore, error) {
+func (r *Registry) createCodexBackend(bc config.BackendConfig, existingTS *oauth.TokenStore, cacheTTL time.Duration) (*CodexBackend, *oauth.TokenStore, error) {
 	tokenPath := tokenStorePath(bc)
 
 	ts := existingTS
@@ -191,7 +191,7 @@ func (r *Registry) createCodexBackend(bc config.BackendConfig, existingTS *oauth
 	// Create a device code handler for headless/SSH login support.
 	deviceCodeHandler := oauth.NewCodexDeviceCodeHandler(ts, oauthCfg)
 
-	return NewCodexBackend(bc, oauthHandler, ts, deviceCodeHandler), ts, nil
+	return NewCodexBackend(bc, oauthHandler, ts, deviceCodeHandler, cacheTTL), ts, nil
 }
 
 // HandleCodexLoopbackCallback routes a loopback OAuth callback to the Codex

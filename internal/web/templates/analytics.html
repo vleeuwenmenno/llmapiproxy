@@ -978,7 +978,7 @@ function renderRank(tab) {
     var maxErr = Math.max.apply(null, rows.map(function(r){ return r.err_pct; })) || 1;
     var html = rows.map(function(r) {
         var barW = Math.round((r.err_pct / maxErr) * 60);
-        return '<tr onclick="showDetail(' + esc(r.req) + ')" style="cursor:default">' +
+        return '<tr>' +
             '<td>' + esc(r.name || '(anonymous)') + '</td>' +
             '<td>' + fmtNum(r.req) + '</td>' +
             '<td>' + fmtNum(r.tok) + '</td>' +

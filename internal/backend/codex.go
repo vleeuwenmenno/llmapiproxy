@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -16,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/menno/llmapiproxy/internal/config"
 	"github.com/menno/llmapiproxy/internal/oauth"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -33,12 +33,16 @@ const (
 )
 
 // defaultCodexModels is the built-in fallback list used when a Codex backend
-// does not declare explicit models in config. Codex does not currently expose
-// a stable upstream /models contract for this proxy, so this list must be kept
-// in sync with the officially documented Codex-capable model aliases.
+// does not declare explicit models in config and the upstream models endpoint
+// is unreachable. This list is kept in sync with the models exposed by the
+// Codex CLI model picker. The Codex Responses API also accepts non-codex model
+// aliases (e.g. gpt-5.4) so they are included here.
 var defaultCodexModels = []string{
+	"gpt-5.4",
+	"gpt-5.4-mini",
 	"gpt-5.3-codex",
 	"gpt-5.2-codex",
+	"gpt-5.2",
 	"gpt-5.1-codex",
 	"gpt-5.1-codex-max",
 	"gpt-5.1-codex-mini",
@@ -61,12 +65,19 @@ type CodexBackend struct {
 	deviceCodeHandler *oauth.CodexDeviceCodeHandler
 	tokenStore        *oauth.TokenStore
 	cfg               config.BackendConfig
+
+	// Model list cache.
+	modelCacheTTL time.Duration
+	cacheMu       sync.RWMutex
+	cachedModels  []Model
+	cacheExpiry   time.Time
 }
 
 // NewCodexBackend creates a new CodexBackend from the given configuration.
 // The deviceCodeHandler is optional and enables device code flow as an alternative
 // login method for headless/SSH environments.
-func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHandler, tokenStore *oauth.TokenStore, deviceCodeHandler *oauth.CodexDeviceCodeHandler) *CodexBackend {
+// cacheTTL controls how long the upstream model list is cached; 0 means no caching.
+func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHandler, tokenStore *oauth.TokenStore, deviceCodeHandler *oauth.CodexDeviceCodeHandler, cacheTTL time.Duration) *CodexBackend {
 	baseURL := strings.TrimRight(cfg.BaseURL, "/")
 	if baseURL == "" {
 		baseURL = codexDefaultBaseURL
@@ -81,6 +92,7 @@ func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHan
 		deviceCodeHandler: deviceCodeHandler,
 		tokenStore:        tokenStore,
 		cfg:               cfg,
+		modelCacheTTL:     cacheTTL,
 	}
 }
 
@@ -88,7 +100,7 @@ func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHan
 func (b *CodexBackend) Name() string { return b.name }
 
 // SupportsModel returns true if this backend can handle the given model ID.
-// If no models are configured, all models are accepted.
+// If no models are configured, all models are accepted (backward-compatible).
 func (b *CodexBackend) SupportsModel(modelID string) bool {
 	if len(b.models) == 0 {
 		return true
@@ -107,8 +119,14 @@ func (b *CodexBackend) SupportsModel(modelID string) bool {
 	return false
 }
 
-// ClearModelCache is a no-op for Codex backends (no model caching).
-func (b *CodexBackend) ClearModelCache() {}
+// ClearModelCache clears the cached model list, forcing a fresh fetch on the
+// next ListModels call.
+func (b *CodexBackend) ClearModelCache() {
+	b.cacheMu.Lock()
+	defer b.cacheMu.Unlock()
+	b.cachedModels = nil
+	b.cacheExpiry = time.Time{}
+}
 
 // --- ChatCompletion ↔ Responses API format translation ---
 
@@ -681,24 +699,151 @@ func (b *CodexBackend) doChatCompletionStream(ctx context.Context, req *ChatComp
 }
 
 // ListModels returns the list of models this Codex backend supports.
-// If a static model list is configured, it returns those. Otherwise, it returns
-// a default set of commonly available Codex models.
+// If a static model list is configured, it returns those (enriched from
+// upstream when available). Otherwise it fetches from the upstream /models
+// endpoint and falls back to defaultCodexModels on any error.
 func (b *CodexBackend) ListModels(ctx context.Context) ([]Model, error) {
-	_ = ctx
+	// Fast path: return cached models if still fresh.
+	if b.modelCacheTTL > 0 {
+		b.cacheMu.RLock()
+		if !b.cacheExpiry.IsZero() && time.Now().Before(b.cacheExpiry) {
+			cached := b.cachedModels
+			b.cacheMu.RUnlock()
+			log.Debug().Str("backend", b.name).Int("models", len(cached)).Msg("model cache hit")
+			return cached, nil
+		}
+		b.cacheMu.RUnlock()
+	}
 
+	// Slow path: build model list.
+	log.Debug().Str("backend", b.name).Msg("building model list")
+	models, err := b.buildCodexModelList(ctx)
+	if err != nil {
+		// Stale-while-error: return stale cache if available.
+		if b.modelCacheTTL > 0 {
+			b.cacheMu.RLock()
+			if b.cachedModels != nil {
+				cached := b.cachedModels
+				b.cacheMu.RUnlock()
+				log.Warn().Err(err).Str("backend", b.name).Int("models", len(cached)).Msg("model list build failed, returning stale cache")
+				return cached, nil
+			}
+			b.cacheMu.RUnlock()
+		}
+		return nil, err
+	}
+
+	// Store in cache if caching is enabled.
+	if b.modelCacheTTL > 0 {
+		b.cacheMu.Lock()
+		b.cachedModels = models
+		b.cacheExpiry = time.Now().Add(b.modelCacheTTL)
+		b.cacheMu.Unlock()
+	}
+
+	return models, nil
+}
+
+// buildCodexModelList builds the model list from config, upstream, or defaults.
+func (b *CodexBackend) buildCodexModelList(ctx context.Context) ([]Model, error) {
 	if len(b.models) > 0 {
+		// Static model list configured — try to enrich from upstream, ignore errors.
+		upstreamMap := b.fetchUpstreamModelMap(ctx)
+		seen := make(map[string]bool, len(b.models))
 		models := make([]Model, 0, len(b.models))
 		for _, id := range b.models {
-			models = append(models, codexModel(id, b.name))
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			if u, ok := upstreamMap[id]; ok {
+				// Upstream data found — use it, enrich with known DB.
+				m := u.toModel(b.name)
+				applyKnownDefaults(&m, id)
+				models = append(models, m)
+			} else {
+				models = append(models, codexModel(id, b.name))
+			}
 		}
 		return models, nil
 	}
 
+	// Dynamic: try fetching from upstream, fallback to defaults on error.
+	upstreamModels, err := b.fetchUpstreamModels(ctx)
+	if err != nil {
+		log.Warn().Err(err).Str("backend", b.name).Msg("upstream model fetch failed, using defaults")
+		return b.defaultModelList(), nil
+	}
+	if len(upstreamModels) == 0 {
+		log.Warn().Str("backend", b.name).Msg("upstream returned empty model list, using defaults")
+		return b.defaultModelList(), nil
+	}
+
+	log.Info().Str("backend", b.name).Int("count", len(upstreamModels)).Msg("fetched upstream models")
+	models := make([]Model, 0, len(upstreamModels))
+	for _, u := range upstreamModels {
+		m := u.toModel(b.name)
+		applyKnownDefaults(&m, u.ID)
+		models = append(models, m)
+	}
+	return models, nil
+}
+
+// defaultModelList returns the built-in fallback model list.
+func (b *CodexBackend) defaultModelList() []Model {
 	models := make([]Model, 0, len(defaultCodexModels))
 	for _, id := range defaultCodexModels {
 		models = append(models, codexModel(id, b.name))
 	}
-	return models, nil
+	return models
+}
+
+// fetchUpstreamModels fetches the model list from the Codex upstream /models endpoint.
+// Returns an error if the upstream is unreachable or authentication is not available.
+// The caller should fall back to defaults on error.
+func (b *CodexBackend) fetchUpstreamModels(ctx context.Context) ([]upstreamModel, error) {
+	// Check if we have authentication available before attempting.
+	if b.oauthHandler == nil {
+		return nil, fmt.Errorf("no OAuth handler configured")
+	}
+	token, err := b.getAccessToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting access token: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, b.baseURL+"/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+	b.setHeaders(httpReq, token)
+
+	resp, err := b.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("fetching models: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("upstream returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var list upstreamModelList
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		return nil, fmt.Errorf("decoding models: %w", err)
+	}
+	return list.Data, nil
+}
+
+// fetchUpstreamModelMap returns a map of model ID → upstream model for enrichment.
+// Errors are silently ignored — it is only used as best-effort enrichment.
+func (b *CodexBackend) fetchUpstreamModelMap(ctx context.Context) map[string]upstreamModel {
+	models, _ := b.fetchUpstreamModels(ctx)
+	m := make(map[string]upstreamModel, len(models))
+	for _, u := range models {
+		m[u.ID] = u
+	}
+	return m
 }
 
 func codexModel(id string, owner string) Model {
@@ -1138,16 +1283,16 @@ func (b *CodexBackend) InitiateDeviceCodeLogin() (authURL string, state string, 
 	state = resp.DeviceCode
 	authURL = string(infoJSON)
 
-	log.Printf("codex backend %s: device code flow initiated, user_code=%s", b.name, resp.UserCode)
+	log.Info().Str("backend", b.name).Str("user_code", resp.UserCode).Msg("device code flow initiated")
 
 	// Start polling in the background — the result will be stored automatically.
 	go func() {
 		bgCtx := context.Background()
 		_, pollErr := b.deviceCodeHandler.WaitForAuthorization(bgCtx, resp)
 		if pollErr != nil {
-			log.Printf("codex backend %s: device code authorization failed: %v", b.name, pollErr)
+			log.Warn().Err(pollErr).Str("backend", b.name).Msg("device code authorization failed")
 		} else {
-			log.Printf("codex backend %s: device code authorization completed successfully", b.name)
+			log.Info().Str("backend", b.name).Msg("device code authorization completed successfully")
 		}
 	}()
 

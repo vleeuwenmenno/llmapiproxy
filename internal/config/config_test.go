@@ -630,7 +630,6 @@ backends:
 	}
 }
 
-
 func TestBackendConfigModels_StringForm(t *testing.T) {
 	yaml := `
 server:
@@ -738,5 +737,169 @@ func TestModelIDs(t *testing.T) {
 	if len(ids) != 3 || ids[0] != "a" || ids[1] != "b" || ids[2] != "c" {
 		t.Errorf("ModelIDs() = %v", ids)
 
+	}
+}
+
+func TestSwitchBackendType_OpenAIToAnthropic(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	initialYAML := `
+server:
+  api_keys: ["test-key"]
+backends:
+  - name: mybackend
+    type: openai
+    base_url: https://api.example.com/v1
+    api_key: "sk-test-key"
+`
+	if err := os.WriteFile(cfgPath, []byte(initialYAML), 0600); err != nil {
+		t.Fatalf("writing initial config: %v", err)
+	}
+
+	mgr, err := NewManager(cfgPath)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	if err := mgr.SwitchBackendType("mybackend", "anthropic", "https://api.anthropic.com", ""); err != nil {
+		t.Fatalf("SwitchBackendType: %v", err)
+	}
+
+	cfg := mgr.Get()
+	if len(cfg.Backends) != 1 {
+		t.Fatalf("expected 1 backend, got %d", len(cfg.Backends))
+	}
+	bc := cfg.Backends[0]
+	if bc.Type != "anthropic" {
+		t.Errorf("expected type anthropic, got %q", bc.Type)
+	}
+	if bc.BaseURL != "https://api.anthropic.com" {
+		t.Errorf("expected base_url updated, got %q", bc.BaseURL)
+	}
+	if bc.APIKey != "sk-test-key" {
+		t.Errorf("expected API key unchanged, got %q", bc.APIKey)
+	}
+}
+
+func TestSwitchBackendType_AnthropicToOpenAI(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	initialYAML := `
+server:
+  api_keys: ["test-key"]
+backends:
+  - name: claude
+    type: anthropic
+    base_url: https://api.anthropic.com
+    api_key: "sk-ant-key"
+`
+	if err := os.WriteFile(cfgPath, []byte(initialYAML), 0600); err != nil {
+		t.Fatalf("writing initial config: %v", err)
+	}
+
+	mgr, err := NewManager(cfgPath)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	if err := mgr.SwitchBackendType("claude", "openai", "", "new-key"); err != nil {
+		t.Fatalf("SwitchBackendType: %v", err)
+	}
+
+	cfg := mgr.Get()
+	bc := cfg.Backends[0]
+	if bc.Type != "openai" {
+		t.Errorf("expected type openai, got %q", bc.Type)
+	}
+	if bc.BaseURL != "https://api.anthropic.com" {
+		t.Errorf("expected base_url unchanged when empty, got %q", bc.BaseURL)
+	}
+	if bc.APIKey != "new-key" {
+		t.Errorf("expected API key updated, got %q", bc.APIKey)
+	}
+}
+
+func TestSwitchBackendType_UnsupportedTargetType(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	initialYAML := `
+server:
+  api_keys: ["test-key"]
+backends:
+  - name: mybackend
+    type: openai
+    base_url: https://api.example.com/v1
+    api_key: "sk-test-key"
+`
+	if err := os.WriteFile(cfgPath, []byte(initialYAML), 0600); err != nil {
+		t.Fatalf("writing initial config: %v", err)
+	}
+
+	mgr, err := NewManager(cfgPath)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	err = mgr.SwitchBackendType("mybackend", "copilot", "", "")
+	if err == nil {
+		t.Fatal("expected error for unsupported target type")
+	}
+}
+
+func TestSwitchBackendType_CannotSwitchCopilotBackend(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	initialYAML := `
+server:
+  api_keys: ["test-key"]
+backends:
+  - name: copilot
+    type: copilot
+    base_url: https://api.githubcopilot.com
+`
+	if err := os.WriteFile(cfgPath, []byte(initialYAML), 0600); err != nil {
+		t.Fatalf("writing initial config: %v", err)
+	}
+
+	mgr, err := NewManager(cfgPath)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	err = mgr.SwitchBackendType("copilot", "openai", "", "")
+	if err == nil {
+		t.Fatal("expected error when trying to switch a copilot backend")
+	}
+}
+
+func TestSwitchBackendType_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	initialYAML := `
+server:
+  api_keys: ["test-key"]
+backends:
+  - name: mybackend
+    type: openai
+    base_url: https://api.example.com/v1
+    api_key: "sk-test-key"
+`
+	if err := os.WriteFile(cfgPath, []byte(initialYAML), 0600); err != nil {
+		t.Fatalf("writing initial config: %v", err)
+	}
+
+	mgr, err := NewManager(cfgPath)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	err = mgr.SwitchBackendType("nonexistent", "anthropic", "", "")
+	if err == nil {
+		t.Fatal("expected error for nonexistent backend")
 	}
 }

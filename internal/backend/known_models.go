@@ -234,3 +234,38 @@ func LookupKnownModel(modelID string) *knownModelInfo {
 	info := knownModels[best]
 	return &info
 }
+
+// ApplyKnownDefaults fills missing Model fields from the built-in model database.
+// This is a package-level helper used by multiple backend types.
+func ApplyKnownDefaults(m *Model, modelID string) {
+	applyKnownDefaults(m, modelID)
+}
+
+// applyKnownDefaults fills missing Model fields from the built-in model database.
+func applyKnownDefaults(m *Model, modelID string) {
+	info := LookupKnownModel(modelID)
+	if info == nil {
+		return
+	}
+	if m.DisplayName == "" && info.DisplayName != "" {
+		m.DisplayName = info.DisplayName
+	}
+	if m.ContextLength == nil {
+		m.ContextLength = &info.ContextLength
+	}
+	if m.MaxOutputTokens == nil {
+		m.MaxOutputTokens = &info.MaxOutputTokens
+	}
+	if info.Vision {
+		hasVision := false
+		for _, c := range m.Capabilities {
+			if c == "vision" {
+				hasVision = true
+				break
+			}
+		}
+		if !hasVision {
+			m.Capabilities = append(m.Capabilities, "vision")
+		}
+	}
+}
