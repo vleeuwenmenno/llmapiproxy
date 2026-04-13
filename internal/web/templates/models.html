@@ -559,6 +559,12 @@
             margin: 0.5rem 1.1rem;
             display: inline-block;
             font-family: var(--mono);
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .dynamic-badge:hover {
+            background: rgba(167,139,250,0.3);
+            border-color: rgba(167,139,250,0.5);
         }
 
         .backend-dropdown-container {
@@ -2058,7 +2064,7 @@
                     {{if and $oauth (not $oauth.Authenticated) .Enabled}}
                     <div style="padding:0.85rem 1.1rem;font-size:0.8rem;color:var(--text-dim);font-style:italic">Authentication required — connect below to load models.</div>
                     {{else if .IsDynamic}}
-                    <span class="dynamic-badge">&#x221E; dynamic &#x2014; uses /v1/models from upstream</span>
+                    <span class="dynamic-badge" onclick="showUpstreamModels('{{.Name}}')" title="Click to inspect raw upstream /models response">&#x221E; dynamic &#x2014; uses /v1/models from upstream</span>
                     {{if .Enabled}}<div class="model-loading"><div class="spinner"></div><span>Loading models&#x2026;</span></div>{{else}}<div style="padding:0.85rem 1.1rem;font-size:0.75rem;color:var(--text-dim);font-family:var(--mono)">Enable this backend to load models.</div>{{end}}
                     {{else}}
                     {{range .Models}}
@@ -2530,6 +2536,23 @@
         </div>
     </div>
 
+    <!-- ── Upstream Models Inspector Modal ────────────────────────── -->
+    <div class="modal-overlay" id="modal-upstream-models" onclick="closeOnBackdrop(event, 'modal-upstream-models')">
+        <div class="modal" style="max-width:720px">
+            <div class="modal-header">
+                <h2 id="upstream-title">Raw Upstream Models</h2>
+                <button class="modal-close" onclick="closeModal('modal-upstream-models')">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+                <pre id="upstream-body" style="max-height:60vh;overflow:auto;font-size:0.8rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;background:var(--bg-alt);padding:1rem;border-radius:6px;border:1px solid var(--border)">Fetching upstream /models response&#x2026;</pre>
+            </div>
+            <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:0.5rem">
+                <button id="upstream-copy-btn" class="copy-block-btn" onclick="copyUpstreamModels()" style="display:none">Copy</button>
+                <button class="modal-close" onclick="closeModal('modal-upstream-models')">Close</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ── VS Code Copilot Extension Modal ───────────────────────── -->
     <div class="modal-overlay" id="modal-copilot-ext" onclick="closeOnBackdrop(event, 'modal-copilot-ext')">
         <div class="modal">
@@ -2593,6 +2616,58 @@
         function closeModal(id) {
             document.getElementById(id).classList.remove('open');
             document.body.style.overflow = '';
+        }
+
+        function showUpstreamModels(name) {
+            var modal = document.getElementById('modal-upstream-models');
+            var title = document.getElementById('upstream-title');
+            var body = document.getElementById('upstream-body');
+            var copyBtn = document.getElementById('upstream-copy-btn');
+            if (title) title.textContent = 'Raw Upstream Models \u2014 ' + name;
+            if (body) body.textContent = 'Fetching upstream /models response\u2026';
+            if (copyBtn) copyBtn.style.display = 'none';
+            openModal('modal-upstream-models');
+
+            fetch('/ui/backends/' + encodeURIComponent(name) + '/upstream-models')
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (!body) return;
+                    if (data.status === 'unsupported') {
+                        body.textContent = data.error || 'This backend type does not support raw upstream model inspection.';
+                        return;
+                    }
+                    // Pretty-print the raw response
+                    var rawBody = data.raw_body || '';
+                    var textBody = '';
+                    if (rawBody) {
+                        try {
+                            var parsed = JSON.parse(rawBody);
+                            textBody = JSON.stringify(parsed, null, 2);
+                        } catch(e) {
+                            textBody = rawBody;
+                        }
+                    }
+                    var header = '';
+                    if (data.url) header += 'URL: ' + data.url + '\n';
+                    if (data.status_code) header += 'Status: ' + data.status_code + '\n';
+                    if (data.content_type) header += 'Content-Type: ' + data.content_type + '\n';
+                    if (data.error) header += 'Error: ' + data.error + '\n';
+                    if (header) header += '\n';
+                    body.textContent = header + textBody;
+                    if (copyBtn && textBody) copyBtn.style.display = '';
+                })
+                .catch(function(err) {
+                    if (body) body.textContent = 'Fetch error: ' + err.message;
+                });
+        }
+
+        function copyUpstreamModels() {
+            var body = document.getElementById('upstream-body');
+            if (!body || !body.textContent) return;
+            navigator.clipboard.writeText(body.textContent).then(function() {
+                var btn = document.getElementById('upstream-copy-btn');
+                if (btn) { btn.textContent = 'Copied!'; setTimeout(function() { btn.textContent = 'Copy'; }, 1500); }
+            });
         }
         function closeOnBackdrop(e, id) {
             if (e.target === document.getElementById(id)) closeModal(id);
@@ -3707,8 +3782,10 @@
                 })
                 .catch(function(err) {
                     if (listEl) {
+                        var hint = dynBadgeEl ? '<div style="padding:0.5rem 1.1rem 0.2rem;font-size:0.7rem;color:var(--text-dim);font-style:italic">&#x2139; Click the dynamic badge to inspect the raw upstream response</div>' : '';
                         listEl.innerHTML = baseUrlHtml + dynHtml
-                            + '<div style="padding:0.75rem 1.1rem;font-size:0.75rem;color:var(--red);font-family:var(--mono)">&#x2717; Refresh failed: ' + escHtml(err.message) + '</div>';
+                            + '<div style="padding:0.75rem 1.1rem;font-size:0.75rem;color:var(--red);font-family:var(--mono)">&#x2717; Refresh failed: ' + escHtml(err.message) + '</div>'
+                            + hint;
                     }
                 })
                 .finally(function() {
@@ -3770,7 +3847,8 @@
                     if (pendingLoads <= 0) { recomputeOverlaps(); buildZedConfig(); }
 
                     listEl.innerHTML = baseUrlHtml + dynHtml
-                        + '<div style="padding:0.75rem 1.1rem;font-size:0.75rem;color:var(--red);font-family:var(--mono)">\u2717 ' + escHtml(e.message) + '</div>';
+                        + '<div style="padding:0.75rem 1.1rem;font-size:0.75rem;color:var(--red);font-family:var(--mono)">\u2717 ' + escHtml(e.message) + '</div>'
+                        + (dynBadgeEl ? '<div style="padding:0.5rem 1.1rem 0.2rem;font-size:0.7rem;color:var(--text-dim);font-style:italic">&#x2139; Click the dynamic badge to inspect the raw upstream response</div>' : '');
                     if (countEl) countEl.textContent = 'error';
                 });
         }

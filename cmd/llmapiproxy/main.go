@@ -102,6 +102,7 @@ func main() {
 		r.Get("/stats", ui.StatsFragment)
 		r.Get("/models", ui.ModelsPage)
 		r.Get("/backends/{name}/models", ui.BackendModels)
+		r.Get("/backends/{name}/upstream-models", ui.BackendUpstreamModels)
 		r.Post("/backends/{name}/refresh-models", ui.RefreshBackendModels)
 		r.Get("/config", http.RedirectHandler("/ui/settings", http.StatusSeeOther).ServeHTTP)
 		r.Post("/config/save", ui.SaveConfig)

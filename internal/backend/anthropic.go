@@ -1027,3 +1027,40 @@ func (b *AnthropicBackend) setHeaders(httpReq *http.Request, apiKeyOverride stri
 		httpReq.Header.Set(k, v)
 	}
 }
+
+// FetchUpstreamModelsRaw returns the raw HTTP response body from the upstream models endpoint.
+func (b *AnthropicBackend) FetchUpstreamModelsRaw(ctx context.Context) (*UpstreamModelsResponse, error) {
+	modelsURL, err := b.endpointURL("/models")
+	if err != nil {
+		return nil, fmt.Errorf("building models URL: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+	b.setHeaders(httpReq, "")
+
+	resp, err := b.client.Do(httpReq)
+	if err != nil {
+		return &UpstreamModelsResponse{
+			Backend:   b.name,
+			URL:       modelsURL.String(),
+			StatusCode: 0,
+			Error:     fmt.Sprintf("fetch error: %v", err),
+		}, nil
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	result := &UpstreamModelsResponse{
+		Backend:     b.name,
+		URL:         modelsURL.String(),
+		StatusCode:  resp.StatusCode,
+		ContentType: resp.Header.Get("Content-Type"),
+		RawBody:     string(body),
+	}
+	if resp.StatusCode != http.StatusOK {
+		result.Error = fmt.Sprintf("HTTP %d", resp.StatusCode)
+	}
+	return result, nil
+}

@@ -832,6 +832,53 @@ func (u *UI) RefreshBackendModels(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+// BackendUpstreamModels returns the raw upstream /models API response for a single
+// named backend. This is useful for debugging why a dynamic backend shows no models.
+func (u *UI) BackendUpstreamModels(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+
+	var b backend.Backend
+	for _, bb := range u.registry.All() {
+		if bb.Name() == name {
+			b = bb
+			break
+		}
+	}
+	if b == nil {
+		http.Error(w, "backend not found", http.StatusNotFound)
+		return
+	}
+
+	provider, ok := b.(backend.UpstreamModelsProvider)
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"backend": name,
+			"status":  "unsupported",
+			"error":   "this backend type does not support raw upstream model inspection",
+		})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	result, err := provider.FetchUpstreamModelsRaw(ctx)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"backend": name,
+			"status":  "error",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
 // playgroundModel is a compact model descriptor sent to the playground JS.
 type playgroundModel struct {
 	ID                string   `json:"id"`

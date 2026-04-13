@@ -782,7 +782,15 @@ func (b *CodexBackend) buildCodexModelList(ctx context.Context) ([]Model, error)
 	return models, nil
 }
 
-// fetchUpstreamModels fetches the model list from the Codex upstream /models endpoint.
+// codexModelsURL returns the URL for the models endpoint.
+// The official Codex CLI appends /models to the base URL for both
+// ChatGPT-style (https://chatgpt.com/backend-api/codex/models) and
+// API-style (https://api.openai.com/v1/models) endpoints.
+func (b *CodexBackend) codexModelsURL() string {
+	return b.baseURL + "/models"
+}
+
+// fetchUpstreamModels fetches the model list from the Codex upstream models endpoint.
 // Returns an error if the upstream is unreachable or authentication is not available.
 func (b *CodexBackend) fetchUpstreamModels(ctx context.Context) ([]upstreamModel, error) {
 	// Check if we have authentication available before attempting.
@@ -794,7 +802,8 @@ func (b *CodexBackend) fetchUpstreamModels(ctx context.Context) ([]upstreamModel
 		return nil, fmt.Errorf("getting access token: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, b.baseURL+"/models", nil)
+	modelsURL := b.codexModelsURL()
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -802,13 +811,13 @@ func (b *CodexBackend) fetchUpstreamModels(ctx context.Context) ([]upstreamModel
 
 	resp, err := b.client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("fetching models: %w", err)
+		return nil, fmt.Errorf("fetching models from %s: %w", modelsURL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("upstream returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("upstream %s returned status %d: %s", modelsURL, resp.StatusCode, string(body))
 	}
 
 	var list upstreamModelList
@@ -816,6 +825,59 @@ func (b *CodexBackend) fetchUpstreamModels(ctx context.Context) ([]upstreamModel
 		return nil, fmt.Errorf("decoding models: %w", err)
 	}
 	return list.Data, nil
+}
+
+// FetchUpstreamModelsRaw returns the raw HTTP response body from the upstream models endpoint.
+// This is useful for debugging — it shows exactly what the upstream API returns.
+func (b *CodexBackend) FetchUpstreamModelsRaw(ctx context.Context) (*UpstreamModelsResponse, error) {
+	if b.oauthHandler == nil {
+		return &UpstreamModelsResponse{
+			Backend:    b.name,
+			URL:        b.codexModelsURL(),
+			StatusCode: 0,
+			Error:      "no OAuth handler configured",
+		}, nil
+	}
+	token, err := b.getAccessToken(ctx)
+	if err != nil {
+		return &UpstreamModelsResponse{
+			Backend:    b.name,
+			URL:        b.codexModelsURL(),
+			StatusCode: 0,
+			Error:      fmt.Sprintf("getting access token: %v", err),
+		}, nil
+	}
+
+	modelsURL := b.codexModelsURL()
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+	b.setHeaders(httpReq, token)
+
+	resp, err := b.client.Do(httpReq)
+	if err != nil {
+		return &UpstreamModelsResponse{
+			Backend:    b.name,
+			URL:        modelsURL,
+			StatusCode: 0,
+			Error:      fmt.Sprintf("fetch error: %v", err),
+		}, nil
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	result := &UpstreamModelsResponse{
+		Backend:     b.name,
+		URL:         modelsURL,
+		StatusCode:  resp.StatusCode,
+		ContentType: resp.Header.Get("Content-Type"),
+		RawBody:     string(body),
+	}
+	if resp.StatusCode != http.StatusOK {
+		result.Error = fmt.Sprintf("HTTP %d", resp.StatusCode)
+	}
+	return result, nil
 }
 
 // fetchUpstreamModelMap returns a map of model ID → upstream model for enrichment.

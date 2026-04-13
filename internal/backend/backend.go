@@ -241,3 +241,20 @@ type OAuthStatusRefresher interface {
 	// (e.g., no GitHub token available, network error).
 	RefreshOAuthStatus(ctx context.Context) error
 }
+
+// UpstreamModelsResponse contains the raw HTTP response from an upstream
+// /models endpoint, used for debugging model listing issues.
+type UpstreamModelsResponse struct {
+	Backend     string `json:"backend"`
+	URL         string `json:"url"`
+	StatusCode  int    `json:"status_code"`
+	ContentType string `json:"content_type,omitempty"`
+	RawBody     string `json:"raw_body"`
+	Error       string `json:"error,omitempty"`
+}
+
+// UpstreamModelsProvider is an optional interface that dynamic backends
+// can implement to expose the raw upstream /models API response for debugging.
+type UpstreamModelsProvider interface {
+	FetchUpstreamModelsRaw(ctx context.Context) (*UpstreamModelsResponse, error)
+}
