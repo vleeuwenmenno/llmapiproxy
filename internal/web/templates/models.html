@@ -1688,11 +1688,11 @@
             flex-wrap: wrap;
             gap: 0.4rem;
             align-items: center;
-            padding: 0.6rem 0.75rem;
+            padding: 0.5rem 0.75rem;
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 10px;
-            margin-bottom: 1rem;
+            margin-top: 0.6rem;
         }
         .connect-model-badges-label {
             font-size: 0.7rem;
@@ -2689,7 +2689,6 @@
                     </div>
                     <pre id="zed-config">Loading models…</pre>
                 </div>
-                <div class="connect-model-badges-area" id="zed-badges"></div>
 
                 <div class="step">Step 2 — Set your API key</div>
                 <p>Zed reads the key from the environment variable <strong>LLM_API_PROXY_API_KEY</strong>. Set it in your shell profile:</p>
@@ -2725,7 +2724,6 @@
                     </div>
                     <pre id="opencode-config">Loading models…</pre>
                 </div>
-                <div class="connect-model-badges-area" id="opencode-badges"></div>
 
                 <div class="step">Step 2 — Set your API key</div>
                 <p>OpenCode should read the key from the environment variable <strong>LLM_API_PROXY_API_KEY</strong>. Set it in your shell profile:</p>
@@ -2762,7 +2760,6 @@
                     </div>
                     <pre id="droid-config">Loading models…</pre>
                 </div>
-                <div class="connect-model-badges-area" id="droid-badges"></div>
 
                 <div class="step">Step 2 — Set your API key</div>
                 <p>Droid supports environment variable interpolation in <strong>settings.json</strong>. Set <strong>LLM_API_PROXY_API_KEY</strong> in your shell profile:</p>
@@ -2806,8 +2803,6 @@
                         </select>
                     </div>
                 </div>
-                <div class="connect-model-badges-area" id="curl-badges"></div>
-
                 <div class="step">List all models</div>
                 <div class="code-block">
                     <div class="code-block-header">
@@ -3951,6 +3946,7 @@
                 + '    </div>'
                 + '    <div class="connect-model-dropdown" id="' + state.rootId + '-dropdown"></div>'
                 + '</div>'
+                + '<div class="connect-model-badges-area" id="' + state.rootId + '-badges-inner"></div>'
                 + (state.allowDefault
                     ? '<div class="connect-control-card">'
                         + '<label for="' + state.rootId + '-default">Default model</label>'
@@ -3974,9 +3970,8 @@
             var pillM = document.getElementById(state.rootId + '-meta-models');
             if (pillB) pillB.textContent = 'backends ' + state.selectedBackends.size + '/' + selectableBackends().length;
             if (pillM) pillM.textContent = 'models ' + state.selectedModels.length + '/' + flat.length;
-            // Populate the external badges area below the code block
-            if (!state.badgesAreaId) return;
-            var area = document.getElementById(state.badgesAreaId);
+            // Populate the internal badges area inside the selector (between search and default model)
+            var area = document.getElementById(state.rootId + '-badges-inner');
             if (!area) return;
             area.innerHTML = '';
             if (!state.selectedModels.length) {
@@ -4312,6 +4307,7 @@
                 allowDefault: true,
                 renderConfig: function(models, state) {
                     var displayAddr = '{{.DisplayAddr}}';
+                    var defaultModel = state.defaultModel || (models[0] ? models[0].bareID : '');
                     return JSON.stringify({
                         $schema: 'https://opencode.ai/config.json',
                         provider: {
@@ -4334,12 +4330,7 @@
                                 }, {})
                             }
                         },
-                        opencode: {
-                            whitelist: models.map(function(model) { return model.bareID; })
-                        },
-                        agent: {
-                            model: state.defaultModel || (models[0] ? models[0].bareID : '')
-                        }
+                        model: defaultModel ? 'llmapiproxy/' + defaultModel : undefined
                     }, null, 2);
                 }
             });
