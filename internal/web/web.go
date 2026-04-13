@@ -282,124 +282,120 @@ func statsFilterForWindow(windowDur time.Duration) stats.StatsFilter {
 }
 
 func (u *UI) Dashboard(w http.ResponseWriter, r *http.Request) {
+	// Pre-populate filter dropdowns for the template.
+	backends, _ := u.store.DistinctValues("backend")
+	models, _ := u.store.DistinctValues("model")
+	clients, _ := u.store.DistinctValues("client")
+	cfg := u.cfgMgr.Get()
+	routingJSON, _ := json.Marshal(cfg.Routing)
+
+	data := map[string]any{
+		"Backends":    backends,
+		"Models":      models,
+		"Clients":     clients,
+		"RoutingJSON": template.JS(routingJSON),
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := templates.ExecuteTemplate(w, "dashboard.html", nil); err != nil {
+	if err := templates.ExecuteTemplate(w, "dashboard.html", data); err != nil {
 		log.Error().Err(err).Msg("template error")
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
 }
 
-// dashboardDataResponse is the JSON payload for the dashboard data endpoint.
-type dashboardDataResponse struct {
-	WindowLabel string        `json:"window_label"`
-	WindowStats stats.Summary `json:"window_stats"`
-	Today       stats.Summary `json:"today"`
-	AllTime     stats.Summary `json:"all_time"`
-	Backends    []dashBackend `json:"backends"`
-	Clients     []dashClient  `json:"clients"`
-	Recent      dashRecPage   `json:"recent"`
+// unifiedDashResponse is the JSON payload for the consolidated dashboard data endpoint.
+type unifiedDashResponse struct {
+	Summary     stats.Summary              `json:"summary"`
+	Percentiles stats.Percentiles          `json:"percentiles"`
+	TimeSeries  []stats.TimePoint          `json:"time_series"`
+	TopModels   []stats.RankRow            `json:"top_models"`
+	TopBackends []stats.RankRow            `json:"top_backends"`
+	TopClients  []stats.RankRow            `json:"top_clients"`
+	Routing     []stats.ModelRoutingStats  `json:"routing"`
+	Records     unifiedRecPage             `json:"records"`
+	Filters     unifiedFilters             `json:"filters"`
 }
 
-type dashBackend struct {
-	Name     string `json:"name"`
-	Requests int    `json:"requests"`
-	Tokens   int    `json:"tokens"`
-	Errors   int    `json:"errors"`
-}
-
-type dashClient struct {
-	Name     string `json:"name"`
-	Requests int    `json:"requests"`
-	Tokens   int    `json:"tokens"`
-}
-
-type dashRecPage struct {
+type unifiedRecPage struct {
 	Items      []stats.Record `json:"items"`
 	Total      int            `json:"total"`
 	Page       int            `json:"page"`
 	TotalPages int            `json:"total_pages"`
 }
 
+type unifiedFilters struct {
+	Backends []string `json:"backends"`
+	Models   []string `json:"models"`
+	Clients  []string `json:"clients"`
+}
+
 // DashboardData returns all dashboard data as a single JSON response.
-// Supports ?window=5m|15m|30m|1h|2h and ?page=N.
+// Supports combinable filters: window, from/to, backend, model, client, errors, page.
 func (u *UI) DashboardData(w http.ResponseWriter, r *http.Request) {
-	windowDur, windowLabel := parseWindowParam(r.URL.Query().Get("window"))
+	f := parseStatsFilter(r)
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page < 0 {
 		page = 0
 	}
 
-	windowFilter := statsFilterForWindow(windowDur)
-	todayFilter := statsFilterForWindow(24 * time.Hour)
-
-	windowStats, err := u.store.FilteredSummary(windowFilter)
+	summary, err := u.store.FilteredSummary(f)
 	if err != nil {
-		log.Error().Err(err).Msg("dashboard: window summary error")
+		log.Error().Err(err).Msg("dashboard: summary error")
 	}
-	today, err := u.store.FilteredSummary(todayFilter)
+	pcts, err := u.store.FilteredPercentiles(f)
 	if err != nil {
-		log.Error().Err(err).Msg("dashboard: today summary error")
+		log.Error().Err(err).Msg("dashboard: percentiles error")
 	}
-	allTime, err := u.store.FilteredSummary(stats.StatsFilter{})
+	ts, err := u.store.TimeSeries(f, bucketSecsForFilter(f))
 	if err != nil {
-		log.Error().Err(err).Msg("dashboard: all-time summary error")
+		log.Error().Err(err).Msg("dashboard: timeseries error")
 	}
-
-	// Backends — window-scoped
-	backendRows, err := u.store.RankBy(windowFilter, "backend", 20)
+	topModels, err := u.store.RankByWithPercentiles(f, "model", 20)
+	if err != nil {
+		log.Error().Err(err).Msg("dashboard: rank models error")
+	}
+	topBackends, err := u.store.RankByWithPercentiles(f, "backend", 20)
 	if err != nil {
 		log.Error().Err(err).Msg("dashboard: rank backends error")
 	}
-	backends := make([]dashBackend, 0, len(backendRows))
-	for _, row := range backendRows {
-		backends = append(backends, dashBackend{
-			Name:     row.Name,
-			Requests: row.Requests,
-			Tokens:   row.Tokens,
-			Errors:   row.Errors,
-		})
-	}
-
-	// Clients — window-scoped
-	clientRows, err := u.store.RankBy(windowFilter, "client", 20)
+	topClients, err := u.store.RankByWithPercentiles(f, "client", 20)
 	if err != nil {
 		log.Error().Err(err).Msg("dashboard: rank clients error")
 	}
-	clients := make([]dashClient, 0, len(clientRows))
-	for _, row := range clientRows {
-		clients = append(clients, dashClient{
-			Name:     row.Name,
-			Requests: row.Requests,
-			Tokens:   row.Tokens,
-		})
-	}
-
-	// Recent requests — window-scoped, paginated
-	recent, total, err := u.store.FilteredRecords(windowFilter, page, pageSize)
+	routing, err := u.store.RoutingStats(f)
 	if err != nil {
-		log.Error().Err(err).Msg("dashboard: recent records error")
+		log.Error().Err(err).Msg("dashboard: routing stats error")
+	}
+	if routing == nil {
+		routing = []stats.ModelRoutingStats{}
+	}
+	records, total, err := u.store.FilteredRecords(f, page, pageSize)
+	if err != nil {
+		log.Error().Err(err).Msg("dashboard: records error")
 	}
 	totalPages := (total + pageSize - 1) / pageSize
-	if totalPages > 0 && page >= totalPages {
-		page = totalPages - 1
-		recent, total, err = u.store.FilteredRecords(windowFilter, page, pageSize)
-		if err != nil {
-			log.Error().Err(err).Msg("dashboard: recent records page reset error")
-		}
-	}
 
-	resp := dashboardDataResponse{
-		WindowLabel: windowLabel,
-		WindowStats: windowStats,
-		Today:       today,
-		AllTime:     allTime,
-		Backends:    backends,
-		Clients:     clients,
-		Recent: dashRecPage{
-			Items:      recent,
+	backends, _ := u.store.DistinctValues("backend")
+	models, _ := u.store.DistinctValues("model")
+	clients, _ := u.store.DistinctValues("client")
+
+	resp := unifiedDashResponse{
+		Summary:     summary,
+		Percentiles: pcts,
+		TimeSeries:  ts,
+		TopModels:   topModels,
+		TopBackends: topBackends,
+		TopClients:  topClients,
+		Routing:     routing,
+		Records: unifiedRecPage{
+			Items:      records,
 			Total:      total,
 			Page:       page,
 			TotalPages: totalPages,
+		},
+		Filters: unifiedFilters{
+			Backends: backends,
+			Models:   models,
+			Clients:  clients,
 		},
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1767,6 +1763,7 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 		"ServerHost":    cfg.Server.Host,
 		"ServerPort":    cfg.Server.Port,
 		"ModelCacheTTL": cfg.Server.ModelCacheTTL.String(),
+		"RoutingJSON":   template.JS(func() []byte { b, _ := json.Marshal(cfg.Routing); return b }()),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "settings.html", data); err != nil {
@@ -2221,19 +2218,7 @@ func parseStatsFilter(r *http.Request) stats.StatsFilter {
 
 	// Named window takes priority over explicit from/to
 	if w := q.Get("window"); w != "" {
-		var dur time.Duration
-		switch w {
-		case "1h":
-			dur = time.Hour
-		case "6h":
-			dur = 6 * time.Hour
-		case "24h":
-			dur = 24 * time.Hour
-		case "7d":
-			dur = 7 * 24 * time.Hour
-		case "30d":
-			dur = 30 * 24 * time.Hour
-		}
+		dur, _ := parseWindowParam(w)
 		if dur > 0 {
 			f.From = time.Now().Add(-dur)
 		}
@@ -2275,124 +2260,7 @@ func bucketSecsForFilter(f stats.StatsFilter) int64 {
 	}
 }
 
-// AnalyticsPage renders the analytics shell with filter dropdowns pre-populated.
-func (u *UI) AnalyticsPage(w http.ResponseWriter, r *http.Request) {
-	backends, _ := u.store.DistinctValues("backend")
-	models, _ := u.store.DistinctValues("model")
-	clients, _ := u.store.DistinctValues("client")
 
-	data := map[string]any{
-		"Backends": backends,
-		"Models":   models,
-		"Clients":  clients,
-		// Pass current filter state for pre-selecting dropdowns
-		"Filter":  r.URL.Query(),
-		"Message": r.URL.Query().Get("msg"),
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := templates.ExecuteTemplate(w, "analytics.html", data); err != nil {
-		log.Error().Err(err).Msg("analytics template error")
-		http.Error(w, "template error", http.StatusInternalServerError)
-	}
-}
-
-// analyticsDataResponse is the JSON envelope returned by AnalyticsData.
-type analyticsDataResponse struct {
-	Summary     stats.Summary     `json:"summary"`
-	Percentiles stats.Percentiles `json:"percentiles"`
-	TimeSeries  []stats.TimePoint `json:"time_series"`
-	TopModels   []stats.RankRow   `json:"top_models"`
-	TopBackends []stats.RankRow   `json:"top_backends"`
-	TopClients  []stats.RankRow   `json:"top_clients"`
-	Records     analyticsRecPage  `json:"records"`
-}
-
-type analyticsRecPage struct {
-	Items      []stats.Record `json:"items"`
-	Total      int            `json:"total"`
-	Page       int            `json:"page"`
-	TotalPages int            `json:"total_pages"`
-}
-
-// AnalyticsData returns all filtered analytics data as a single JSON response.
-func (u *UI) AnalyticsData(w http.ResponseWriter, r *http.Request) {
-	f := parseStatsFilter(r)
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	if page < 0 {
-		page = 0
-	}
-
-	summary, err := u.store.FilteredSummary(f)
-	if err != nil {
-		log.Error().Err(err).Msg("analytics: summary error")
-	}
-	pcts, err := u.store.FilteredPercentiles(f)
-	if err != nil {
-		log.Error().Err(err).Msg("analytics: percentiles error")
-	}
-	ts, err := u.store.TimeSeries(f, bucketSecsForFilter(f))
-	if err != nil {
-		log.Error().Err(err).Msg("analytics: timeseries error")
-	}
-	topModels, err := u.store.RankBy(f, "model", 20)
-	if err != nil {
-		log.Error().Err(err).Msg("analytics: rank models error")
-	}
-	topBackends, err := u.store.RankBy(f, "backend", 20)
-	if err != nil {
-		log.Error().Err(err).Msg("analytics: rank backends error")
-	}
-	topClients, err := u.store.RankBy(f, "client", 20)
-	if err != nil {
-		log.Error().Err(err).Msg("analytics: rank clients error")
-	}
-	records, total, err := u.store.FilteredRecords(f, page, pageSize)
-	if err != nil {
-		log.Error().Err(err).Msg("analytics: records error")
-	}
-	totalPages := (total + pageSize - 1) / pageSize
-
-	resp := analyticsDataResponse{
-		Summary:     summary,
-		Percentiles: pcts,
-		TimeSeries:  ts,
-		TopModels:   topModels,
-		TopBackends: topBackends,
-		TopClients:  topClients,
-		Records: analyticsRecPage{
-			Items:      records,
-			Total:      total,
-			Page:       page,
-			TotalPages: totalPages,
-		},
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		log.Error().Err(err).Msg("analytics: json encode error")
-	}
-}
-
-// RoutingPage renders the routing analytics page.
-func (u *UI) RoutingPage(w http.ResponseWriter, r *http.Request) {
-	cfg := u.cfgMgr.Get()
-	backendNames := make([]string, 0, len(cfg.Backends))
-	for _, bc := range cfg.Backends {
-		if bc.IsEnabled() {
-			backendNames = append(backendNames, bc.Name)
-		}
-	}
-	routingJSON, _ := json.Marshal(cfg.Routing)
-	data := map[string]any{
-		"Routing":     cfg.Routing,
-		"Backends":    backendNames,
-		"RoutingJSON": template.JS(routingJSON),
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := templates.ExecuteTemplate(w, "routing.html", data); err != nil {
-		log.Error().Err(err).Msg("template error")
-		http.Error(w, "template error", http.StatusInternalServerError)
-	}
-}
 
 // OAuthCheckStatus proactively checks and refreshes the OAuth status for a
 // specific backend. Unlike OAuthStatus which only reads cached state, this
@@ -2686,53 +2554,6 @@ func (u *UI) OAuthDisconnect(w http.ResponseWriter, r *http.Request) {
 func (u *UI) RoutingConfigJSON(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(u.cfgMgr.Get().Routing)
-}
-
-type routingDataResponse struct {
-	Models []stats.ModelRoutingStats `json:"models"`
-	Window string                    `json:"window"`
-}
-
-// RoutingData returns per-model routing analytics as JSON.
-func (u *UI) RoutingData(w http.ResponseWriter, r *http.Request) {
-	windowParam := r.URL.Query().Get("window")
-
-	windowLabels := map[string]time.Duration{
-		"1h":  time.Hour,
-		"6h":  6 * time.Hour,
-		"24h": 24 * time.Hour,
-		"7d":  7 * 24 * time.Hour,
-		"30d": 30 * 24 * time.Hour,
-	}
-	windowLabel := windowParam
-	if windowLabel == "" {
-		windowLabel = "24h"
-	}
-	windowDur := windowLabels[windowLabel]
-
-	f := stats.StatsFilter{}
-	if windowDur > 0 {
-		f.From = time.Now().Add(-windowDur)
-	}
-
-	models, err := u.store.RoutingStats(f)
-	if err != nil {
-		log.Error().Err(err).Msg("routing: stats query error")
-		http.Error(w, "query error", http.StatusInternalServerError)
-		return
-	}
-	if models == nil {
-		models = []stats.ModelRoutingStats{}
-	}
-
-	resp := routingDataResponse{
-		Models: models,
-		Window: windowLabel,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		log.Error().Err(err).Msg("routing: json encode error")
-	}
 }
 
 // RoutingBackendFallbacks returns recent requests where the named backend was attempted

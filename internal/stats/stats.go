@@ -64,6 +64,9 @@ type RankRow struct {
 	Errors   int     `json:"err"`
 	AvgLatMs int64   `json:"lat"`
 	ErrPct   float64 `json:"err_pct"`
+	P50      int64   `json:"p50"`
+	P90      int64   `json:"p90"`
+	P99      int64   `json:"p99"`
 }
 
 // Summary provides aggregated statistics.

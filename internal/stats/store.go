@@ -470,6 +470,47 @@ func (s *Store) RankBy(f StatsFilter, dim string, limit int) ([]RankRow, error) 
 	return out, rows.Err()
 }
 
+// RankByWithPercentiles returns RankBy results enriched with per-dimension P50/P90/P99 latency.
+func (s *Store) RankByWithPercentiles(f StatsFilter, dim string, limit int) ([]RankRow, error) {
+	rows, err := s.RankBy(f, dim, limit)
+	if err != nil || len(rows) == 0 {
+		return rows, err
+	}
+	where, args := buildWhere(f)
+	for i, rr := range rows {
+		// Collect sorted latencies for this dimension value.
+		extra := where
+		if extra == "" {
+			extra = "WHERE " + dim + " = ?"
+		} else {
+			extra += " AND " + dim + " = ?"
+		}
+		lArgs := append(append([]any(nil), args...), rr.Name)
+		latRows, err := s.db.Query(
+			`SELECT latency_ms FROM requests `+extra+` ORDER BY latency_ms`, lArgs...)
+		if err != nil {
+			continue
+		}
+		var lats []int64
+		for latRows.Next() {
+			var l int64
+			if err := latRows.Scan(&l); err != nil {
+				break
+			}
+			lats = append(lats, l)
+		}
+		latRows.Close()
+		n := len(lats)
+		if n > 0 {
+			pct := func(p float64) int64 { return lats[int(float64(n-1)*p)] }
+			rows[i].P50 = pct(0.50)
+			rows[i].P90 = pct(0.90)
+			rows[i].P99 = pct(0.99)
+		}
+	}
+	return rows, nil
+}
+
 // FilteredRecords returns a filtered, paginated slice of records (newest first) and the total matching count.
 func (s *Store) FilteredRecords(f StatsFilter, page, pageSize int) ([]Record, int, error) {
 	if s == nil {

@@ -383,6 +383,21 @@
             border-color: var(--text-dim);
         }
 
+        .strat-btns { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; width: fit-content; }
+        .strat-btn { background: none; border: none; border-right: 1px solid var(--border); color: var(--text-dim); padding: 0.5rem 1.1rem; font-size: 0.82rem; font-weight: 500; cursor: pointer; transition: all 0.15s; font-family: inherit; white-space: nowrap; }
+        .strat-btn:last-child { border-right: none; }
+        .strat-btn:hover { background: var(--surface-2); color: var(--text); }
+        .strat-btn.sp { background: var(--accent-dim); color: var(--accent); }
+        .strat-btn.sr { background: rgba(52,211,153,.15); color: var(--green); }
+        .strat-btn.sa { background: rgba(251,191,36,.15); color: var(--amber); }
+        .strat-btn.ss { background: rgba(52,211,153,.15); color: #34d399; }
+        .strategy-hint { font-size: 0.8rem; color: var(--text-dim); margin-top: 0.6rem; }
+        .stagger-delay-row { display: none; align-items: center; gap: 0.5rem; margin-top: 0.75rem; padding: 0.4rem 0.7rem; background: rgba(52,211,153,0.05); border-radius: 6px; border: 1px solid rgba(52,211,153,0.2); }
+        .stagger-delay-row.visible { display: flex; }
+        .stagger-delay-row label { font-size: 0.75rem; color: var(--text-dim); white-space: nowrap; }
+        .stagger-delay-row input[type=number] { width: 5rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 0.25rem 0.45rem; font-size: 0.82rem; font-family: var(--mono); outline: none; }
+        .stagger-delay-row span { font-size: 0.75rem; color: var(--text-dim); }
+
         .keys-list {
             list-style: none;
             margin-bottom: 1rem;
@@ -768,8 +783,6 @@
             <button class="mobile-menu-close" onclick="closeMobileMenu()">&#10005;</button>
         </div>
         <a href="/ui/">&#128200; Dashboard</a>
-        <a href="/ui/analytics">&#128202; Analytics</a>
-        <a href="/ui/routing">&#128260; Routing</a>
         <a href="/ui/models">&#129302; Models</a>
         <a href="/ui/chat">&#128172; Chat</a>
         <a href="/ui/settings" class="active">&#9881; Settings</a>
@@ -785,8 +798,6 @@
         </div>
         <div class="links">
             <a href="/ui/">Dashboard</a>
-            <a href="/ui/analytics">Analytics</a>
-            <a href="/ui/routing">Routing</a>
             <a href="/ui/models">Models</a>
             <a href="/ui/chat">Chat</a>
             <a href="/ui/settings" class="active">Settings</a>
@@ -841,6 +852,27 @@
                 <button type="submit" class="btn btn-danger">&#128465; Clear All Stats</button>
             </form>
             {{end}}
+        </div>
+
+
+        <!-- Routing Strategy Section -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">Default Routing Strategy</div>
+            </div>
+            <p class="section-desc">Controls how requests are distributed across backends when a model is available on multiple backends.</p>
+            <div class="strat-btns" id="stratBtns">
+                <button class="strat-btn" onclick="setStrategy('priority')">Priority</button>
+                <button class="strat-btn" onclick="setStrategy('round-robin')">Round-Robin</button>
+                <button class="strat-btn" onclick="setStrategy('race')">Race</button>
+                <button class="strat-btn" onclick="setStrategy('staggered-race')">Staggered</button>
+            </div>
+            <div class="strategy-hint" id="stratHint"></div>
+            <div class="stagger-delay-row" id="staggerRow">
+                <label>Stagger delay:</label>
+                <input type="number" id="staggerDelay" min="0" max="30000" step="50" value="200" onchange="saveStrategy()">
+                <span>ms</span>
+            </div>
         </div>
 
 
@@ -1185,6 +1217,43 @@
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') closeMobileMenu();
     });
+
+    // ── Routing Strategy ──────────────────────────────────
+    var routingConfig = {{.RoutingJSON}};
+    if (!routingConfig) routingConfig = {};
+    var STRAT_DESCS = {
+        'priority': 'Use first configured backend; fall back to next on error.',
+        'round-robin': 'Rotate requests evenly across all configured backends.',
+        'race': 'Launch all backends in parallel; first successful response wins.',
+        'staggered-race': 'Like race, but with configurable delay between backend launches.'
+    };
+    function stratActiveClass(s) {
+        switch(s) { case 'priority': return 'sp'; case 'round-robin': return 'sr'; case 'race': return 'sa'; case 'staggered-race': return 'ss'; default: return ''; }
+    }
+    function renderStrategy() {
+        var cur = (routingConfig.default_strategy || 'priority');
+        var btns = document.querySelectorAll('#stratBtns .strat-btn');
+        var names = ['priority','round-robin','race','staggered-race'];
+        btns.forEach(function(b, i) {
+            b.className = 'strat-btn' + (names[i] === cur ? ' ' + stratActiveClass(cur) : '');
+        });
+        document.getElementById('stratHint').textContent = STRAT_DESCS[cur] || '';
+        var row = document.getElementById('staggerRow');
+        if (cur === 'staggered-race') { row.classList.add('visible'); } else { row.classList.remove('visible'); }
+        document.getElementById('staggerDelay').value = routingConfig.stagger_delay_ms || 200;
+    }
+    function setStrategy(s) {
+        routingConfig.default_strategy = s;
+        renderStrategy();
+        saveStrategy();
+    }
+    function saveStrategy() {
+        routingConfig.stagger_delay_ms = parseInt(document.getElementById('staggerDelay').value) || 200;
+        fetch('/ui/routing/save', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(routingConfig) })
+          .then(function(r) { if (!r.ok) throw new Error('save failed'); })
+          .catch(function(e) { alert('Failed to save routing strategy: ' + e.message); });
+    }
+    renderStrategy();
     </script>
 </body>
 </html>
