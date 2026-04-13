@@ -42,6 +42,18 @@ The server listens on `:8000` by default. API endpoint: `/v1/chat/completions`. 
 - **HTTP handlers**: Methods on struct types (e.g., `Handler.ChatCompletions`), registered via Chi router.
 - **Error wrapping**: Use `fmt.Errorf("...: %w", err)` for error chains.
 
+## Logging Guidelines
+
+- **Use zerolog** for all logging — never use `fmt.Println` or `fmt.Printf` for runtime output.
+- Import as `log "github.com/rs/zerolog/log"`.
+- Use structured logging with level-appropriate methods:
+  - `log.Debug().Err(err).Str("model", modelID).Msg("description")`
+  - `log.Info().Str("backend", b.Name()).Msg("starting")`
+  - `log.Warn().Str("field", value).Msg("warning message")`
+  - `log.Error().Err(err).Msg("fatal error")`
+- Include contextual fields for debugging: request IDs, model names, backend names, latency values.
+- Use `log.Ctx(ctx)` to inherit request-scoped loggers with trace IDs.
+
 ## Testing Guidelines
 
 - Standard Go testing (`testing` package). No external test frameworks.
@@ -68,3 +80,31 @@ The server listens on `:8000` by default. API endpoint: `/v1/chat/completions`. 
 - **Backend interface**: All providers implement `backend.Backend` (chat completion, streaming, model listing).
 - **Stats pipeline**: Requests flow through an in-memory `Collector` with async batching into a SQLite `Store`.
 - **Web UI**: Server-rendered Go templates with HTMX for dynamic updates. No frontend build step.
+
+### Routing Strategies
+
+The proxy supports multiple routing strategies per model:
+
+- **Priority**: Use first configured backend, fallback to next on error.
+- **Round-Robin**: Rotate requests evenly across all configured backends for the model.
+- **Race**: Launch all backends in parallel; first successful response wins.
+- **Staggered-Race**: Same as race but with configurable delay between backend launches.
+
+Request flow: `HTTP → AuthMiddleware → Handler → Registry.ResolveRoute() → Strategy-based handler → Backend → Stats.Collector → Response`
+
+### OAuth & Token Management
+
+- **Copilot**: Uses device code flow (`internal/oauth/copilot_exchange.go`)
+- **Codex**: Uses PKCE OAuth flow (`internal/oauth/codex_oauth.go`)
+- Tokens stored in `tokens/` directory as JSON files
+- Tokens are preserved across config reloads
+
+### Model Discovery & never Hardcode
+
+- **Never hardcode model names** — always rely on upstream API's `/models` endpoint or config definitions.
+- Each backend implements `ListModels()` to fetch available models from the upstream provider.
+- Model lists are cached (default 5min TTL) via each backend's cache mechanism.
+- The registry calls `SupportsModel(modelID)` to check if a backend supports a given model.
+- In config, use `models:` list to explicitly define which models are allowed per backend.
+- If no explicit model list is configured, all upstream models are considered available.
+- Known model IDs are tracked in `internal/backend/known_models.go` for UI display only — not for validation.
