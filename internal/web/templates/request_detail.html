@@ -21,4 +21,10 @@
     <pre style="background:var(--surface-2,#1a2332);border:1px solid var(--border,#1e2d3d);border-radius:6px;padding:0.75rem;font-size:0.75rem;overflow-x:auto;white-space:pre-wrap;word-break:break-all">{{.ResponseBody}}</pre>
   </div>
   {{end}}
+  {{if .RequestBody}}
+  <div style="margin-top:1rem">
+    <div style="font-size:0.75rem;color:var(--text-dim,#64748b);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.5rem">Request Body</div>
+    <pre style="background:var(--surface-2,#1a2332);border:1px solid var(--border,#1e2d3d);border-radius:6px;padding:0.75rem;font-size:0.75rem;overflow-x:auto;white-space:pre-wrap;word-break:break-all">{{.RequestBody}}</pre>
+  </div>
+  {{end}}
 </div>

@@ -20,6 +20,7 @@ type Record struct {
 	Error            string    `json:"error,omitempty"`
 	Stream           bool      `json:"stream"`
 	ResponseBody     string    `json:"response_body,omitempty"`
+	RequestBody      string    `json:"request_body,omitempty"`
 	Client           string    `json:"client,omitempty"`
 	ID               int64     `json:"id"`
 

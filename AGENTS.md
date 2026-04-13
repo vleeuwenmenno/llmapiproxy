@@ -107,4 +107,8 @@ Request flow: `HTTP → AuthMiddleware → Handler → Registry.ResolveRoute() �
 - The registry calls `SupportsModel(modelID)` to check if a backend supports a given model.
 - In config, use `models:` list to explicitly define which models are allowed per backend.
 - If no explicit model list is configured, all upstream models are considered available.
-- Known model IDs are tracked in `internal/backend/known_models.go` for UI display only — not for validation.
+- Known model info in `internal/backend/known_models.go` is used for UI display AND model capabilities:
+  - `DisplayName`, `ContextLength`, `MaxOutputTokens`, `Vision` — for UI and defaults
+  - `UseMaxCompletionTokens` — indicates model requires `max_completion_tokens` instead of `max_tokens`
+  - `SupportsSampling` — indicates model supports `temperature`/`top_p` parameters (reasoning models don't)
+- For behavior quirks (like sampling support), extend `known_models.go` rather than hardcoding logic.

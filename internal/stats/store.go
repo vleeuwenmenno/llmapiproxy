@@ -63,8 +63,8 @@ func OpenStore(path string, c *Collector) (*Store, error) {
 func (s *Store) Save(r Record) {
 	_, err := s.db.Exec(
 		`INSERT INTO requests
-		    (timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,cached_tokens,reasoning_tokens,latency_ms,status_code,error,stream,response_body,client,strategy,attempted_backends,fallback)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		    (timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,cached_tokens,reasoning_tokens,latency_ms,status_code,error,stream,response_body,request_body,client,strategy,attempted_backends,fallback)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		r.Timestamp.UnixMilli(),
 		r.Backend,
 		r.Model,
@@ -78,6 +78,7 @@ func (s *Store) Save(r Record) {
 		r.Error,
 		boolToInt(r.Stream),
 		r.ResponseBody,
+		r.RequestBody,
 		r.Client,
 		r.Strategy,
 		r.AttemptedBackends,
@@ -129,7 +130,7 @@ func (s *Store) loadInto(c *Collector) error {
 	rows, err := s.db.Query(
 		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
 		        cached_tokens,reasoning_tokens,
-		        latency_ms,status_code,error,stream,response_body,client,
+		        latency_ms,status_code,error,stream,response_body,request_body,client,
 		        strategy,attempted_backends,fallback
 		 FROM requests ORDER BY timestamp ASC`)
 	if err != nil {
@@ -156,6 +157,7 @@ func (s *Store) loadInto(c *Collector) error {
 			&r.Error,
 			&stream,
 			&r.ResponseBody,
+			&r.RequestBody,
 			&r.Client,
 			&r.Strategy,
 			&r.AttemptedBackends,
@@ -214,7 +216,12 @@ func (s *Store) migrate() error {
 			return fmt.Errorf("migration 6b: %w", err)
 		}
 	}
-	_, err := s.db.Exec("PRAGMA user_version = 6")
+	if version < 7 {
+		if _, err := s.db.Exec("ALTER TABLE requests ADD COLUMN request_body TEXT NOT NULL DEFAULT ''"); err != nil {
+			return fmt.Errorf("migration 7: %w", err)
+		}
+	}
+	_, err := s.db.Exec("PRAGMA user_version = 7")
 	return err
 }
 
@@ -222,7 +229,7 @@ func (s *Store) GetByID(id int64) (*Record, error) {
 	row := s.db.QueryRow(
 		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
 		        cached_tokens,reasoning_tokens,
-		        latency_ms,status_code,error,stream,response_body,client,
+		        latency_ms,status_code,error,stream,response_body,request_body,client,
 		        strategy,attempted_backends,fallback
 		 FROM requests WHERE id = ?`, id)
 	var r Record
@@ -243,6 +250,7 @@ func (s *Store) GetByID(id int64) (*Record, error) {
 		&r.Error,
 		&stream,
 		&r.ResponseBody,
+		&r.RequestBody,
 		&r.Client,
 		&r.Strategy,
 		&r.AttemptedBackends,
@@ -481,7 +489,7 @@ func (s *Store) FilteredRecords(f StatsFilter, page, pageSize int) ([]Record, in
 	queryArgs := append(append([]any(nil), args...), pageSize, offset)
 	rows, err := s.db.Query(
 		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
-		        latency_ms,status_code,error,stream,response_body,client,
+		        latency_ms,status_code,error,stream,response_body,request_body,client,
 		        strategy,attempted_backends,fallback,cached_tokens,reasoning_tokens
 		 FROM requests `+where+`
 		 ORDER BY timestamp DESC
@@ -501,7 +509,7 @@ func (s *Store) FilteredRecords(f StatsFilter, page, pageSize int) ([]Record, in
 			&r.ID, &tsMs, &r.Backend, &r.Model,
 			&r.PromptTokens, &r.CompletionTokens, &r.TotalTokens,
 			&r.LatencyMs, &r.StatusCode, &r.Error, &stream,
-			&r.ResponseBody, &r.Client,
+			&r.ResponseBody, &r.RequestBody, &r.Client,
 			&r.Strategy, &r.AttemptedBackends, &fallback,
 			&r.CachedTokens, &r.ReasoningTokens,
 		); err != nil {
@@ -641,7 +649,7 @@ func (s *Store) FallbacksForBackend(name string, f StatsFilter, limit int) ([]Re
 
 	rows, err := s.db.Query(
 		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
-		        latency_ms,status_code,error,stream,response_body,client,
+		        latency_ms,status_code,error,stream,response_body,request_body,client,
 		        strategy,attempted_backends,fallback,cached_tokens,reasoning_tokens
 		 FROM requests `+where+`
 		 ORDER BY timestamp DESC
@@ -661,7 +669,7 @@ func (s *Store) FallbacksForBackend(name string, f StatsFilter, limit int) ([]Re
 			&r.ID, &tsMs, &r.Backend, &r.Model,
 			&r.PromptTokens, &r.CompletionTokens, &r.TotalTokens,
 			&r.LatencyMs, &r.StatusCode, &r.Error, &stream,
-			&r.ResponseBody, &r.Client,
+			&r.ResponseBody, &r.RequestBody, &r.Client,
 			&r.Strategy, &r.AttemptedBackends, &fallback,
 			&r.CachedTokens, &r.ReasoningTokens,
 		); err != nil {

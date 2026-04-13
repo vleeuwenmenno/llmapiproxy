@@ -212,6 +212,7 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 	if lastBE != nil {
 		rec.ResponseBody = lastBE.Body
 	}
+	rec.RequestBody = string(req.RawBody)
 	h.collector.Record(rec)
 	log.Error().Str("model", originalModel).Str("backend", lastBackend).Int64("latency_ms", latency).Bool("stream", false).Str("client", clientName).Msg("completion failed: all backends error")
 	writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())
@@ -275,6 +276,7 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 		if lastBE != nil {
 			rec.ResponseBody = lastBE.Body
 		}
+		rec.RequestBody = string(req.RawBody)
 		h.collector.Record(rec)
 		writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())
 		log.Error().Str("model", originalModel).Str("backend", lastBackend).Int64("latency_ms", rec.LatencyMs).Bool("stream", true).Str("client", clientName).Msg("completion failed: all backends error")
@@ -446,6 +448,7 @@ func (h *Handler) handleRaceNonStream(ctx context.Context, w http.ResponseWriter
 	if lastBE != nil {
 		rec.ResponseBody = lastBE.Body
 	}
+	rec.RequestBody = string(req.RawBody)
 	h.collector.Record(rec)
 	writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())
 }
@@ -548,6 +551,7 @@ func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, e
 			Client:            clientName,
 			Strategy:          config.StrategyRace,
 			AttemptedBackends: attempted,
+			RequestBody:       string(req.RawBody),
 		}
 		h.collector.Record(rec)
 		writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())
@@ -722,6 +726,7 @@ func (h *Handler) handleStaggeredRaceNonStream(ctx context.Context, w http.Respo
 	if lastBE != nil {
 		rec.ResponseBody = lastBE.Body
 	}
+	rec.RequestBody = string(req.RawBody)
 	h.collector.Record(rec)
 	writeError(w, http.StatusBadGateway, "backend error: "+errMsg)
 }
@@ -822,6 +827,7 @@ func (h *Handler) handleStaggeredRaceStream(ctx context.Context, w http.Response
 			Client:            clientName,
 			Strategy:          config.StrategyStaggeredRace,
 			AttemptedBackends: attempted,
+			RequestBody:       string(req.RawBody),
 		}
 		h.collector.Record(rec)
 		writeError(w, http.StatusBadGateway, "backend error: "+lastErr.Error())

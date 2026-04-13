@@ -32,8 +32,6 @@ const (
 	codexHTTPTimeout = 5 * time.Minute
 )
 
-
-
 // CodexBackend implements the Backend interface for OpenAI Codex.
 // It translates between the OpenAI ChatCompletion format and the Codex
 // Responses API format, sending requests to chatgpt.com/backend-api/codex/responses.
@@ -317,22 +315,17 @@ func translateToCodexRequest(req *ChatCompletionRequest) (*codexRequest, error) 
 func codexSupportsSampling(modelID string, raw map[string]json.RawMessage) bool {
 	modelID = strings.ToLower(strings.TrimSpace(modelID))
 
-	// GPT-5.1 is the one GPT-5 family exception that can support sampling when
-	// the caller explicitly disables reasoning.
-	if strings.HasPrefix(modelID, "gpt-5.1") {
-		return codexReasoningEffort(raw) == "none"
-	}
-
-	// GPT-5, Codex, and o-series reasoning models reject temperature/top_p.
-	if strings.HasPrefix(modelID, "gpt-5") ||
-		strings.HasPrefix(modelID, "o3") ||
-		strings.HasPrefix(modelID, "o4") ||
-		strings.HasPrefix(modelID, "codex-mini") {
-		return false
-	}
-
-	if info := LookupKnownModel(modelID); info != nil && info.UseMaxCompletionTokens {
-		return false
+	// Check known_models.go for explicit SupportsSampling setting.
+	if info := LookupKnownModel(modelID); info != nil {
+		// GPT-5.1 is the one GPT-5 family exception that can support sampling when
+		// the caller explicitly disables reasoning.
+		if strings.HasPrefix(modelID, "gpt-5.1") {
+			return codexReasoningEffort(raw) == "none"
+		}
+		// Use explicit SupportsSampling flag if set.
+		if !info.SupportsSampling {
+			return false
+		}
 	}
 
 	return true
