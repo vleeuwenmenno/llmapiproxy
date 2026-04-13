@@ -156,8 +156,8 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 				lastBE = be
 				a.StatusCode = be.StatusCode
 				a.ResponseBody = be.Body
-				// 4xx errors (except 429 rate-limit) are client errors — don't retry.
-				if be.StatusCode >= 400 && be.StatusCode < 500 && be.StatusCode != http.StatusTooManyRequests {
+				// 4xx errors (except 429 rate-limit and 404 not-found) are client errors — don't retry.
+				if be.StatusCode >= 400 && be.StatusCode < 500 && be.StatusCode != http.StatusTooManyRequests && be.StatusCode != http.StatusNotFound {
 					attempts = append(attempts, a)
 					break
 				}
@@ -268,8 +268,8 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 				lastBE = be
 				a.StatusCode = be.StatusCode
 				a.ResponseBody = be.Body
-				// 4xx errors (except 429 rate-limit) are client errors — don't retry.
-				if be.StatusCode >= 400 && be.StatusCode < 500 && be.StatusCode != http.StatusTooManyRequests {
+				// 4xx errors (except 429 rate-limit and 404 not-found) are client errors — don't retry.
+				if be.StatusCode >= 400 && be.StatusCode < 500 && be.StatusCode != http.StatusTooManyRequests && be.StatusCode != http.StatusNotFound {
 					attempts = append(attempts, a)
 					break
 				}
