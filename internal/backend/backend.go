@@ -128,6 +128,11 @@ type Backend interface {
 	// (without the backend prefix).
 	SupportsModel(modelID string) bool
 
+	// ResolveModelID maps a canonical model ID (e.g. "minimax-m2.7") to the
+	// backend-specific model ID (e.g. "minimaxai/minimax-m2.7"). If no mapping
+	// is found, the input is returned unchanged.
+	ResolveModelID(canonicalID string) string
+
 	// ClearModelCache clears the cached model list, forcing a fresh fetch
 	// on the next ListModels call.
 	ClearModelCache()

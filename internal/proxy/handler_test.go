@@ -85,6 +85,8 @@ func (m *mockBackend) ListModels(_ context.Context) ([]backend.Model, error) {
 
 func (m *mockBackend) ClearModelCache() {}
 
+func (m *mockBackend) ResolveModelID(canonicalID string) string { return canonicalID }
+
 func boolPtr(b bool) *bool { return &b }
 
 // newTestCollector creates a stats.Collector for testing.

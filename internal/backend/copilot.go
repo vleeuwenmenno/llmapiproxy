@@ -126,6 +126,8 @@ func (b *CopilotBackend) SupportsModel(modelID string) bool {
 	return found
 }
 
+func (b *CopilotBackend) ResolveModelID(canonicalID string) string { return canonicalID }
+
 // ClearModelCache resets the capabilities cache, forcing a fresh fetch on the
 // next ListModels call. Until the cache is repopulated, SupportsModel will
 // return false for all models.

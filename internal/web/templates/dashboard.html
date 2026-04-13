@@ -356,6 +356,7 @@
                 <th>Compl.</th>
                 <th>Total</th>
                 <th>Latency</th>
+                <th>TPS</th>
                 <th>Stream</th>
                 <th>Route</th>
                 <th>Client</th>
@@ -817,7 +818,7 @@ function renderLog(rec) {
     document.getElementById('logCount').textContent = total > 0 ? total : '';
 
     if (items.length === 0) {
-        document.getElementById('logBody').innerHTML = '<tr><td colspan="11" class="empty">No requests found</td></tr>';
+        document.getElementById('logBody').innerHTML = '<tr><td colspan="12" class="empty">No requests found</td></tr>';
         document.getElementById('logPagination').innerHTML = '';
         return;
     }
@@ -840,6 +841,7 @@ function renderLog(rec) {
         html += '<td>' + fmtNum(r.completion_tokens) + '</td>';
         html += '<td>' + fmtNum(totalTok) + tokExtra + '</td>';
         html += '<td class="' + latClass(r.latency_ms) + '">' + fmtDur(r.latency_ms) + '</td>';
+        html += '<td style="color:#06b6d4">' + (r.tps > 0 ? r.tps.toFixed(1) : '—') + '</td>';
         html += '<td>' + (r.stream ? 'SSE' : '—') + '</td>';
         html += '<td>' + stratBadge(r.strategy) + (r.fallback ? '<span class="fallback-icon">↩</span>' : '') + '</td>';
         html += '<td>' + esc(r.client || '—') + '</td>';

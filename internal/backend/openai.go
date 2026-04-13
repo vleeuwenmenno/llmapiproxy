@@ -91,6 +91,36 @@ func (b *OpenAIBackend) SupportsModel(modelID string) bool {
 	return false
 }
 
+func (b *OpenAIBackend) ResolveModelID(canonicalID string) string {
+	// Check static model list.
+	for _, m := range b.models {
+		if m.ID == canonicalID {
+			return canonicalID
+		}
+		if lastSegment(m.ID) == canonicalID {
+			return m.ID
+		}
+	}
+	// Check cached upstream models.
+	for _, m := range b.getCachedOrFetchModels() {
+		if m.ID == canonicalID {
+			return canonicalID
+		}
+		if lastSegment(m.ID) == canonicalID {
+			return m.ID
+		}
+	}
+	return canonicalID
+}
+
+// lastSegment returns the part after the last "/" in s, or s itself.
+func lastSegment(s string) string {
+	if i := strings.LastIndex(s, "/"); i >= 0 {
+		return s[i+1:]
+	}
+	return s
+}
+
 // getCachedOrFetchModels returns the cached upstream model list, fetching it
 // from the upstream API if the cache is empty. Returns nil on fetch error.
 func (b *OpenAIBackend) getCachedOrFetchModels() []Model {
@@ -473,8 +503,49 @@ func (b *OpenAIBackend) rewriteBody(req *ChatCompletionRequest) []byte {
 
 	modelBytes, _ := json.Marshal(req.Model)
 	m["model"] = modelBytes
+	fixToolParameters(m)
 	data, _ := json.Marshal(m)
 	return data
+}
+
+// fixToolParameters ensures every tool definition has a "parameters" field.
+// Some clients (e.g. VS Code Copilot) omit "parameters" for parameter-less
+// tools, which is valid per the OpenAI spec but rejected by stricter providers.
+func fixToolParameters(m map[string]json.RawMessage) {
+	toolsRaw, ok := m["tools"]
+	if !ok {
+		return
+	}
+	var tools []json.RawMessage
+	if err := json.Unmarshal(toolsRaw, &tools); err != nil {
+		return
+	}
+	emptyParams := json.RawMessage(`{"type":"object","properties":{}}`)
+	changed := false
+	for i, raw := range tools {
+		var tool map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &tool); err != nil {
+			continue
+		}
+		fnRaw, ok := tool["function"]
+		if !ok {
+			continue
+		}
+		var fn map[string]json.RawMessage
+		if err := json.Unmarshal(fnRaw, &fn); err != nil {
+			continue
+		}
+		if _, ok := fn["parameters"]; ok {
+			continue
+		}
+		fn["parameters"] = emptyParams
+		tool["function"], _ = json.Marshal(fn)
+		tools[i], _ = json.Marshal(tool)
+		changed = true
+	}
+	if changed {
+		m["tools"], _ = json.Marshal(tools)
+	}
 }
 
 // RewriteResponseBody rewrites only the "model" field in a raw response JSON,

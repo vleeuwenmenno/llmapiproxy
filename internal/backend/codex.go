@@ -125,6 +125,8 @@ func (b *CodexBackend) SupportsModel(modelID string) bool {
 	return false
 }
 
+func (b *CodexBackend) ResolveModelID(canonicalID string) string { return canonicalID }
+
 // ClearModelCache clears the cached model list, forcing a fresh fetch on the
 // next ListModels call.
 func (b *CodexBackend) ClearModelCache() {

@@ -194,6 +194,7 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 				rec.ReasoningTokens = resp.Usage.CompletionTokensDetails.ReasoningTokens
 			}
 		}
+		stats.ComputeTPS(&rec, time.Time{}, time.Now())
 		rec.StatusCode = http.StatusOK
 		h.collector.Record(rec)
 
@@ -205,7 +206,7 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 			resp.Model = originalModel
 			json.NewEncoder(w).Encode(resp)
 		}
-		log.Info().Str("model", originalModel).Str("backend", entry.Backend.Name()).Int64("latency_ms", latency).Bool("fallback", i > 0).Str("client", clientName).Msg("completion complete")
+		log.Info().Str("model", originalModel).Str("backend", entry.Backend.Name()).Int64("latency_ms", latency).Float64("tps", rec.TPS).Bool("fallback", i > 0).Str("client", clientName).Msg("completion complete")
 		return
 	}
 
@@ -336,6 +337,7 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 	scanner := bufio.NewScanner(stream)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	var firstTokenAt time.Time
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -348,6 +350,9 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 			rewritten, usage := rewriteStreamChunk(data, originalModel)
 			applyUsageToRecord(&rec, usage)
 			fmt.Fprintf(w, "data: %s\n\n", rewritten)
+			if firstTokenAt.IsZero() {
+				firstTokenAt = time.Now()
+			}
 		} else if line != "" {
 			fmt.Fprintf(w, "%s\n", line)
 			if line == "data: [DONE]" {
@@ -366,9 +371,10 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 	}
 
 	rec.LatencyMs = time.Since(start).Milliseconds()
+	stats.ComputeTPS(&rec, firstTokenAt, time.Now())
 	rec.StatusCode = http.StatusOK
 	h.collector.Record(rec)
-	log.Info().Str("model", originalModel).Str("backend", lastBackend).Int64("latency_ms", rec.LatencyMs).Bool("fallback", winnerIdx > 0).Bool("stream", true).Str("client", clientName).Msg("completion complete")
+	log.Info().Str("model", originalModel).Str("backend", lastBackend).Int64("latency_ms", rec.LatencyMs).Int64("ttft_ms", rec.TTFTMs).Float64("tps", rec.TPS).Bool("fallback", winnerIdx > 0).Bool("stream", true).Str("client", clientName).Msg("completion complete")
 }
 
 // raceResult holds the outcome of a single backend attempt in race mode.
@@ -444,6 +450,7 @@ func (h *Handler) handleRaceNonStream(ctx context.Context, w http.ResponseWriter
 					rec.ReasoningTokens = rr.resp.Usage.CompletionTokensDetails.ReasoningTokens
 				}
 			}
+			stats.ComputeTPS(&rec, time.Time{}, time.Time{})
 			h.collector.Record(rec)
 			w.Header().Set("Content-Type", "application/json")
 			if len(rr.resp.RawBody) > 0 {
@@ -647,6 +654,7 @@ func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, e
 	scanner := bufio.NewScanner(fullStream)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	var firstTokenAt time.Time
 	for scanner.Scan() {
 		line := scanner.Text()
 		if ctx.Err() != nil {
@@ -657,6 +665,9 @@ func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, e
 			rewritten, usage := rewriteStreamChunk(data, originalModel)
 			applyUsageToRecord(&rec, usage)
 			fmt.Fprintf(w, "data: %s\n\n", rewritten)
+			if firstTokenAt.IsZero() {
+				firstTokenAt = time.Now()
+			}
 		} else if line != "" {
 			fmt.Fprintf(w, "%s\n", line)
 			if line == "data: [DONE]" {
@@ -674,6 +685,7 @@ func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, e
 	}
 
 	rec.LatencyMs = time.Since(start).Milliseconds()
+	stats.ComputeTPS(&rec, firstTokenAt, time.Now())
 	rec.StatusCode = http.StatusOK
 	h.collector.Record(rec)
 }
@@ -753,6 +765,7 @@ func (h *Handler) handleStaggeredRaceNonStream(ctx context.Context, w http.Respo
 					rec.ReasoningTokens = rr.resp.Usage.CompletionTokensDetails.ReasoningTokens
 				}
 			}
+			stats.ComputeTPS(&rec, time.Time{}, time.Time{})
 			h.collector.Record(rec)
 			w.Header().Set("Content-Type", "application/json")
 			if len(rr.resp.RawBody) > 0 {
@@ -956,6 +969,7 @@ func (h *Handler) handleStaggeredRaceStream(ctx context.Context, w http.Response
 	scanner := bufio.NewScanner(fullStream)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	var firstTokenAt time.Time
 	for scanner.Scan() {
 		line := scanner.Text()
 		if ctx.Err() != nil {
@@ -966,6 +980,9 @@ func (h *Handler) handleStaggeredRaceStream(ctx context.Context, w http.Response
 			rewritten, usage := rewriteStreamChunk(data, originalModel)
 			applyUsageToRecord(&rec, usage)
 			fmt.Fprintf(w, "data: %s\n\n", rewritten)
+			if firstTokenAt.IsZero() {
+				firstTokenAt = time.Now()
+			}
 		} else if line != "" {
 			fmt.Fprintf(w, "%s\n", line)
 			if line == "data: [DONE]" {
@@ -983,6 +1000,7 @@ func (h *Handler) handleStaggeredRaceStream(ctx context.Context, w http.Response
 	}
 
 	rec.LatencyMs = time.Since(start).Milliseconds()
+	stats.ComputeTPS(&rec, firstTokenAt, time.Now())
 	rec.StatusCode = http.StatusOK
 	h.collector.Record(rec)
 }

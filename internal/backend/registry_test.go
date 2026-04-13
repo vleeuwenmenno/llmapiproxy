@@ -1306,6 +1306,7 @@ func (m *routeMock) ChatCompletionStream(_ context.Context, _ *ChatCompletionReq
 }
 func (m *routeMock) ListModels(_ context.Context) ([]Model, error) { return nil, nil }
 func (m *routeMock) ClearModelCache()                              {}
+func (m *routeMock) ResolveModelID(canonicalID string) string      { return canonicalID }
 
 // --- ResolveRoute tests ---
 

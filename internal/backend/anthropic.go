@@ -92,6 +92,26 @@ func (b *AnthropicBackend) SupportsModel(modelID string) bool {
 	return false
 }
 
+func (b *AnthropicBackend) ResolveModelID(canonicalID string) string {
+	for _, m := range b.models {
+		if m.ID == canonicalID {
+			return canonicalID
+		}
+		if lastSegment(m.ID) == canonicalID {
+			return m.ID
+		}
+	}
+	for _, m := range b.getCachedOrFetchModels() {
+		if m.ID == canonicalID {
+			return canonicalID
+		}
+		if lastSegment(m.ID) == canonicalID {
+			return m.ID
+		}
+	}
+	return canonicalID
+}
+
 func (b *AnthropicBackend) ChatCompletion(ctx context.Context, req *ChatCompletionRequest) (*ChatCompletionResponse, error) {
 	body, err := b.rewriteBody(req)
 	if err != nil {

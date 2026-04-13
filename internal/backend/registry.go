@@ -440,7 +440,7 @@ func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]R
 					continue
 				}
 				if b, ok := r.backends[bName]; ok {
-					entries = append(entries, RouteEntry{Backend: b, ModelID: model})
+					entries = append(entries, RouteEntry{Backend: b, ModelID: b.ResolveModelID(model)})
 				}
 			}
 			if len(entries) > 0 {
@@ -473,7 +473,7 @@ func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]R
 
 	for _, b := range r.backends {
 		if b.SupportsModel(model) {
-			return []RouteEntry{{Backend: b, ModelID: model}}, config.StrategyPriority, 0, nil
+			return []RouteEntry{{Backend: b, ModelID: b.ResolveModelID(model)}}, config.StrategyPriority, 0, nil
 		}
 	}
 

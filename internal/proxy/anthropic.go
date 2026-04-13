@@ -325,6 +325,7 @@ func (h *Handler) handleAnthropicNonStream(ctx context.Context, w http.ResponseW
 			Fallback:          i > 0,
 		}
 		applyUsageToRecord(&rec, resp.Usage)
+		stats.ComputeTPS(&rec, time.Time{}, time.Time{})
 		rec.StatusCode = http.StatusOK
 		h.collector.Record(rec)
 
@@ -335,7 +336,7 @@ func (h *Handler) handleAnthropicNonStream(ctx context.Context, w http.ResponseW
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(out)
-		log.Info().Str("model", originalModel).Str("backend", entry.Backend.Name()).Int64("latency_ms", latency).Bool("fallback", i > 0).Str("client", clientName).Msg("anthropic completion complete")
+		log.Info().Str("model", originalModel).Str("backend", entry.Backend.Name()).Int64("latency_ms", latency).Float64("tps", rec.TPS).Bool("fallback", i > 0).Str("client", clientName).Msg("anthropic completion complete")
 		return
 	}
 
@@ -474,6 +475,7 @@ func (h *Handler) handleAnthropicStream(ctx context.Context, w http.ResponseWrit
 
 	stopReason := "end_turn"
 	var finalUsage *backend.Usage
+	var firstTokenAt time.Time
 	for scanner.Scan() {
 		line := scanner.Text()
 		if ctx.Err() != nil {
@@ -506,6 +508,9 @@ func (h *Handler) handleAnthropicStream(ctx context.Context, w http.ResponseWrit
 			continue
 		}
 		if text := chunk.Choices[0].Delta.Content; text != "" {
+			if firstTokenAt.IsZero() {
+				firstTokenAt = time.Now()
+			}
 			writeAnthropicSSE(w, flusher, "content_block_delta", map[string]any{
 				"type":  "content_block_delta",
 				"index": 0,
@@ -549,6 +554,7 @@ func (h *Handler) handleAnthropicStream(ctx context.Context, w http.ResponseWrit
 	}
 
 	rec.LatencyMs = time.Since(start).Milliseconds()
+	stats.ComputeTPS(&rec, firstTokenAt, time.Now())
 	rec.StatusCode = http.StatusOK
 	h.collector.Record(rec)
 }

@@ -16,6 +16,9 @@ type Record struct {
 	CachedTokens     int       `json:"cached_tokens"`
 	ReasoningTokens  int       `json:"reasoning_tokens"`
 	LatencyMs        int64     `json:"latency_ms"`
+	TTFTMs           int64     `json:"ttft_ms,omitempty"`       // Time-to-first-token (streaming only)
+	GenerationMs     int64     `json:"generation_ms,omitempty"` // Generation phase duration (excludes TTFT)
+	TPS              float64   `json:"tps,omitempty"`           // Tokens per second (completion tokens / generation seconds)
 	StatusCode       int       `json:"status_code"`
 	Error            string    `json:"error,omitempty"`
 	Stream           bool      `json:"stream"`
@@ -89,6 +92,7 @@ type Summary struct {
 	TotalTokens     int            `json:"total_tokens"`
 	TotalErrors     int            `json:"total_errors"`
 	AvgLatencyMs    int64          `json:"avg_latency_ms"`
+	AvgTPS          float64        `json:"avg_tps"`
 	TotalCached     int            `json:"total_cached"`
 	TotalReasoning  int            `json:"total_reasoning"`
 	ByBackend       map[string]int `json:"by_backend"`
@@ -97,6 +101,40 @@ type Summary struct {
 	ErrorsByBackend map[string]int `json:"errors_by_backend"`
 	ByClient        map[string]int `json:"by_client"`
 	TokensByClient  map[string]int `json:"tokens_by_client"`
+}
+
+// ComputeTPS fills TTFTMs, GenerationMs, and TPS on a record.
+// firstTokenAt is the time the first data chunk arrived; now is when the response finished.
+// Reasoning tokens are excluded from the TPS numerator since they are generated during
+// the "thinking" phase (included in TTFT) and not during the output streaming phase.
+// A minimum generation time of 100ms is required to avoid unreliable measurements caused
+// by network burst delivery (provider buffering tokens then flushing them over TCP).
+func ComputeTPS(rec *Record, firstTokenAt, now time.Time) {
+	if !firstTokenAt.IsZero() {
+		rec.TTFTMs = firstTokenAt.Sub(rec.Timestamp).Milliseconds()
+		if rec.TTFTMs < 0 {
+			rec.TTFTMs = 0
+		}
+		rec.GenerationMs = now.Sub(firstTokenAt).Milliseconds()
+		if rec.GenerationMs < 0 {
+			rec.GenerationMs = 0
+		}
+	}
+
+	// Use output tokens only (exclude reasoning tokens that are generated during TTFT).
+	outputTokens := rec.CompletionTokens - rec.ReasoningTokens
+	if outputTokens <= 0 {
+		outputTokens = rec.CompletionTokens
+	}
+
+	const minGenerationMs = 100 // avoid noisy TPS from burst-delivered chunks
+	if rec.GenerationMs >= minGenerationMs && outputTokens > 0 {
+		rec.TPS = float64(outputTokens) / (float64(rec.GenerationMs) / 1000.0)
+	} else if rec.LatencyMs > 0 && outputTokens > 0 {
+		// Non-streaming fallback or generation too short: use overall latency.
+		rec.GenerationMs = rec.LatencyMs
+		rec.TPS = float64(outputTokens) / (float64(rec.LatencyMs) / 1000.0)
+	}
 }
 
 // Collector stores request records in memory.
@@ -305,6 +343,8 @@ func (c *Collector) Summarize(since time.Duration) Summary {
 	}
 
 	var totalLatency int64
+	var tpsSum float64
+	var tpsCount int
 	for _, r := range c.records {
 		if !cutoff.IsZero() && r.Timestamp.Before(cutoff) {
 			continue
@@ -323,10 +363,17 @@ func (c *Collector) Summarize(since time.Duration) Summary {
 			s.TotalErrors++
 			s.ErrorsByBackend[r.Backend]++
 		}
+		if r.TPS > 0 {
+			tpsSum += r.TPS * float64(r.CompletionTokens)
+			tpsCount += r.CompletionTokens
+		}
 	}
 
 	if s.TotalRequests > 0 {
 		s.AvgLatencyMs = totalLatency / int64(s.TotalRequests)
+	}
+	if tpsCount > 0 {
+		s.AvgTPS = tpsSum / float64(tpsCount)
 	}
 	return s
 }

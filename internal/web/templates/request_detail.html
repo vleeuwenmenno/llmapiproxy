@@ -7,6 +7,9 @@
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Client</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{if .Client}}{{.Client}}{{else}}(anonymous){{end}}</td></tr>
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Status</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.StatusCode}}</td></tr>
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Latency</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.LatencyMs}}ms</td></tr>
+    {{if .TTFTMs}}<tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">TTFT</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.TTFTMs}}ms</td></tr>{{end}}
+    {{if .GenerationMs}}<tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Generation</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.GenerationMs}}ms</td></tr>{{end}}
+    {{if .TPS}}<tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">TPS</td><td style="font-family:monospace;padding:0.3rem 0.5rem;color:#06b6d4">{{printf "%.1f" .TPS}} tok/s</td></tr>{{end}}
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Tokens</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.TotalTokens}} (prompt: {{.PromptTokens}}, completion: {{.CompletionTokens}})</td></tr>
     {{if gt .CachedTokens 0}}<tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Cached Tokens</td><td style="font-family:monospace;padding:0.3rem 0.5rem;color:#fbbf24">⚡ {{.CachedTokens}}</td></tr>{{end}}
     {{if gt .ReasoningTokens 0}}<tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Reasoning Tokens</td><td style="font-family:monospace;padding:0.3rem 0.5rem;color:#a78bfa">🧠 {{.ReasoningTokens}}</td></tr>{{end}}
