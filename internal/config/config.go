@@ -49,6 +49,11 @@ type ModelRoutingConfig struct {
 	// StaggerDelayMs is the delay between backend launches for the staggered-race strategy.
 	// Defaults to 500ms when 0.
 	StaggerDelayMs int `yaml:"stagger_delay_ms,omitempty" json:"stagger_delay_ms,omitempty"`
+	// DisabledBackends lists backends that should be skipped for this model.
+	// The backends remain in the Backends list for ordering/visibility but are
+	// excluded from actual routing. Useful to temporarily opt out of specific
+	// backends (e.g. plan-based providers) for a single model.
+	DisabledBackends []string `yaml:"disabled_backends,omitempty" json:"disabled_backends,omitempty"`
 }
 
 type RoutingConfig struct {
@@ -120,6 +125,12 @@ type BackendConfig struct {
 	// expose their own /models endpoint but share a model catalog with another
 	// endpoint (e.g. OpenCode Zen). Chat completions still route to base_url.
 	ModelsURL string `yaml:"models_url,omitempty"`
+
+	// DisabledModels lists model IDs that should never be routed through this
+	// backend, even if the model is available. The model is excluded from
+	// SupportsModel() and ListModels() so it won't appear in /v1/models or
+	// the web UI for this backend. Other backends are unaffected.
+	DisabledModels []string `yaml:"disabled_models,omitempty"`
 }
 
 // ModelIDs returns the list of model IDs as plain strings (backward compat).
@@ -129,6 +140,16 @@ func (b *BackendConfig) ModelIDs() []string {
 		ids[i] = m.ID
 	}
 	return ids
+}
+
+// IsModelDisabled returns true if the given model ID is in the DisabledModels list.
+func (b *BackendConfig) IsModelDisabled(modelID string) bool {
+	for _, m := range b.DisabledModels {
+		if m == modelID {
+			return true
+		}
+	}
+	return false
 }
 
 // DefaultModelCacheTTL is the default time-to-live for cached model lists.
@@ -732,6 +753,57 @@ func (m *Manager) SaveRouting(routing RoutingConfig) error {
 	m.current.Routing = routing
 	cfg := m.current
 	m.mu.Unlock()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+// ToggleDisabledModel adds or removes a model from a backend's disabled_models list,
+// persists the file, and reloads. When disabled is true the model is added; when false
+// it is removed. Returns an error if the backend is not found.
+func (m *Manager) ToggleDisabledModel(backendName, modelID string, disabled bool) error {
+	m.mu.Lock()
+	found := false
+	for i, b := range m.current.Backends {
+		if b.Name == backendName {
+			if disabled {
+				// Add to disabled list if not already present.
+				for _, d := range b.DisabledModels {
+					if d == modelID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					m.current.Backends[i].DisabledModels = append(m.current.Backends[i].DisabledModels, modelID)
+				}
+			} else {
+				// Remove from disabled list.
+				filtered := make([]string, 0, len(b.DisabledModels))
+				for _, d := range b.DisabledModels {
+					if d != modelID {
+						filtered = append(filtered, d)
+					}
+				}
+				m.current.Backends[i].DisabledModels = filtered
+			}
+			found = true
+			break
+		}
+	}
+	cfg := m.current
+	m.mu.Unlock()
+
+	if !found {
+		return fmt.Errorf("backend %q not found", backendName)
+	}
 
 	data, err := yaml.Marshal(cfg)
 	if err != nil {

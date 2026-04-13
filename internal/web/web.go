@@ -527,15 +527,16 @@ func renderConfigMessage(w http.ResponseWriter, configText string, message strin
 
 // BackendEntry holds display info for the models page.
 type BackendEntry struct {
-	Name        string
-	Type        string // "openai", "anthropic", "copilot", "codex"
-	BaseURL     string
-	APIKey      string       // masked API key for pre-filling the switch-type modal
-	Models      []ModelEntry // enriched model metadata (nil for dynamic backends)
-	IsDynamic   bool         // true when no explicit model list (accepts all)
-	IconURL     string       // path to SVG icon, empty if unknown
-	Enabled     bool         // false when backend is explicitly disabled
-	StaticCount int          // pre-computed count for statically-configured backends
+	Name           string
+	Type           string // "openai", "anthropic", "copilot", "codex"
+	BaseURL        string
+	APIKey         string       // masked API key for pre-filling the switch-type modal
+	Models         []ModelEntry // enriched model metadata (nil for dynamic backends)
+	IsDynamic      bool         // true when no explicit model list (accepts all)
+	IconURL        string       // path to SVG icon, empty if unknown
+	Enabled        bool         // false when backend is explicitly disabled
+	StaticCount    int          // pre-computed count for statically-configured backends
+	DisabledModels []string     // model IDs disabled on this backend
 }
 
 // ModelEntry holds display data for a single model in the UI.
@@ -546,6 +547,7 @@ type ModelEntry struct {
 	MaxOutputTokens *int64
 	Capabilities    []string
 	DataSource      string // "upstream", "config", "builtin", or ""
+	Disabled        bool   // true when this model is in the backend's disabled_models list
 }
 
 // iconForBackend maps a backend name to a static icon URL.
@@ -611,14 +613,19 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		var modelEntries []ModelEntry
 		if !isDynamic {
 			seenModelIDs := make(map[string]bool, len(bc.Models))
+			disabledSet := make(map[string]bool, len(bc.DisabledModels))
+			for _, dm := range bc.DisabledModels {
+				disabledSet[dm] = true
+			}
 			for _, mc := range bc.Models {
 				if seenModelIDs[mc.ID] {
 					continue
 				}
 				seenModelIDs[mc.ID] = true
 				modelEntries = append(modelEntries, ModelEntry{
-					FullID: bc.Name + "/" + mc.ID,
-					BareID: mc.ID,
+					FullID:   bc.Name + "/" + mc.ID,
+					BareID:   mc.ID,
+					Disabled: disabledSet[mc.ID],
 				})
 				if bc.IsEnabled() {
 					canonical := lastPathSegment(mc.ID)
@@ -632,15 +639,16 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		}
 
 		entries = append(entries, BackendEntry{
-			Name:        bc.Name,
-			Type:        bc.Type,
-			BaseURL:     bc.BaseURL,
-			APIKey:      maskKey(bc.APIKey),
-			Models:      modelEntries, // nil for dynamic; IDs-only for static
-			IsDynamic:   isDynamic,
-			IconURL:     iconForBackend(bc.Name),
-			Enabled:     bc.IsEnabled(),
-			StaticCount: len(modelEntries),
+			Name:           bc.Name,
+			Type:           bc.Type,
+			BaseURL:        bc.BaseURL,
+			APIKey:         maskKey(bc.APIKey),
+			Models:         modelEntries, // nil for dynamic; IDs-only for static
+			IsDynamic:      isDynamic,
+			IconURL:        iconForBackend(bc.Name),
+			Enabled:        bc.IsEnabled(),
+			StaticCount:    len(modelEntries),
+			DisabledModels: bc.DisabledModels,
 		})
 	}
 
@@ -677,15 +685,29 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 
 	// Build a map of model → configured backend priority for the routing dialog.
 	type routingModelData struct {
-		Backends []string `json:"backends"`
-		Strategy string   `json:"strategy"`
+		Backends         []string `json:"backends"`
+		Strategy         string   `json:"strategy"`
+		DisabledBackends []string `json:"disabled_backends,omitempty"`
 	}
 	routingByModel := make(map[string]routingModelData)
 	for _, mr := range cfg.Routing.Models {
-		routingByModel[mr.Model] = routingModelData{Backends: mr.Backends, Strategy: mr.Strategy}
+		routingByModel[mr.Model] = routingModelData{Backends: mr.Backends, Strategy: mr.Strategy, DisabledBackends: mr.DisabledBackends}
 	}
 
 	routingJSON, _ := json.Marshal(routingByModel)
+
+	// Build disabled models map per backend for the JS UI.
+	disabledModelsByBackend := make(map[string]map[string]bool)
+	for _, bc := range cfg.Backends {
+		if len(bc.DisabledModels) > 0 {
+			m := make(map[string]bool, len(bc.DisabledModels))
+			for _, dm := range bc.DisabledModels {
+				m[dm] = true
+			}
+			disabledModelsByBackend[bc.Name] = m
+		}
+	}
+	disabledModelsJSON, _ := json.Marshal(disabledModelsByBackend)
 
 	// Build API key entries for the curl modal (masked for display, full for copy).
 	apiKeyEntries := make([]keyEntry, len(cfg.Server.APIKeys))
@@ -721,6 +743,7 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		"Message":        r.URL.Query().Get("msg"),
 		"RoutingJSON":    template.JS(routingJSON),
 		"GlobalStrategy": cfg.Routing.Strategy,
+		"DisabledModelsJSON": template.JS(disabledModelsJSON),
 		"ServerAPIKeys":  apiKeyEntries,
 		"CurlModels":     curlModels,
 		"OAuthByBackend": oauthByBackend,
@@ -1875,8 +1898,13 @@ func (u *UI) RequestDetail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+	attempts, _ := u.store.AttemptsForRequest(id)
+	data := struct {
+		*stats.Record
+		Attempts []stats.Attempt
+	}{rec, attempts}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := templates.ExecuteTemplate(w, "request_detail.html", rec); err != nil {
+	if err := templates.ExecuteTemplate(w, "request_detail.html", data); err != nil {
 		log.Error().Err(err).Msg("template error")
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
@@ -2017,6 +2045,28 @@ func (u *UI) ToggleBackend(w http.ResponseWriter, r *http.Request) {
 		status = "enabled"
 	}
 	http.Redirect(w, r, redirectTo+"?msg=Backend+"+name+"+"+status+".", http.StatusSeeOther)
+}
+
+// ToggleDisabledModel adds or removes a model from a backend's disabled_models list.
+func (u *UI) ToggleDisabledModel(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Backend  string `json:"backend"`
+		Model    string `json:"model"`
+		Disabled bool   `json:"disabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if payload.Backend == "" || payload.Model == "" {
+		http.Error(w, "backend and model are required", http.StatusBadRequest)
+		return
+	}
+	if err := u.cfgMgr.ToggleDisabledModel(payload.Backend, payload.Model, payload.Disabled); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // SwitchBackendType changes a backend's type between openai and anthropic,

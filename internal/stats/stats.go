@@ -28,6 +28,20 @@ type Record struct {
 	Strategy          string `json:"strategy,omitempty"`           // e.g. "priority", "round-robin", "race"
 	AttemptedBackends string `json:"attempted_backends,omitempty"` // comma-separated, e.g. "zai-coding,zen"
 	Fallback          bool   `json:"fallback,omitempty"`           // true if winning backend was not the first attempted
+
+	// Attempts holds per-backend attempt details for fallback tracing.
+	// Transient: populated by the handler, persisted to request_attempts table by Save(), not loaded back into Record.
+	Attempts []Attempt `json:"-"`
+}
+
+// Attempt captures the outcome of a single backend attempt during routing.
+type Attempt struct {
+	AttemptOrder int    `json:"attempt_order"`
+	Backend      string `json:"backend"`
+	Error        string `json:"error"`
+	StatusCode   int    `json:"status_code"`
+	LatencyMs    int64  `json:"latency_ms"`
+	ResponseBody string `json:"response_body,omitempty"`
 }
 
 // StatsFilter narrows analytics queries.

@@ -29,6 +29,10 @@ type OpenAIBackend struct {
 	// When empty, models are fetched from baseURL + "/models".
 	modelsURL string
 
+	// disabledModels is a set of model IDs that should never be routed
+	// through this backend, even if they are available upstream.
+	disabledModels map[string]bool
+
 	// Model list cache
 	modelCacheTTL time.Duration
 	cacheMu       sync.RWMutex
@@ -37,23 +41,29 @@ type OpenAIBackend struct {
 }
 
 func NewOpenAI(cfg config.BackendConfig, cacheTTL time.Duration) *OpenAIBackend {
+	dm := make(map[string]bool, len(cfg.DisabledModels))
+	for _, m := range cfg.DisabledModels {
+		dm[m] = true
+	}
 	return &OpenAIBackend{
-		name:         cfg.Name,
-		baseURL:      strings.TrimRight(cfg.BaseURL, "/"),
-		apiKey:       cfg.APIKey,
-		extraHeaders: cfg.ExtraHeaders,
-		models:       cfg.Models,
-		client: &http.Client{
-			Timeout: 5 * time.Minute,
-		},
-		modelCacheTTL: cacheTTL,
-		modelsURL:     strings.TrimRight(cfg.ModelsURL, "/"),
+		name:           cfg.Name,
+		baseURL:        strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:         cfg.APIKey,
+		extraHeaders:   cfg.ExtraHeaders,
+		models:         cfg.Models,
+		client:         &http.Client{Timeout: 5 * time.Minute},
+		modelCacheTTL:  cacheTTL,
+		modelsURL:      strings.TrimRight(cfg.ModelsURL, "/"),
+		disabledModels: dm,
 	}
 }
 
 func (b *OpenAIBackend) Name() string { return b.name }
 
 func (b *OpenAIBackend) SupportsModel(modelID string) bool {
+	if b.disabledModels[modelID] {
+		return false
+	}
 	if len(b.models) == 0 {
 		// No static model list configured — verify against actual upstream catalog.
 		models := b.getCachedOrFetchModels()
@@ -237,7 +247,7 @@ func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
 			cached := b.cachedModels
 			b.cacheMu.RUnlock()
 			log.Debug().Str("backend", b.name).Int("models", len(cached)).Msg("model cache hit")
-			return cached, nil
+			return b.filterDisabled(cached), nil
 		}
 		b.cacheMu.RUnlock()
 	}
@@ -253,7 +263,7 @@ func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
 				cached := b.cachedModels
 				b.cacheMu.RUnlock()
 				log.Warn().Err(err).Str("backend", b.name).Int("models", len(cached)).Msg("upstream fetch failed, returning stale cache")
-				return cached, nil
+				return b.filterDisabled(cached), nil
 			}
 			b.cacheMu.RUnlock()
 		}
@@ -269,7 +279,21 @@ func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
 		b.cacheMu.Unlock()
 	}
 
-	return models, nil
+	return b.filterDisabled(models), nil
+}
+
+// filterDisabled removes models that are in the disabledModels set.
+func (b *OpenAIBackend) filterDisabled(models []Model) []Model {
+	if len(b.disabledModels) == 0 {
+		return models
+	}
+	filtered := make([]Model, 0, len(models))
+	for _, m := range models {
+		if !b.disabledModels[m.ID] {
+			filtered = append(filtered, m)
+		}
+	}
+	return filtered
 }
 
 // buildModelList fetches models from upstream and builds the final list.

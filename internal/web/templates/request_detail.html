@@ -15,6 +15,47 @@
     {{if .AttemptedBackends}}<tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Route</td><td style="padding:0.3rem 0.5rem">{{routeChain .AttemptedBackends .Backend}}</td></tr>{{end}}
     {{if .Error}}<tr><td style="color:var(--red,#f87171);padding:0.3rem 0.5rem">Error</td><td style="font-family:monospace;padding:0.3rem 0.5rem;color:var(--red,#f87171)">{{.Error}}</td></tr>{{end}}
   </table>
+
+  {{if .Attempts}}
+  <div style="margin-top:1.25rem">
+    <div style="font-size:0.75rem;color:var(--text-dim,#64748b);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.5rem">Failed Attempts</div>
+    <div style="border:1px solid var(--border,#1e2d3d);border-radius:6px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:0.78rem">
+        <thead>
+          <tr style="background:var(--surface-2,#1a2332)">
+            <th style="text-align:left;padding:0.4rem 0.5rem;color:var(--text-dim,#64748b);font-weight:500;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em">#</th>
+            <th style="text-align:left;padding:0.4rem 0.5rem;color:var(--text-dim,#64748b);font-weight:500;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em">Backend</th>
+            <th style="text-align:left;padding:0.4rem 0.5rem;color:var(--text-dim,#64748b);font-weight:500;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em">Status</th>
+            <th style="text-align:left;padding:0.4rem 0.5rem;color:var(--text-dim,#64748b);font-weight:500;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em">Latency</th>
+            <th style="text-align:left;padding:0.4rem 0.5rem;color:var(--text-dim,#64748b);font-weight:500;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em">Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Attempts}}
+          <tr style="border-top:1px solid var(--border,#1e2d3d)">
+            <td style="padding:0.35rem 0.5rem;font-family:monospace;color:var(--text-dim,#64748b)">{{.AttemptOrder}}</td>
+            <td style="padding:0.35rem 0.5rem;font-family:monospace;color:var(--red,#f87171)">✗ {{.Backend}}</td>
+            <td style="padding:0.35rem 0.5rem;font-family:monospace;color:var(--red,#f87171)">{{if gt .StatusCode 0}}{{.StatusCode}}{{else}}—{{end}}</td>
+            <td style="padding:0.35rem 0.5rem;font-family:monospace;color:var(--text,#e2e8f0)">{{.LatencyMs}}ms</td>
+            <td style="padding:0.35rem 0.5rem;font-family:monospace;color:var(--red,#f87171);word-break:break-all;max-width:300px">{{.Error}}</td>
+          </tr>
+          {{if .ResponseBody}}
+          <tr style="border-top:1px solid var(--border,#1e2d3d)">
+            <td colspan="5" style="padding:0">
+              <details style="margin:0">
+                <summary style="padding:0.3rem 0.5rem;font-size:0.7rem;color:var(--text-dim,#64748b);cursor:pointer;user-select:none">Response body from {{.Backend}}</summary>
+                <pre style="background:var(--surface-2,#1a2332);margin:0;padding:0.5rem;font-size:0.7rem;overflow-x:auto;white-space:pre-wrap;word-break:break-all;border-top:1px solid var(--border,#1e2d3d)">{{.ResponseBody}}</pre>
+              </details>
+            </td>
+          </tr>
+          {{end}}
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {{end}}
+
   {{if .ResponseBody}}
   <div style="margin-top:1rem">
     <div style="font-size:0.75rem;color:var(--text-dim,#64748b);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.5rem">Response Body</div>

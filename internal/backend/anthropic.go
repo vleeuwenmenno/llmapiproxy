@@ -32,6 +32,10 @@ type AnthropicBackend struct {
 	models       []config.ModelConfig
 	client       *http.Client
 
+	// disabledModels is a set of model IDs that should never be routed
+	// through this backend, even if they are available upstream.
+	disabledModels map[string]bool
+
 	modelCacheTTL time.Duration
 	cacheMu       sync.RWMutex
 	cachedModels  []Model
@@ -39,22 +43,28 @@ type AnthropicBackend struct {
 }
 
 func NewAnthropic(cfg config.BackendConfig, cacheTTL time.Duration) *AnthropicBackend {
+	dm := make(map[string]bool, len(cfg.DisabledModels))
+	for _, m := range cfg.DisabledModels {
+		dm[m] = true
+	}
 	return &AnthropicBackend{
-		name:         cfg.Name,
-		baseURL:      strings.TrimRight(cfg.BaseURL, "/"),
-		apiKey:       cfg.APIKey,
-		extraHeaders: cfg.ExtraHeaders,
-		models:       cfg.Models,
-		client: &http.Client{
-			Timeout: anthropicHTTPTimeout,
-		},
-		modelCacheTTL: cacheTTL,
+		name:           cfg.Name,
+		baseURL:        strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:         cfg.APIKey,
+		extraHeaders:   cfg.ExtraHeaders,
+		models:         cfg.Models,
+		client:         &http.Client{Timeout: anthropicHTTPTimeout},
+		modelCacheTTL:  cacheTTL,
+		disabledModels: dm,
 	}
 }
 
 func (b *AnthropicBackend) Name() string { return b.name }
 
 func (b *AnthropicBackend) SupportsModel(modelID string) bool {
+	if b.disabledModels[modelID] {
+		return false
+	}
 	if len(b.models) == 0 {
 		models := b.getCachedOrFetchModels()
 		if len(models) == 0 {
@@ -883,7 +893,7 @@ func (b *AnthropicBackend) getCachedOrFetchModels() []Model {
 
 func (b *AnthropicBackend) ListModels(ctx context.Context) ([]Model, error) {
 	if len(b.models) > 0 {
-		return b.staticModelList(), nil
+		return b.filterDisabled(b.staticModelList()), nil
 	}
 
 	if b.modelCacheTTL > 0 {
@@ -891,7 +901,7 @@ func (b *AnthropicBackend) ListModels(ctx context.Context) ([]Model, error) {
 		if !b.cacheExpiry.IsZero() && time.Now().Before(b.cacheExpiry) {
 			cached := b.cachedModels
 			b.cacheMu.RUnlock()
-			return cached, nil
+			return b.filterDisabled(cached), nil
 		}
 		b.cacheMu.RUnlock()
 	}
@@ -903,7 +913,7 @@ func (b *AnthropicBackend) ListModels(ctx context.Context) ([]Model, error) {
 			if b.cachedModels != nil {
 				cached := b.cachedModels
 				b.cacheMu.RUnlock()
-				return cached, nil
+				return b.filterDisabled(cached), nil
 			}
 			b.cacheMu.RUnlock()
 		}
@@ -916,7 +926,21 @@ func (b *AnthropicBackend) ListModels(ctx context.Context) ([]Model, error) {
 		b.cacheExpiry = time.Now().Add(b.modelCacheTTL)
 		b.cacheMu.Unlock()
 	}
-	return models, nil
+	return b.filterDisabled(models), nil
+}
+
+// filterDisabled removes models that are in the disabledModels set.
+func (b *AnthropicBackend) filterDisabled(models []Model) []Model {
+	if len(b.disabledModels) == 0 {
+		return models
+	}
+	filtered := make([]Model, 0, len(models))
+	for _, m := range models {
+		if !b.disabledModels[m.ID] {
+			filtered = append(filtered, m)
+		}
+	}
+	return filtered
 }
 
 func (b *AnthropicBackend) staticModelList() []Model {

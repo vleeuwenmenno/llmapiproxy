@@ -60,8 +60,9 @@ func OpenStore(path string, c *Collector) (*Store, error) {
 }
 
 // Save persists a single record to the database.
+// If the record has Attempts, they are inserted into request_attempts linked by the request ID.
 func (s *Store) Save(r Record) {
-	_, err := s.db.Exec(
+	res, err := s.db.Exec(
 		`INSERT INTO requests
 		    (timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,cached_tokens,reasoning_tokens,latency_ms,status_code,error,stream,response_body,request_body,client,strategy,attempted_backends,fallback)
 		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -86,6 +87,22 @@ func (s *Store) Save(r Record) {
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("stats: failed to save record")
+		return
+	}
+	if len(r.Attempts) > 0 {
+		reqID, idErr := res.LastInsertId()
+		if idErr != nil {
+			log.Error().Err(idErr).Msg("stats: failed to get last insert id for attempts")
+			return
+		}
+		for _, a := range r.Attempts {
+			if _, err := s.db.Exec(
+				`INSERT INTO request_attempts (request_id,attempt_order,backend,error,status_code,latency_ms,response_body) VALUES (?,?,?,?,?,?,?)`,
+				reqID, a.AttemptOrder, a.Backend, a.Error, a.StatusCode, a.LatencyMs, a.ResponseBody,
+			); err != nil {
+				log.Error().Err(err).Int64("request_id", reqID).Msg("stats: failed to save attempt")
+			}
+		}
 	}
 }
 
@@ -221,7 +238,25 @@ func (s *Store) migrate() error {
 			return fmt.Errorf("migration 7: %w", err)
 		}
 	}
-	_, err := s.db.Exec("PRAGMA user_version = 7")
+	if version < 8 {
+		if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS request_attempts (
+			id            INTEGER PRIMARY KEY AUTOINCREMENT,
+			request_id    INTEGER NOT NULL,
+			attempt_order INTEGER NOT NULL DEFAULT 0,
+			backend       TEXT    NOT NULL DEFAULT '',
+			error         TEXT    NOT NULL DEFAULT '',
+			status_code   INTEGER NOT NULL DEFAULT 0,
+			latency_ms    INTEGER NOT NULL DEFAULT 0,
+			response_body TEXT    NOT NULL DEFAULT '',
+			FOREIGN KEY (request_id) REFERENCES requests(id) ON DELETE CASCADE
+		)`); err != nil {
+			return fmt.Errorf("migration 8a: %w", err)
+		}
+		if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_attempts_request ON request_attempts(request_id)`); err != nil {
+			return fmt.Errorf("migration 8b: %w", err)
+		}
+	}
+	_, err := s.db.Exec("PRAGMA user_version = 8")
 	return err
 }
 
@@ -262,6 +297,29 @@ func (s *Store) GetByID(id int64) (*Record, error) {
 	r.Stream = stream != 0
 	r.Fallback = fallback != 0
 	return &r, nil
+}
+
+// AttemptsForRequest returns the attempt trace for a given request ID, ordered by attempt_order.
+func (s *Store) AttemptsForRequest(requestID int64) ([]Attempt, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.Query(
+		`SELECT attempt_order, backend, error, status_code, latency_ms, response_body
+		 FROM request_attempts WHERE request_id = ? ORDER BY attempt_order`, requestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var attempts []Attempt
+	for rows.Next() {
+		var a Attempt
+		if err := rows.Scan(&a.AttemptOrder, &a.Backend, &a.Error, &a.StatusCode, &a.LatencyMs, &a.ResponseBody); err != nil {
+			return nil, err
+		}
+		attempts = append(attempts, a)
+	}
+	return attempts, rows.Err()
 }
 
 // buildWhere converts a StatsFilter into a SQL WHERE clause and positional args.

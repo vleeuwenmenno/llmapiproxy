@@ -404,6 +404,22 @@
         }
 
         .model-item:hover { background: var(--accent-dim); }
+        .model-item.model-disabled { opacity: 0.45; }
+        .model-item.model-disabled .model-id { text-decoration: line-through; }
+
+        .model-disable-btn {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.72rem;
+            padding: 0 0.3rem;
+            opacity: 0;
+            transition: opacity .15s, color .15s;
+        }
+        .model-item:hover .model-disable-btn { opacity: 1; }
+        .model-disable-btn:hover { color: var(--amber); }
+        .model-item.model-disabled .model-disable-btn { opacity: 1; color: var(--green); }
 
         .model-id {
             font-family: var(--mono);
@@ -1330,6 +1346,15 @@
         .stagger-delay-row input[type=number]:focus { border-color: #34d399; }
         .stagger-delay-row span { font-size: 0.75rem; color: var(--text-dim); }
 
+        /* Backend toggle switch in routing modal */
+        .routing-backend-toggle { position: relative; display: inline-flex; align-items: center; cursor: pointer; flex-shrink: 0; }
+        .routing-backend-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+        .routing-toggle-slider { width: 2rem; height: 1.1rem; background: var(--border); border-radius: 1rem; position: relative; transition: background .2s; }
+        .routing-toggle-slider::after { content: ''; position: absolute; top: 2px; left: 2px; width: calc(1.1rem - 4px); height: calc(1.1rem - 4px); background: var(--text-dim); border-radius: 50%; transition: transform .2s, background .2s; }
+        .routing-backend-toggle input:checked + .routing-toggle-slider { background: #22d3ee; }
+        .routing-backend-toggle input:checked + .routing-toggle-slider::after { transform: translateX(calc(2rem - 1.1rem)); background: #fff; }
+        .routing-backend-toggle input:focus-visible + .routing-toggle-slider { outline: 2px solid var(--accent); outline-offset: 2px; }
+
         /* Fallback :checked style for browsers without :has */
         .strat-option:has(input:checked) .strat-label { color: var(--text); }
 
@@ -2157,6 +2182,8 @@
             <button class="mobile-menu-close" onclick="closeMobileMenu()">&#10005;</button>
         </div>
         <a href="/ui/">&#128200; Dashboard</a>
+        <a href="/ui/analytics">&#128202; Analytics</a>
+        <a href="/ui/routing">&#128260; Routing</a>
         <a href="/ui/models" class="active">&#129302; Models</a>
         <a href="/ui/chat">&#128172; Chat</a>
         <a href="/ui/settings">&#9881; Settings</a>
@@ -2252,7 +2279,7 @@
                         <span class="collapse-chevron">&#x25BE;</span>
                     </div>
                     <div class="backend-actions" onclick="event.stopPropagation()">
-                    <span class="model-count" id="count-{{.Name}}">{{if not .Enabled}}disabled{{else if .StaticCount}}{{.StaticCount}} models{{else}}&hellip;{{end}}</span>
+                    <span class="model-count" id="count-{{.Name}}">{{if not .Enabled}}disabled{{else if .StaticCount}}{{.StaticCount}} models{{if .DisabledModels}} ({{len .DisabledModels}} disabled){{end}}{{else}}&hellip;{{end}}</span>
                     <div class="backend-dropdown-container" id="backend-dropdown-{{.Name}}">
                         <button type="button" class="backend-menu-trigger" aria-expanded="false" aria-controls="backend-menu-{{.Name}}" title="Backend actions" onclick="toggleBackendDropdown(event, '{{.Name}}')">&#x22EE;</button>
                         <div class="backend-dropdown-menu" id="backend-menu-{{.Name}}">
@@ -2298,8 +2325,9 @@
                     {{if .Enabled}}<div class="model-loading"><div class="spinner"></div><span>Loading models&#x2026;</span></div>{{else}}<div style="padding:0.85rem 1.1rem;font-size:0.75rem;color:var(--text-dim);font-family:var(--mono)">Enable this backend to load models.</div>{{end}}
                     {{else}}
                     {{range .Models}}
-                    <div class="model-item">
+                    <div class="model-item{{if .Disabled}} model-disabled{{end}}">
                         <span class="model-id">{{.BareID}}</span>
+                        <button class="model-disable-btn" onclick="toggleModelDisabled(this, '{{$.Name}}', '{{.BareID}}', {{.Disabled}})" title="{{if .Disabled}}Enable{{else}}Disable{{end}} this model on this backend">{{if .Disabled}}&#x25B6;{{else}}&#x23FB;{{end}}</button>
                         <button class="copy-btn" onclick="copyText(this, '{{.FullID}}')" title="Copy full ID: {{.FullID}}">copy</button>
                     </div>
                     {{end}}
@@ -2608,7 +2636,7 @@
                             <span class="strat-icon">&#8226;</span>
                             <span class="strat-text">
                                 <span class="strat-label">Use global default</span>
-                                <span class="strat-desc">Inherit the strategy configured on the Settings page.</span>
+                                <span class="strat-desc">Inherit the strategy configured on the Routing page.</span>
                             </span>
                         </label>
                         <label class="strat-option so-priority">
@@ -3228,6 +3256,29 @@
             });
         }
 
+        function toggleModelDisabled(btn, backendName, modelID, currentlyDisabled) {
+            var disable = !currentlyDisabled;
+            fetch('/ui/settings/backends/disabled-model', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ backend: backendName, model: modelID, disabled: disable })
+            }).then(function(r) {
+                if (!r.ok) { r.text().then(function(t) { alert('Error: ' + t); }); return; }
+                // Update the item visually without full page reload
+                var item = btn.closest('.model-item');
+                if (item) {
+                    if (disable) {
+                        item.classList.add('model-disabled');
+                    } else {
+                        item.classList.remove('model-disabled');
+                    }
+                    btn.textContent = disable ? '\u25B6' : '\u23FB';
+                    btn.title = disable ? 'Enable this model on this backend' : 'Disable this model on this backend';
+                    btn.onclick = function() { toggleModelDisabled(btn, backendName, modelID, disable); };
+                }
+            }).catch(function(e) { alert('Error: ' + e); });
+        }
+
         function copyBlock(btn, id) {
             const text = document.getElementById(id).textContent;
             navigator.clipboard.writeText(text).then(() => {
@@ -3250,11 +3301,13 @@
         }
 
         // ── Routing modal ──────────────────────────────────────────────
-        var routingData = {{.RoutingJSON}};  // map of model → {backends, strategy}
+        var routingData = {{.RoutingJSON}};  // map of model → {backends, strategy, disabled_backends}
+        var allBackendDisabledModels = {{if .DisabledModelsJSON}}{{.DisabledModelsJSON}}{{else}}{}{{end}}; // backendName → {modelID: true}
         var globalStrategy = {{if .GlobalStrategy}}{{.GlobalStrategy | js}}{{else}}''{{end}};
         var overlapBootstrap = {{json .Overlaps}} || [];
         var currentRoutingModel = '';
         var currentBackends = [];
+        var currentDisabledBackends = {};  // backend name → true (disabled for current model)
         var overlapViewStorageKey = 'models-overlap-view';
         var overlapStrategyBadges = {
             'priority': { text: 'Priority', html: '&#8595; Priority', className: 'strat-priority' },
@@ -3282,6 +3335,15 @@
             var ordered = savedBackends.filter(b => backends.includes(b));
             backends.forEach(b => { if (!ordered.includes(b)) ordered.push(b); });
             currentBackends = ordered;
+
+            // Restore disabled backends from saved config
+            currentDisabledBackends = {};
+            var savedDisabled = saved.disabled_backends || [];
+            savedDisabled.forEach(function(b) {
+                if (currentBackends.includes(b)) {
+                    currentDisabledBackends[b] = true;
+                }
+            });
 
             document.getElementById('routing-model-name').textContent = modelID;
             document.getElementById('routing-save-msg').textContent = '';
@@ -3318,14 +3380,30 @@
             var ul = document.getElementById('routing-backend-list');
             ul.innerHTML = '';
             currentBackends.forEach(function(b, i) {
+                var disabled = !!currentDisabledBackends[b];
                 var li = document.createElement('li');
-                li.style.cssText = 'display:flex;align-items:center;gap:0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.5rem 0.75rem;font-family:var(--mono);font-size:0.82rem';
-                li.innerHTML = '<span style="color:var(--text-dim);min-width:1.2rem">#' + (i+1) + '</span>'
-                    + '<span style="flex:1;color:var(--text)">' + b + '</span>'
+                li.style.cssText = 'display:flex;align-items:center;gap:0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.5rem 0.75rem;font-family:var(--mono);font-size:0.82rem' + (disabled ? ';opacity:0.45' : '');
+                // Toggle switch
+                var toggleHTML = '<label class="routing-backend-toggle" title="' + (disabled ? 'Enable' : 'Disable') + ' this backend for routing">'
+                    + '<input type="checkbox"' + (disabled ? '' : ' checked') + ' onchange="toggleBackendDisabled(\'' + b.replace(/'/g, "\\'") + '\', this.checked)">'
+                    + '<span class="routing-toggle-slider"></span>'
+                    + '</label>';
+                li.innerHTML = toggleHTML
+                    + '<span style="color:var(--text-dim);min-width:1.2rem">#' + (i+1) + '</span>'
+                    + '<span style="flex:1;color:var(--text)">' + b + (disabled ? ' <span style=\"color:var(--text-dim);font-size:0.7rem;font-style:italic\">(disabled)</span>' : '') + '</span>'
                     + (i > 0 ? '<button onclick="moveBackend(' + i + ',-1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1rem" title="Move up">↑</button>' : '<span style="width:1.6rem"></span>')
                     + (i < currentBackends.length-1 ? '<button onclick="moveBackend(' + i + ',1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1rem" title="Move down">↓</button>' : '<span style="width:1.6rem"></span>');
                 ul.appendChild(li);
             });
+        }
+
+        function toggleBackendDisabled(backendName, enabled) {
+            if (enabled) {
+                delete currentDisabledBackends[backendName];
+            } else {
+                currentDisabledBackends[backendName] = true;
+            }
+            renderBackendList();
         }
 
         function moveBackend(idx, dir) {
@@ -3343,6 +3421,9 @@
             var delayMs = parseInt(document.getElementById('stagger-delay-input').value, 10) || 500;
             var entry = { backends: currentBackends.slice(), strategy: strategy };
             if (strategy === 'staggered-race') entry.stagger_delay_ms = delayMs;
+            // Include disabled backends
+            var disabledArr = Object.keys(currentDisabledBackends);
+            if (disabledArr.length > 0) entry.disabled_backends = disabledArr;
             routingData[currentRoutingModel] = entry;
             recomputeOverlaps();
             var msg = document.getElementById('routing-save-msg');
@@ -3360,6 +3441,7 @@
                         var obj = { model: m, backends: d.backends || [] };
                         if (d.strategy) obj.strategy = d.strategy;
                         if (d.stagger_delay_ms) obj.stagger_delay_ms = d.stagger_delay_ms;
+                        if (d.disabled_backends && d.disabled_backends.length > 0) obj.disabled_backends = d.disabled_backends;
                         return obj;
                     });
                     return fetch('/ui/routing/save', {
@@ -3484,10 +3566,16 @@
                 return backendModels[name] || '';
             });
 
+            var savedDisabled = Array.isArray(savedEntry.disabled_backends) ? savedEntry.disabled_backends : [];
+            var disabledMap = {};
+            savedDisabled.forEach(function(name) { disabledMap[name] = true; });
+
             return {
                 modelID: modelID,
                 backends: backends.slice(),
                 orderedBackends: orderedBackends,
+                disabledBackends: disabledMap,
+                disabledCount: savedDisabled.filter(function(name) { return orderedBackends.indexOf(name) !== -1; }).length,
                 backendModels: backendModels,
                 backendCount: orderedBackends.length,
                 hasSavedOrder: savedBackends.length > 0,
@@ -3604,15 +3692,19 @@
         }
 
         function renderOverlapBackendRows(item) {
+            var total = item.orderedBackends.length;
+            var disabled = item.disabledCount || 0;
             return item.orderedBackends.map(function(name, index) {
                 var modelID = item.backendModels[name] || '';
                 var sameClass = modelID === item.modelID ? ' same' : '';
                 var prefix = item.hasSavedOrder ? '#' + (index + 1) + ' ' : '';
-                return '<span class="backend-row">'
+                var isDisabled = item.disabledBackends && item.disabledBackends[name];
+                var dimStyle = isDisabled ? ' style="opacity:0.4;text-decoration:line-through"' : '';
+                return '<span class="backend-row"' + dimStyle + '>'
                     + '<span class="backend-name">' + escHtml(prefix + name) + '</span>'
                     + '<span class="backend-modelid' + sameClass + '">' + escHtml(modelID) + '</span>'
                     + '</span>';
-            }).join('');
+            }).join('') + (disabled > 0 ? '<span class="backend-row" style="color:var(--text-dim);font-size:0.7rem;font-style:italic">' + (total - disabled) + ' of ' + total + ' enabled</span>' : '');
         }
 
         function renderOverlapGrid(items) {
@@ -3621,6 +3713,7 @@
                     + '<span class="mid">' + escHtml(item.modelID) + '</span>'
                     + renderOverlapBadge(item, false)
                     + '<span class="backends">' + renderOverlapBackendRows(item) + '</span>'
+                    + (item.disabledCount > 0 ? '<span class="disabled-hint" style="font-size:0.68rem;color:var(--amber);font-style:italic">' + item.disabledCount + ' disabled</span>' : '')
                     + '<span class="configure-hint">&#x2699; click to configure routing</span>'
                     + '</div>';
             }).join('') + '</div>';
@@ -3633,7 +3726,9 @@
                     return '<tr>'
                         + '<td class="overlap-table-model">' + escHtml(item.modelID) + '</td>'
                         + '<td><div class="overlap-table-backends">' + item.orderedBackends.map(function(name) {
-                            return '<span class="overlap-backend-pill">' + escHtml(name) + '</span>';
+                            var isDisabled = item.disabledBackends && item.disabledBackends[name];
+                            var cls = 'overlap-backend-pill' + (isDisabled ? ' pill-disabled' : '');
+                            return '<span class="' + cls + '"' + (isDisabled ? ' style="opacity:0.4;text-decoration:line-through"' : '') + '>' + escHtml(name) + '</span>';
                         }).join('') + '</div></td>'
                         + '<td>' + renderOverlapBadge(item, true) + '</td>'
                         + '<td><div class="overlap-table-ids">' + renderOverlapBackendRows(item) + '</div></td>'
@@ -4384,15 +4479,24 @@
                 .replace(/"/g, '&quot;');
         }
 
-        function renderModelItem(m) {
+        function renderModelItem(m, backendName) {
             var srcSym = { upstream: '\u2191', config: '\u2699', builtin: '\uD83D\uDCCB' };
             var displayId = m.BareID || m.FullID;
-            return '<div class="model-item">'
+            var disableBtn = '';
+            if (backendName) {
+                var bareID = displayId;
+                var isDisabled = !!(allBackendDisabledModels[backendName] && allBackendDisabledModels[backendName][bareID]);
+                disableBtn = '<button class="model-disable-btn" onclick="toggleModelDisabled(this, \'' + escHtml(backendName).replace(/'/g, "\\'") + '\', \'' + escHtml(bareID).replace(/'/g, "\\'") + '\', ' + isDisabled + ')" title="' + (isDisabled ? 'Enable' : 'Disable') + ' this model on this backend">' + (isDisabled ? '\u25B6' : '\u23FB') + '</button>';
+            }
+            var cls = 'model-item';
+            if (backendName && allBackendDisabledModels[backendName] && allBackendDisabledModels[backendName][displayId]) cls += ' model-disabled';
+            return '<div class="' + cls + '">'
                 + '<span class="model-id">' + escHtml(displayId) + '</span>'
                 + (m.ContextLength ? '<span class="ctx-badge" title="Context window">' + fmtN(m.ContextLength) + 'ctx</span>' : '')
                 + (m.MaxOutputTokens ? '<span class="out-badge" title="Max output tokens">' + fmtN(m.MaxOutputTokens) + 'out</span>' : '')
                 + (m.Capabilities || []).map(function(c) { return '<span class="cap-badge">' + escHtml(c) + '</span>'; }).join('')
                 + (m.DataSource ? '<span class="src-badge src-' + escHtml(m.DataSource) + '" title="Metadata source: ' + escHtml(m.DataSource) + '">' + (srcSym[m.DataSource] || '') + '</span>' : '')
+                + disableBtn
                 + '<button class="copy-btn" data-copy="' + escHtml(m.FullID) + '" title="Copy full ID: ' + escHtml(m.FullID) + '" onclick="copyText(this,this.dataset.copy)">copy</button>'
                 + '</div>';
         }
@@ -4449,10 +4553,10 @@
                     var preview = normalized.slice(0, PREVIEW_COUNT);
                     var rest = normalized.slice(PREVIEW_COUNT);
                     var html = baseUrlHtml + dynHtml;
-                    html += preview.map(renderModelItem).join('');
+                    html += preview.map(function(m) { return renderModelItem(m, name); }).join('');
                     if (rest.length > 0) {
                         html += '<div class="model-rest" id="rest-' + name + '" style="display:none">'
-                            + rest.map(renderModelItem).join('') + '</div>';
+                            + rest.map(function(m) { return renderModelItem(m, name); }).join('') + '</div>';
                         html += '<button class="show-more-btn" id="showmore-' + name + '" onclick="toggleMore(\'' + name + '\',' + rest.length + ')">\u25BE Show ' + rest.length + ' more models</button>';
                     }
                     listEl.innerHTML = html;
@@ -4507,10 +4611,10 @@
                     var preview = models.slice(0, PREVIEW_COUNT);
                     var rest = models.slice(PREVIEW_COUNT);
                     var html = baseUrlHtml + dynHtml;
-                    html += preview.map(renderModelItem).join('');
+                    html += preview.map(function(m) { return renderModelItem(m, name); }).join('');
                     if (rest.length > 0) {
                         html += '<div class="model-rest" id="rest-' + name + '" style="display:none">'
-                            + rest.map(renderModelItem).join('') + '</div>';
+                            + rest.map(function(m) { return renderModelItem(m, name); }).join('') + '</div>';
                         html += '<button class="show-more-btn" id="showmore-' + name + '" onclick="toggleMore(\'' + name + '\',' + rest.length + ')">'
                             + '\u25BE Show ' + rest.length + ' more models</button>';
                     }

@@ -67,6 +67,10 @@ type CopilotBackend struct {
 	deviceCodeHandler *oauth.DeviceCodeHandler
 	tokenStore        *oauth.TokenStore
 
+	// disabledModels is a set of model IDs that should never be routed
+	// through this backend, even if they are available upstream.
+	disabledModels map[string]bool
+
 	capMu    sync.RWMutex
 	capCache map[string]copilotModelCap // keyed by model ID
 }
@@ -74,6 +78,10 @@ type CopilotBackend struct {
 // NewCopilotBackend creates a new CopilotBackend from the given configuration,
 // device code handler, and token store.
 func NewCopilotBackend(cfg config.BackendConfig, deviceCodeHandler *oauth.DeviceCodeHandler, tokenStore *oauth.TokenStore) *CopilotBackend {
+	dm := make(map[string]bool, len(cfg.DisabledModels))
+	for _, m := range cfg.DisabledModels {
+		dm[m] = true
+	}
 	return &CopilotBackend{
 		name:              cfg.Name,
 		baseURL:           strings.TrimRight(cfg.BaseURL, "/"),
@@ -82,6 +90,7 @@ func NewCopilotBackend(cfg config.BackendConfig, deviceCodeHandler *oauth.Device
 		deviceCodeHandler: deviceCodeHandler,
 		tokenStore:        tokenStore,
 		capCache:          make(map[string]copilotModelCap),
+		disabledModels:    dm,
 	}
 }
 
@@ -93,6 +102,9 @@ func (b *CopilotBackend) Name() string { return b.name }
 // Otherwise, the live capabilities cache (populated by ListModels) is consulted.
 // If the cache is empty (not yet warmed), false is returned.
 func (b *CopilotBackend) SupportsModel(modelID string) bool {
+	if b.disabledModels[modelID] {
+		return false
+	}
 	if len(b.models) > 0 {
 		for _, m := range b.models {
 			if m == modelID {
@@ -273,7 +285,7 @@ func (b *CopilotBackend) ListModels(ctx context.Context) ([]Model, error) {
 				OwnedBy: b.name,
 			})
 		}
-		return models, nil
+		return b.filterDisabled(models), nil
 	}
 
 	// Fetch live model list from the Copilot API when authenticated.
@@ -359,7 +371,21 @@ func (b *CopilotBackend) ListModels(ctx context.Context) ([]Model, error) {
 	b.capCache = newCache
 	b.capMu.Unlock()
 
-	return models, nil
+	return b.filterDisabled(models), nil
+}
+
+// filterDisabled removes models that are in the disabledModels set.
+func (b *CopilotBackend) filterDisabled(models []Model) []Model {
+	if len(b.disabledModels) == 0 {
+		return models
+	}
+	filtered := make([]Model, 0, len(models))
+	for _, m := range models {
+		if !b.disabledModels[m.ID] {
+			filtered = append(filtered, m)
+		}
+	}
+	return filtered
 }
 
 // getCap returns the cached capabilities for modelID, if present.

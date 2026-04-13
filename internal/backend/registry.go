@@ -428,8 +428,17 @@ func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]R
 
 	for _, mr := range routing.Models {
 		if mr.Model == model {
+			// Build per-model disabled set.
+			skip := make(map[string]bool, len(mr.DisabledBackends))
+			for _, bName := range mr.DisabledBackends {
+				skip[bName] = true
+			}
+
 			var entries []RouteEntry
 			for _, bName := range mr.Backends {
+				if skip[bName] {
+					continue
+				}
 				if b, ok := r.backends[bName]; ok {
 					entries = append(entries, RouteEntry{Backend: b, ModelID: model})
 				}

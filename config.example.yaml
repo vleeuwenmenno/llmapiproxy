@@ -130,6 +130,9 @@ backends:
     base_url: https://opencode.ai/zen/go/v1
     api_key: "your-opencode-go-key"
     models_url: https://opencode.ai/zen/v1
+    # disabled_models:          # Optional: models to never route through this backend.
+    #   - claude-opus-4-6        # These models won't appear in /v1/models or the web UI
+    #   - claude-sonnet-4-6      # for this backend. Other backends are unaffected.
 
   # ── GitHub Copilot ────────────────────────────────────────
   # Uses GitHub Device Code Flow for authentication.
@@ -214,6 +217,11 @@ clients:
 #         - zai-coding
 #         - zen
 #         - go
+#       # Optional: disable specific backends for this model only.
+#       # The backends remain in the list above for ordering/visibility
+#       # but are excluded from actual routing. Other models are unaffected.
+#       # disabled_backends:
+#       #   - zai-coding
 #     - model: kimi-k2.5
 #       strategy: race
 #       backends:

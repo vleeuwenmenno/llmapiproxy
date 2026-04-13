@@ -48,6 +48,10 @@ type CodexBackend struct {
 	tokenStore        *oauth.TokenStore
 	cfg               config.BackendConfig
 
+	// disabledModels is a set of model IDs that should never be routed
+	// through this backend, even if they are available upstream.
+	disabledModels map[string]bool
+
 	// Model list cache.
 	modelCacheTTL time.Duration
 	cacheMu       sync.RWMutex
@@ -65,6 +69,11 @@ func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHan
 		baseURL = codexDefaultBaseURL
 	}
 
+	dm := make(map[string]bool, len(cfg.DisabledModels))
+	for _, m := range cfg.DisabledModels {
+		dm[m] = true
+	}
+
 	return &CodexBackend{
 		name:              cfg.Name,
 		baseURL:           baseURL,
@@ -75,6 +84,7 @@ func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHan
 		tokenStore:        tokenStore,
 		cfg:               cfg,
 		modelCacheTTL:     cacheTTL,
+		disabledModels:    dm,
 	}
 }
 
@@ -86,6 +96,9 @@ func (b *CodexBackend) Name() string { return b.name }
 // Otherwise, the cached model list (populated by ListModels) is consulted.
 // If the cache is empty (not yet warmed), false is returned.
 func (b *CodexBackend) SupportsModel(modelID string) bool {
+	if b.disabledModels[modelID] {
+		return false
+	}
 	if len(b.models) > 0 {
 		for _, m := range b.models {
 			if m == modelID {
@@ -940,7 +953,7 @@ func (b *CodexBackend) ListModels(ctx context.Context) ([]Model, error) {
 			cached := b.cachedModels
 			b.cacheMu.RUnlock()
 			log.Debug().Str("backend", b.name).Int("models", len(cached)).Msg("model cache hit")
-			return cached, nil
+			return b.filterDisabled(cached), nil
 		}
 		b.cacheMu.RUnlock()
 	}
@@ -956,7 +969,7 @@ func (b *CodexBackend) ListModels(ctx context.Context) ([]Model, error) {
 				cached := b.cachedModels
 				b.cacheMu.RUnlock()
 				log.Warn().Err(err).Str("backend", b.name).Int("models", len(cached)).Msg("model list build failed, returning stale cache")
-				return cached, nil
+				return b.filterDisabled(cached), nil
 			}
 			b.cacheMu.RUnlock()
 		}
@@ -971,7 +984,21 @@ func (b *CodexBackend) ListModels(ctx context.Context) ([]Model, error) {
 		b.cacheMu.Unlock()
 	}
 
-	return models, nil
+	return b.filterDisabled(models), nil
+}
+
+// filterDisabled removes models that are in the disabledModels set.
+func (b *CodexBackend) filterDisabled(models []Model) []Model {
+	if len(b.disabledModels) == 0 {
+		return models
+	}
+	filtered := make([]Model, 0, len(models))
+	for _, m := range models {
+		if !b.disabledModels[m.ID] {
+			filtered = append(filtered, m)
+		}
+	}
+	return filtered
 }
 
 // buildCodexModelList builds the model list from config, upstream, or defaults.
