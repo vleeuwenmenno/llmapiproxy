@@ -288,7 +288,7 @@
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 10px;
-            overflow: hidden;
+            overflow: visible;
             animation: fadeIn 0.3s ease both;
             transition: border-color 0.2s;
         }
@@ -321,6 +321,13 @@
             padding: 0.9rem 1.1rem;
             background: var(--surface-2);
             border-bottom: 1px solid var(--border);
+        }
+
+        .backend-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
         }
 
         .backend-name {
@@ -546,28 +553,124 @@
             font-family: var(--mono);
         }
 
-        .refresh-models-btn {
-            background: none;
+        .backend-dropdown-container {
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .backend-menu-trigger {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
             border: 1px solid var(--border);
+            background: var(--surface);
             color: var(--text-dim);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             font-size: 1rem;
             cursor: pointer;
-            padding: 0.15rem 0.4rem;
-            border-radius: 4px;
-            margin-left: 0.4rem;
-            vertical-align: middle;
-            transition: all 0.2s ease;
+            transition: all 0.15s ease;
         }
-        .refresh-models-btn:hover {
+
+        .backend-menu-trigger:hover,
+        .backend-dropdown-container.open .backend-menu-trigger {
             color: var(--accent);
             border-color: var(--accent);
             background: var(--accent-dim);
         }
-        .refresh-models-btn.spinning {
-            animation: spin 0.6s linear infinite;
-            pointer-events: none;
-            opacity: 0.6;
+
+        .backend-dropdown-menu {
+            position: absolute;
+            top: calc(100% + 0.45rem);
+            right: 0;
+            min-width: 220px;
+            padding: 0.35rem;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: color-mix(in srgb, var(--surface) 92%, black 8%);
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+            display: none;
+            z-index: 30;
         }
+
+        .backend-dropdown-container.open .backend-dropdown-menu {
+            display: block;
+            animation: fadeIn 0.14s ease both;
+        }
+
+        .backend-dropdown-form {
+            margin: 0;
+        }
+
+        .backend-menu-item {
+            width: 100%;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text);
+            border-radius: 9px;
+            padding: 0.55rem 0.7rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            cursor: pointer;
+            font-family: var(--sans);
+            font-size: 0.8rem;
+            text-align: left;
+            transition: all 0.15s ease;
+        }
+
+        .backend-menu-item:hover {
+            color: var(--accent);
+            border-color: rgba(34, 211, 238, 0.22);
+            background: var(--accent-dim);
+        }
+
+        .backend-menu-item.danger:hover {
+            color: var(--red);
+            border-color: rgba(248, 113, 113, 0.24);
+            background: rgba(248, 113, 113, 0.1);
+        }
+
+        .backend-menu-item.spinning {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        .backend-menu-item.spinning .backend-menu-icon {
+            animation: spin 0.6s linear infinite;
+        }
+
+        .backend-menu-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.55rem;
+        }
+
+        .backend-menu-icon {
+            width: 1rem;
+            text-align: center;
+            color: var(--text-dim);
+            flex-shrink: 0;
+        }
+
+        .backend-menu-item:hover .backend-menu-icon {
+            color: inherit;
+        }
+
+        .backend-menu-meta {
+            color: var(--text-dim);
+            font-size: 0.68rem;
+            font-family: var(--mono);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .backend-menu-item.danger .backend-menu-meta {
+            color: rgba(248, 113, 113, 0.8);
+        }
+
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
@@ -611,29 +714,6 @@
             background: rgba(251,191,36,0.12);
             color: var(--amber);
             border: 1px solid rgba(251,191,36,0.3);
-        }
-
-        /* ── Switch-type button ── */
-        .switch-type-btn {
-            background: none;
-            border: 1px solid var(--border);
-            color: var(--text-dim);
-            font-size: 0.6rem;
-            font-family: var(--mono);
-            cursor: pointer;
-            padding: 0.15rem 0.4rem;
-            border-radius: 3px;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            transition: all 0.15s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.25rem;
-        }
-        .switch-type-btn:hover {
-            color: var(--purple);
-            border-color: var(--purple);
-            background: rgba(167,139,250,0.08);
         }
 
         /* ── Spinner ─────────────────────────────────────────── */
@@ -1114,41 +1194,6 @@
         .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
         body { transition: background 0.2s, color 0.2s; }
 
-        /* ── Backend enable/disable toggle ──────────────────── */
-        .backend-toggle {
-            position: relative;
-            width: 36px;
-            height: 20px;
-            flex-shrink: 0;
-            cursor: pointer;
-        }
-        .backend-toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
-        .backend-toggle .tog-slider {
-            position: absolute;
-            inset: 0;
-            background: rgba(248,113,113,0.15);
-            border: 1px solid rgba(248,113,113,0.35);
-            border-radius: 20px;
-            transition: background 0.2s, border-color 0.2s;
-        }
-        .backend-toggle .tog-slider::before {
-            content: '';
-            position: absolute;
-            width: 14px; height: 14px;
-            left: 2px; top: 2px;
-            background: var(--red);
-            border-radius: 50%;
-            transition: transform 0.2s, background 0.2s;
-        }
-        .backend-toggle input:checked + .tog-slider {
-            background: rgba(52,211,153,0.15);
-            border-color: rgba(52,211,153,0.4);
-        }
-        .backend-toggle input:checked + .tog-slider::before {
-            transform: translateX(16px);
-            background: var(--green);
-        }
-
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(8px); }
             to   { opacity: 1; transform: translateY(0); }
@@ -1260,24 +1305,6 @@
             border-color: var(--accent);
             color: var(--accent);
             background: var(--accent-dim);
-        }
-
-        /* ── Delete backend button ── */
-        .delete-backend-btn {
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: var(--text-dim);
-            font-size: 0.85rem;
-            padding: 0.15rem 0.35rem;
-            border-radius: 3px;
-            transition: all 0.15s ease;
-            display: inline-flex;
-            align-items: center;
-        }
-        .delete-backend-btn:hover {
-            color: var(--red);
-            background: rgba(248, 113, 113, 0.1);
         }
 
         /* ── Add Backend Modal ── */
@@ -1577,10 +1604,7 @@
                         <span class="type-badge type-{{.Type}}">{{.Type}}</span>
                         <span class="collapse-chevron">&#x25BE;</span>
                     </div>
-                    <div style="display:flex;align-items:center;gap:0.5rem" onclick="event.stopPropagation()">
-                    {{if or (eq .Type "openai") (eq .Type "anthropic")}}
-                    <button class="switch-type-btn" onclick="openSwitchTypeModal('{{.Name}}', '{{.Type}}', '{{.BaseURL}}', '{{.APIKey}}')" title="Switch to {{if eq .Type "openai"}}Anthropic{{else}}OpenAI{{end}} API format">&#x21C4; {{if eq .Type "openai"}}Anthropic{{else}}OpenAI{{end}}</button>
-                    {{end}}
+                    <div class="backend-actions" onclick="event.stopPropagation()">
                     {{if $oauth}}
                     <span class="oauth-status-dot oauth-status-dot-{{$oauth.TokenState}}" title="{{$oauth.TokenState}}"></span>
                     <span class="oauth-status-text oauth-text-{{if eq $oauth.TokenState `valid`}}valid{{else if eq $oauth.TokenState `expiring`}}expiring{{else}}missing{{end}}">
@@ -1588,21 +1612,40 @@
                     </span>
                     {{end}}
                     <span class="model-count" id="count-{{.Name}}">{{if not .Enabled}}disabled{{else if .StaticCount}}{{.StaticCount}} models{{else}}&hellip;{{end}}</span>
-                    {{if and .IsDynamic .Enabled}}<button class="refresh-models-btn" onclick="refreshBackendModels(event, '{{.Name}}')" title="Refresh model list from upstream">&#x21BB;</button>{{end}}
-                    <form method="POST" action="/ui/settings/backends/delete" id="delete-form-{{.Name}}" style="display:contents">
-                        <input type="hidden" name="name" value="{{.Name}}">
-                        <input type="hidden" name="wipe_stats" id="delete-wipe-{{.Name}}" value="">
-                        <button type="button" class="delete-backend-btn" title="Delete backend {{.Name}}" onclick="openDeleteBackendModal('{{.Name}}')">&#x2715;</button>
-                    </form>
-                    <form method="POST" action="/ui/settings/backends/toggle" style="display:contents">
-                        <input type="hidden" name="name" value="{{.Name}}">
-                        <input type="hidden" name="enabled" value="{{if .Enabled}}false{{else}}true{{end}}">
-                        <input type="hidden" name="redirect" value="/ui/models">
-                        <label class="backend-toggle" title="{{if .Enabled}}Disable{{else}}Enable{{end}} {{.Name}}" onclick="event.preventDefault(); this.closest('form').submit()">
-                            <input type="checkbox" {{if .Enabled}}checked{{end}} style="pointer-events:none">
-                            <span class="tog-slider"></span>
-                        </label>
-                    </form>
+                    <div class="backend-dropdown-container" id="backend-dropdown-{{.Name}}">
+                        <button type="button" class="backend-menu-trigger" aria-expanded="false" aria-controls="backend-menu-{{.Name}}" title="Backend actions" onclick="toggleBackendDropdown(event, '{{.Name}}')">&#x22EE;</button>
+                        <div class="backend-dropdown-menu" id="backend-menu-{{.Name}}">
+                            {{if or (eq .Type "openai") (eq .Type "anthropic")}}
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); openSwitchTypeModal('{{.Name}}', '{{.Type}}', '{{.BaseURL}}', '{{.APIKey}}')">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x21C4;</span><span>Switch API format</span></span>
+                                <span class="backend-menu-meta">{{if eq .Type "openai"}}Anthropic{{else}}OpenAI{{end}}</span>
+                            </button>
+                            {{end}}
+                            {{if and .IsDynamic .Enabled}}
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); refreshBackendModels(event, '{{.Name}}')">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x21BB;</span><span>Refresh models</span></span>
+                                <span class="backend-menu-meta">live</span>
+                            </button>
+                            {{end}}
+                            <form method="POST" action="/ui/settings/backends/toggle" class="backend-dropdown-form">
+                                <input type="hidden" name="name" value="{{.Name}}">
+                                <input type="hidden" name="enabled" value="{{if .Enabled}}false{{else}}true{{end}}">
+                                <input type="hidden" name="redirect" value="/ui/models">
+                                <button type="submit" class="backend-menu-item" onclick="closeBackendDropdown()">
+                                    <span class="backend-menu-label"><span class="backend-menu-icon">{{if .Enabled}}&#x23FB;{{else}}&#x25B6;{{end}}</span><span>{{if .Enabled}}Disable backend{{else}}Enable backend{{end}}</span></span>
+                                    <span class="backend-menu-meta">{{if .Enabled}}on{{else}}off{{end}}</span>
+                                </button>
+                            </form>
+                            <form method="POST" action="/ui/settings/backends/delete" id="delete-form-{{.Name}}" class="backend-dropdown-form">
+                                <input type="hidden" name="name" value="{{.Name}}">
+                                <input type="hidden" name="wipe_stats" id="delete-wipe-{{.Name}}" value="">
+                                <button type="button" class="backend-menu-item danger" onclick="closeBackendDropdown(); openDeleteBackendModal('{{.Name}}')">
+                                    <span class="backend-menu-label"><span class="backend-menu-icon">&#x2715;</span><span>Delete backend</span></span>
+                                    <span class="backend-menu-meta">danger</span>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
                     </div>
                 </div>
                 <div class="model-list" id="models-{{.Name}}">
@@ -2144,8 +2187,33 @@
         function closeOnBackdrop(e, id) {
             if (e.target === document.getElementById(id)) closeModal(id);
         }
+        var openBackendDropdown = null;
+
+        function closeBackendDropdown() {
+            if (!openBackendDropdown) return;
+            openBackendDropdown.classList.remove('open');
+            var trigger = openBackendDropdown.querySelector('.backend-menu-trigger');
+            if (trigger) trigger.setAttribute('aria-expanded', 'false');
+            openBackendDropdown = null;
+        }
+
+        function toggleBackendDropdown(event, name) {
+            event.preventDefault();
+            event.stopPropagation();
+            var dropdown = document.getElementById('backend-dropdown-' + name);
+            if (!dropdown) return;
+            var isOpen = dropdown.classList.contains('open');
+            closeBackendDropdown();
+            if (isOpen) return;
+            dropdown.classList.add('open');
+            var trigger = dropdown.querySelector('.backend-menu-trigger');
+            if (trigger) trigger.setAttribute('aria-expanded', 'true');
+            openBackendDropdown = dropdown;
+        }
+
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') {
+                closeBackendDropdown();
                 document.querySelectorAll('.modal-overlay.open').forEach(el => {
                     closeModal(el.id);
                 });
@@ -2560,6 +2628,9 @@
         }
 
         document.addEventListener('click', function(e) {
+            if (openBackendDropdown && !e.target.closest('.backend-dropdown-container')) {
+                closeBackendDropdown();
+            }
             // Close popover on outside click
             if (openPopover) {
                 var item = e.target.closest('.legend-item');

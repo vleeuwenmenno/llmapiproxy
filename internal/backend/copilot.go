@@ -89,27 +89,39 @@ func NewCopilotBackend(cfg config.BackendConfig, deviceCodeHandler *oauth.Device
 func (b *CopilotBackend) Name() string { return b.name }
 
 // SupportsModel returns true if this backend can handle the given model ID.
-// If no models are configured, all models are accepted.
+// If a static model list is configured, only those are accepted.
+// Otherwise, the live capabilities cache (populated by ListModels) is consulted.
+// If the cache is empty (not yet warmed), false is returned.
 func (b *CopilotBackend) SupportsModel(modelID string) bool {
-	if len(b.models) == 0 {
-		return true
-	}
-	for _, m := range b.models {
-		if m == modelID {
-			return true
-		}
-		if strings.HasSuffix(m, "/*") {
-			prefix := strings.TrimSuffix(m, "/*")
-			if strings.HasPrefix(modelID, prefix+"/") || modelID == prefix {
+	if len(b.models) > 0 {
+		for _, m := range b.models {
+			if m == modelID {
 				return true
 			}
+			if strings.HasSuffix(m, "/*") {
+				prefix := strings.TrimSuffix(m, "/*")
+				if strings.HasPrefix(modelID, prefix+"/") || modelID == prefix {
+					return true
+				}
+			}
 		}
+		return false
 	}
-	return false
+	// Check the live capabilities cache.
+	b.capMu.RLock()
+	_, found := b.capCache[modelID]
+	b.capMu.RUnlock()
+	return found
 }
 
-// ClearModelCache is a no-op for Copilot backends (no model caching).
-func (b *CopilotBackend) ClearModelCache() {}
+// ClearModelCache resets the capabilities cache, forcing a fresh fetch on the
+// next ListModels call. Until the cache is repopulated, SupportsModel will
+// return false for all models.
+func (b *CopilotBackend) ClearModelCache() {
+	b.capMu.Lock()
+	defer b.capMu.Unlock()
+	b.capCache = make(map[string]copilotModelCap)
+}
 
 // ChatCompletion sends a non-streaming chat completion request to the Copilot API.
 // It obtains or validates the Copilot token, sets required headers, and forwards

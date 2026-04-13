@@ -760,33 +760,13 @@ func TestCodexBackend_ListModels_Default(t *testing.T) {
 		Name:    "codex",
 		Type:    "codex",
 		BaseURL: "https://chatgpt.com/backend-api/codex",
-		// No models configured — should use defaults.
+		// No models configured and no reachable upstream — should return error.
 	}
 	b := NewCodexBackend(cfg, nil, ts, nil, 0)
 
-	models, err := b.ListModels(context.Background())
-	if err != nil {
-		t.Fatalf("ListModels: %v", err)
-	}
-
-	if len(models) == 0 {
-		t.Fatal("expected default models when none configured")
-	}
-
-	if len(models) != len(defaultCodexModels) {
-		t.Fatalf("default models count = %d, want %d", len(models), len(defaultCodexModels))
-	}
-
-	for i, want := range defaultCodexModels {
-		if models[i].ID != want {
-			t.Fatalf("default model[%d] = %q, want %q", i, models[i].ID, want)
-		}
-		if models[i].DisplayName == "" {
-			t.Errorf("default model %q missing display_name", models[i].ID)
-		}
-		if models[i].ContextLength == nil || models[i].MaxOutputTokens == nil {
-			t.Errorf("default model %q missing metadata", models[i].ID)
-		}
+	_, err = b.ListModels(context.Background())
+	if err == nil {
+		t.Fatal("expected error when no static models and no upstream, got nil")
 	}
 }
 
@@ -799,7 +779,7 @@ func TestCodexBackend_SupportsModel(t *testing.T) {
 		check  string
 		want   bool
 	}{
-		{"empty models list (accepts all)", nil, "anything", true},
+		{"empty models list (rejects when cache empty)", nil, "anything", false},
 		{"exact match", []config.ModelConfig{{ID: "o4-mini"}}, "o4-mini", true},
 		{"no match", []config.ModelConfig{{ID: "o4-mini"}}, "gpt-5", false},
 		{"wildcard match", []config.ModelConfig{{ID: "gpt-5/*"}}, "gpt-5/codex", true},

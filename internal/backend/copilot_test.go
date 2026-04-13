@@ -766,7 +766,7 @@ func TestCopilotBackend_SupportsModel(t *testing.T) {
 		check  string
 		want   bool
 	}{
-		{"empty models list (accepts all)", nil, "anything", true},
+		{"empty models list (rejects when cache empty)", nil, "anything", false},
 		{"exact match", []config.ModelConfig{{ID: "gpt-4o"}}, "gpt-4o", true},
 		{"no match", []config.ModelConfig{{ID: "gpt-4o"}}, "claude-3", false},
 		{"wildcard match", []config.ModelConfig{{ID: "openai/*"}}, "openai/gpt-4o", true},

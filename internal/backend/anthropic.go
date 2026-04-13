@@ -58,7 +58,7 @@ func (b *AnthropicBackend) SupportsModel(modelID string) bool {
 	if len(b.models) == 0 {
 		models := b.getCachedOrFetchModels()
 		if len(models) == 0 {
-			return true
+			return false // can't verify; don't claim support for unknown models
 		}
 		for _, m := range models {
 			if m.ID == modelID {

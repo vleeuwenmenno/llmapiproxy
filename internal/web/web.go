@@ -375,7 +375,7 @@ type BackendEntry struct {
 	Name        string
 	Type        string // "openai", "anthropic", "copilot", "codex"
 	BaseURL     string
-	APIKey      string // masked API key for pre-filling the switch-type modal
+	APIKey      string       // masked API key for pre-filling the switch-type modal
 	Models      []ModelEntry // enriched model metadata (nil for dynamic backends)
 	IsDynamic   bool         // true when no explicit model list (accepts all)
 	IconURL     string       // path to SVG icon, empty if unknown
@@ -409,6 +409,10 @@ func iconForBackend(name string) string {
 		return "/ui/static/icons/ollama.svg"
 	case strings.Contains(n, "zen") || strings.Contains(n, "opencode"):
 		return "/ui/static/icons/openai-white.svg"
+	case strings.Contains(n, "codex"):
+		return "/ui/static/icons/codex-color.svg"
+	case strings.Contains(n, "copilot"):
+		return "/ui/static/icons/githubcopilot.svg"
 	default:
 		return ""
 	}

@@ -78,6 +78,41 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 
 	r.backends = newBackends
 	r.tokenStores = newTokenStores
+
+	// Warm model caches in the background so SupportsModel works immediately.
+	go r.warmModelCaches()
+}
+
+// warmModelCaches calls ListModels on every registered backend to populate
+// their model caches. This runs in the background at startup so that
+// SupportsModel returns accurate results from the first request.
+func (r *Registry) warmModelCaches() {
+	r.mu.RLock()
+	backends := make(map[string]Backend, len(r.backends))
+	for k, v := range r.backends {
+		backends[k] = v
+	}
+	r.mu.RUnlock()
+
+	const warmTimeout = 15 * time.Second
+
+	var wg sync.WaitGroup
+	for name, b := range backends {
+		wg.Add(1)
+		go func(name string, b Backend) {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), warmTimeout)
+			defer cancel()
+			models, err := b.ListModels(ctx)
+			if err != nil {
+				log.Warn().Err(err).Str("backend", name).Msg("model cache warming failed")
+				return
+			}
+			log.Info().Str("backend", name).Int("models", len(models)).Msg("model cache warmed")
+		}(name, b)
+	}
+	wg.Wait()
+	log.Info().Msg("model cache warming complete")
 }
 
 // createBackend instantiates the appropriate backend based on the config type.
@@ -287,10 +322,8 @@ func (r *Registry) Resolve(model string) (Backend, string, error) {
 	parts := strings.SplitN(model, "/", 2)
 	if len(parts) == 2 {
 		if b, ok := r.backends[parts[0]]; ok {
-			modelID := parts[1]
-			if b.SupportsModel(modelID) {
-				return b, modelID, nil
-			}
+			// Explicit prefix routing — user intentionally targets this backend.
+			return b, parts[1], nil
 		}
 	}
 
@@ -406,10 +439,8 @@ func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]R
 	parts := strings.SplitN(model, "/", 2)
 	if len(parts) == 2 {
 		if b, ok := r.backends[parts[0]]; ok {
-			modelID := parts[1]
-			if b.SupportsModel(modelID) {
-				return []RouteEntry{{Backend: b, ModelID: modelID}}, config.StrategyPriority, 0, nil
-			}
+			// Explicit prefix routing — user intentionally targets this backend.
+			return []RouteEntry{{Backend: b, ModelID: parts[1]}}, config.StrategyPriority, 0, nil
 		}
 	}
 
@@ -435,8 +466,15 @@ func (r *Registry) ClearAllModelCaches() {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, b := range r.backends {
-		if ob, ok := b.(*OpenAIBackend); ok {
-			ob.ClearModelCache()
+		switch tb := b.(type) {
+		case *OpenAIBackend:
+			tb.ClearModelCache()
+		case *AnthropicBackend:
+			tb.ClearModelCache()
+		case *CodexBackend:
+			tb.ClearModelCache()
+		case *CopilotBackend:
+			tb.ClearModelCache()
 		}
 	}
 	log.Info().Msg("cleared model caches for all backends")

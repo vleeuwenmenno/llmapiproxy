@@ -32,23 +32,7 @@ const (
 	codexHTTPTimeout = 5 * time.Minute
 )
 
-// defaultCodexModels is the built-in fallback list used when a Codex backend
-// does not declare explicit models in config and the upstream models endpoint
-// is unreachable. This list is kept in sync with the models exposed by the
-// Codex CLI model picker. The Codex Responses API also accepts non-codex model
-// aliases (e.g. gpt-5.4) so they are included here.
-var defaultCodexModels = []string{
-	"gpt-5.4",
-	"gpt-5.4-mini",
-	"gpt-5.3-codex",
-	"gpt-5.2-codex",
-	"gpt-5.2",
-	"gpt-5.1-codex",
-	"gpt-5.1-codex-max",
-	"gpt-5.1-codex-mini",
-	"gpt-5-codex",
-	"codex-mini-latest",
-}
+
 
 // CodexBackend implements the Backend interface for OpenAI Codex.
 // It translates between the OpenAI ChatCompletion format and the Codex
@@ -100,20 +84,31 @@ func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHan
 func (b *CodexBackend) Name() string { return b.name }
 
 // SupportsModel returns true if this backend can handle the given model ID.
-// If no models are configured, all models are accepted (backward-compatible).
+// If a static model list is configured, only those are accepted.
+// Otherwise, the cached model list (populated by ListModels) is consulted.
+// If the cache is empty (not yet warmed), false is returned.
 func (b *CodexBackend) SupportsModel(modelID string) bool {
-	if len(b.models) == 0 {
-		return true
-	}
-	for _, m := range b.models {
-		if m == modelID {
-			return true
-		}
-		if strings.HasSuffix(m, "/*") {
-			prefix := strings.TrimSuffix(m, "/*")
-			if strings.HasPrefix(modelID, prefix+"/") || modelID == prefix {
+	if len(b.models) > 0 {
+		for _, m := range b.models {
+			if m == modelID {
 				return true
 			}
+			if strings.HasSuffix(m, "/*") {
+				prefix := strings.TrimSuffix(m, "/*")
+				if strings.HasPrefix(modelID, prefix+"/") || modelID == prefix {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	// Check the cached model list.
+	b.cacheMu.RLock()
+	cached := b.cachedModels
+	b.cacheMu.RUnlock()
+	for _, m := range cached {
+		if m.ID == modelID {
+			return true
 		}
 	}
 	return false
@@ -768,15 +763,13 @@ func (b *CodexBackend) buildCodexModelList(ctx context.Context) ([]Model, error)
 		return models, nil
 	}
 
-	// Dynamic: try fetching from upstream, fallback to defaults on error.
+	// Dynamic: fetch from upstream API.
 	upstreamModels, err := b.fetchUpstreamModels(ctx)
 	if err != nil {
-		log.Warn().Err(err).Str("backend", b.name).Msg("upstream model fetch failed, using defaults")
-		return b.defaultModelList(), nil
+		return nil, fmt.Errorf("fetching upstream models: %w", err)
 	}
 	if len(upstreamModels) == 0 {
-		log.Warn().Str("backend", b.name).Msg("upstream returned empty model list, using defaults")
-		return b.defaultModelList(), nil
+		return nil, fmt.Errorf("upstream returned empty model list")
 	}
 
 	log.Info().Str("backend", b.name).Int("count", len(upstreamModels)).Msg("fetched upstream models")
@@ -789,18 +782,8 @@ func (b *CodexBackend) buildCodexModelList(ctx context.Context) ([]Model, error)
 	return models, nil
 }
 
-// defaultModelList returns the built-in fallback model list.
-func (b *CodexBackend) defaultModelList() []Model {
-	models := make([]Model, 0, len(defaultCodexModels))
-	for _, id := range defaultCodexModels {
-		models = append(models, codexModel(id, b.name))
-	}
-	return models
-}
-
 // fetchUpstreamModels fetches the model list from the Codex upstream /models endpoint.
 // Returns an error if the upstream is unreachable or authentication is not available.
-// The caller should fall back to defaults on error.
 func (b *CodexBackend) fetchUpstreamModels(ctx context.Context) ([]upstreamModel, error) {
 	// Check if we have authentication available before attempting.
 	if b.oauthHandler == nil {
