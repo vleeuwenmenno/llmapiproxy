@@ -200,13 +200,13 @@ type anthropicRequestMessage struct {
 }
 
 type anthropicRequestContentBlock struct {
-	Type       string          `json:"type"`
-	Text       string          `json:"text,omitempty"`
-	ID         string          `json:"id,omitempty"`
-	Name       string          `json:"name,omitempty"`
-	Input      json.RawMessage `json:"input,omitempty"`
-	ToolUseID  string          `json:"tool_use_id,omitempty"`
-	Content    json.RawMessage `json:"content,omitempty"`
+	Type      string          `json:"type"`
+	Text      string          `json:"text,omitempty"`
+	ID        string          `json:"id,omitempty"`
+	Name      string          `json:"name,omitempty"`
+	Input     json.RawMessage `json:"input,omitempty"`
+	ToolUseID string          `json:"tool_use_id,omitempty"`
+	Content   json.RawMessage `json:"content,omitempty"`
 }
 
 func (b *AnthropicBackend) rewriteBody(req *ChatCompletionRequest) ([]byte, error) {
@@ -705,9 +705,9 @@ func (r *anthropicStreamReader) handleEventData(data string) {
 	case "content_block_delta":
 		var event struct {
 			Delta struct {
-				Type            string `json:"type"`
-				Text            string `json:"text"`
-				PartialJSON     string `json:"partial_json"`
+				Type        string `json:"type"`
+				Text        string `json:"text"`
+				PartialJSON string `json:"partial_json"`
 			} `json:"delta"`
 		}
 		if err := json.Unmarshal([]byte(data), &event); err == nil {
@@ -1043,10 +1043,10 @@ func (b *AnthropicBackend) FetchUpstreamModelsRaw(ctx context.Context) (*Upstrea
 	resp, err := b.client.Do(httpReq)
 	if err != nil {
 		return &UpstreamModelsResponse{
-			Backend:   b.name,
-			URL:       modelsURL.String(),
+			Backend:    b.name,
+			URL:        modelsURL.String(),
 			StatusCode: 0,
-			Error:     fmt.Sprintf("fetch error: %v", err),
+			Error:      fmt.Sprintf("fetch error: %v", err),
 		}, nil
 	}
 	defer resp.Body.Close()

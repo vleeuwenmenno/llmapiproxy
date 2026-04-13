@@ -782,12 +782,19 @@ func (b *CodexBackend) buildCodexModelList(ctx context.Context) ([]Model, error)
 	return models, nil
 }
 
+const (
+	// codexClientVersion is sent as a query parameter to the models endpoint,
+	// matching the official Codex CLI behavior.
+	codexClientVersion = "0.120.0"
+)
+
 // codexModelsURL returns the URL for the models endpoint.
-// The official Codex CLI appends /models to the base URL for both
-// ChatGPT-style (https://chatgpt.com/backend-api/codex/models) and
-// API-style (https://api.openai.com/v1/models) endpoints.
+// The official Codex CLI appends /models to the base URL and includes
+// a required client_version query parameter.
+// ChatGPT-style: https://chatgpt.com/backend-api/codex/models?client_version=X.Y.Z
+// API-style: https://api.openai.com/v1/models?client_version=X.Y.Z
 func (b *CodexBackend) codexModelsURL() string {
-	return b.baseURL + "/models"
+	return b.baseURL + "/models?client_version=" + codexClientVersion
 }
 
 // fetchUpstreamModels fetches the model list from the Codex upstream models endpoint.
@@ -820,10 +827,35 @@ func (b *CodexBackend) fetchUpstreamModels(ctx context.Context) ([]upstreamModel
 		return nil, fmt.Errorf("upstream %s returned status %d: %s", modelsURL, resp.StatusCode, string(body))
 	}
 
+	// Try Codex-specific format first ("models": [...]),
+	// then fall back to OpenAI format ("data": [...]).
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading models response: %w", err)
+	}
+
+	// Try Codex format: {"models": [{"slug": "...", ...}]}
+	var codexList codexModelList
+	if err := json.Unmarshal(bodyBytes, &codexList); err == nil && len(codexList.Models) > 0 {
+		models := make([]upstreamModel, 0, len(codexList.Models))
+		for _, m := range codexList.Models {
+			models = append(models, upstreamModel{
+				ID:      m.Slug,
+				Object:  "model",
+				Created: time.Now().Unix(),
+				OwnedBy: b.name,
+			})
+		}
+		log.Info().Str("backend", b.name).Int("count", len(models)).Msg("fetched upstream models (codex format)")
+		return models, nil
+	}
+
+	// Fall back to OpenAI format: {"data": [{"id": "...", ...}]}
 	var list upstreamModelList
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+	if err := json.Unmarshal(bodyBytes, &list); err != nil {
 		return nil, fmt.Errorf("decoding models: %w", err)
 	}
+	log.Info().Str("backend", b.name).Int("count", len(list.Data)).Msg("fetched upstream models (openai format)")
 	return list.Data, nil
 }
 
@@ -891,6 +923,21 @@ func (b *CodexBackend) fetchUpstreamModelMap(ctx context.Context) map[string]ups
 	return m
 }
 
+// codexModelList matches the Codex-specific /models response format:
+// {"models": [{"slug": "...", "display_name": "...", ...}]}
+// This is different from the standard OpenAI format which uses {"data": [...]}.
+type codexModelList struct {
+	Models []codexModelInfo `json:"models"`
+}
+
+// codexModelInfo represents a single model entry in the Codex /models response.
+// Key fields: slug (model ID), display_name, context_window.
+type codexModelInfo struct {
+	Slug          string `json:"slug"`
+	DisplayName   string `json:"display_name"`
+	ContextWindow *int64 `json:"context_window,omitempty"`
+}
+
 func codexModel(id string, owner string) Model {
 	model := Model{
 		ID:      id,
@@ -936,6 +983,10 @@ func (b *CodexBackend) setHeaders(httpReq *http.Request, accessToken string) {
 	httpReq.Header.Set("User-Agent", "llmapiproxy/1.0")
 	httpReq.Header.Set("Accept", "application/json")
 	httpReq.Header.Set("X-Request-Id", uuid.New().String())
+	if b.cfg.Type == "codex" {
+		// The Codex models endpoint requires a client_version query parameter
+		// which is already set in codexModelsURL(). No additional header needed.
+	}
 }
 
 // --- Codex stream reader (translates Codex SSE → ChatCompletion SSE) ---

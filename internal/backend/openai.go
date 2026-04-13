@@ -387,10 +387,10 @@ func (b *OpenAIBackend) FetchUpstreamModelsRaw(ctx context.Context) (*UpstreamMo
 	resp, err := b.client.Do(httpReq)
 	if err != nil {
 		return &UpstreamModelsResponse{
-			Backend:   b.name,
-			URL:       modelsURL,
+			Backend:    b.name,
+			URL:        modelsURL,
 			StatusCode: 0,
-			Error:     fmt.Sprintf("fetch error: %v", err),
+			Error:      fmt.Sprintf("fetch error: %v", err),
 		}, nil
 	}
 	defer resp.Body.Close()
