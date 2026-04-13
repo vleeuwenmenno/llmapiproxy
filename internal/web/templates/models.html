@@ -1524,20 +1524,6 @@
             transition: all 0.15s;
         }
         .connect-action-btn:hover { border-color: var(--accent); color: var(--accent); }
-        .connect-selector-search {
-            width: 100%;
-            padding: 0.55rem 0.75rem;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text);
-            font-family: var(--mono);
-            font-size: 0.8rem;
-            outline: none;
-            transition: border-color 0.15s;
-            margin-bottom: 0.8rem;
-        }
-        .connect-selector-search:focus { border-color: var(--accent); }
         .connect-selector-group-label {
             display: block;
             font-size: 0.7rem;
@@ -1572,56 +1558,110 @@
             color: var(--accent);
             background: var(--accent-dim);
         }
-        .connect-model-list {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-            max-height: 320px;
-            overflow: auto;
-            padding-right: 0.15rem;
+        /* ── Tag-input model selector ── */
+        .connect-model-tag-wrap {
+            position: relative;
+            margin-bottom: 0.85rem;
         }
-        .connect-model-row {
+        .connect-model-tag-area {
             display: flex;
-            align-items: flex-start;
-            gap: 0.7rem;
-            padding: 0.7rem 0.8rem;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            align-items: center;
+            min-height: 42px;
+            padding: 0.4rem 0.55rem;
             background: var(--bg);
             border: 1px solid var(--border);
-            border-radius: 10px;
+            border-radius: 8px;
+            cursor: text;
+            transition: border-color 0.15s;
         }
-        .connect-model-row input[type="checkbox"] {
-            margin-top: 0.2rem;
-            accent-color: var(--accent);
-            cursor: pointer;
-        }
-        .connect-model-main {
-            min-width: 0;
-            flex: 1;
-        }
-        .connect-model-head {
-            display: flex;
-            gap: 0.5rem;
+        .connect-model-tag-area:focus-within { border-color: var(--accent); }
+        .connect-model-tag {
+            display: inline-flex;
             align-items: center;
-            flex-wrap: wrap;
-            margin-bottom: 0.3rem;
-        }
-        .connect-model-name {
+            gap: 0.3rem;
+            padding: 0.2rem 0.45rem 0.2rem 0.55rem;
+            background: var(--accent-dim);
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            border-radius: 999px;
+            font-size: 0.75rem;
             font-family: var(--mono);
-            font-size: 0.82rem;
+            white-space: nowrap;
+            max-width: 260px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .connect-model-tag-remove {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            padding: 0;
+            background: none;
+            border: none;
+            color: inherit;
+            opacity: 0.7;
+            cursor: pointer;
+            border-radius: 50%;
+            font-size: 0.8rem;
+            line-height: 1;
+            flex-shrink: 0;
+            transition: opacity 0.1s;
+        }
+        .connect-model-tag-remove:hover { opacity: 1; }
+        .connect-model-tag-input {
+            flex: 1;
+            min-width: 140px;
+            background: none;
+            border: none;
+            outline: none;
             color: var(--text);
-            font-weight: 600;
-            word-break: break-word;
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            padding: 0.15rem 0.1rem;
         }
-        .connect-model-sources {
-            font-size: 0.72rem;
-            color: var(--text-dim);
-            line-height: 1.45;
+        .connect-model-tag-input::placeholder { color: var(--text-dim); }
+        .connect-model-dropdown {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0; right: 0;
+            z-index: 300;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            max-height: 220px;
+            overflow-y: auto;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+            display: none;
         }
-        .connect-model-badges {
+        .connect-model-dropdown.open { display: block; }
+        .connect-model-dropdown-item {
             display: flex;
-            flex-wrap: wrap;
-            gap: 0.35rem;
-            margin-top: 0.4rem;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.45rem 0.75rem;
+            font-size: 0.78rem;
+            font-family: var(--mono);
+            cursor: pointer;
+            color: var(--text);
+        }
+        .connect-model-dropdown-item:hover,
+        .connect-model-dropdown-item.active { background: var(--accent-dim); color: var(--accent); }
+        .connect-model-dropdown-meta {
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .connect-model-dropdown-empty {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            font-style: italic;
         }
         .connect-side-controls {
             display: flex;
@@ -1660,14 +1700,6 @@
             font-size: 0.75rem;
             color: var(--text-dim);
             line-height: 1.5;
-        }
-        .connect-empty-state {
-            padding: 1rem;
-            border: 1px dashed var(--border);
-            border-radius: 10px;
-            color: var(--text-dim);
-            font-size: 0.8rem;
-            background: var(--bg);
         }
         @media (max-width: 980px) {
             .connect-configurator-grid { grid-template-columns: 1fr; }
@@ -3869,6 +3901,8 @@
             ensureDefaultModel(state);
         }
 
+        // ── Tag-input selector render / partial-update functions ─────────────
+
         function renderSelector(key) {
             var state = connectSelectors[key];
             if (!state) return;
@@ -3878,28 +3912,19 @@
             if (!root) return;
 
             var flat = flattenModels(state.selectedBackends);
-            var selectedSet = new Set(state.selectedModels);
-            var filtered = flat.filter(function(model) {
-                if (!state.search) return true;
-                var q = state.search.toLowerCase();
-                var hay = [model.bareID, model.displayName].concat(model.backends).join(' ').toLowerCase();
-                return hay.indexOf(q) !== -1;
-            });
 
             root.innerHTML = '<div class="connect-configurator-grid">'
                 + '<div class="connect-configurator-panel">'
                 + '  <div class="connect-selector-toolbar">'
                 + '    <div class="connect-selector-meta">'
-                + '      <span class="connect-meta-pill">backends ' + state.selectedBackends.size + '/' + selectableBackends().length + '</span>'
-                + '      <span class="connect-meta-pill">models ' + state.selectedModels.length + '/' + flat.length + '</span>'
+                + '      <span class="connect-meta-pill" id="' + state.rootId + '-meta-backends">backends ' + state.selectedBackends.size + '/' + selectableBackends().length + '</span>'
+                + '      <span class="connect-meta-pill" id="' + state.rootId + '-meta-models">models ' + state.selectedModels.length + '/' + flat.length + '</span>'
                 + '    </div>'
                 + '    <div class="connect-selector-actions">'
                 + '      <button type="button" class="connect-action-btn" onclick="selectorSelectAllModels(\'' + key + '\')">all models</button>'
-                + '      <button type="button" class="connect-action-btn" onclick="selectorClearModelSearch(\'' + key + '\')">clear search</button>'
+                + '      <button type="button" class="connect-action-btn" onclick="selectorClearAllModels(\'' + key + '\')">clear all</button>'
                 + '    </div>'
                 + '  </div>'
-                + '  <label class="connect-selector-group-label" for="' + state.rootId + '-search">Search flattened models</label>'
-                + '  <input id="' + state.rootId + '-search" class="connect-selector-search" type="text" placeholder="Search model ID, display name, or backend…" value="' + escHtml(state.search) + '" oninput="selectorSearch(\'' + key + '\', this.value)">'
                 + '  <div class="connect-selector-group-label">Included backends</div>'
                 + '  <div class="connect-backend-chips">'
                 + selectableBackends().map(function(name) {
@@ -3912,35 +3937,23 @@
                         + '</label>';
                 }).join('')
                 + '  </div>'
-                + '  <div class="connect-selector-group-label">Flattened models</div>'
-                + '  <div class="connect-model-list">'
-                + (filtered.length ? filtered.map(function(model) {
-                    var checked = selectedSet.has(model.bareID);
-                    return '<label class="connect-model-row">'
-                        + '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="selectorToggleModel(\'' + key + '\', \'' + escHtml(model.bareID) + '\', this.checked)">'
-                        + '<div class="connect-model-main">'
-                        + '  <div class="connect-model-head">'
-                        + '    <span class="connect-model-name">' + escHtml(model.bareID) + '</span>'
-                        + '    <span class="connect-meta-pill">' + escHtml(model.displayName) + '</span>'
-                        + '  </div>'
-                        + '  <div class="connect-model-sources">Backends: ' + escHtml(model.backends.join(', ')) + '</div>'
-                        + '  <div class="connect-model-badges">'
-                        + (model.contextLength ? '<span class="ctx-badge">' + fmtN(model.contextLength) + 'ctx</span>' : '')
-                        + (model.maxOutputTokens ? '<span class="out-badge">' + fmtN(model.maxOutputTokens) + 'out</span>' : '')
-                        + model.capabilities.map(function(cap) { return '<span class="cap-badge">' + escHtml(cap) + '</span>'; }).join('')
-                        + '  </div>'
-                        + '</div>'
-                        + '</label>';
-                }).join('') : '<div class="connect-empty-state">No flattened models match the current backend filters and search.</div>')
+                + '  <div class="connect-selector-group-label">Models</div>'
+                + '  <div class="connect-model-tag-wrap">'
+                + '    <div class="connect-model-tag-area" id="' + state.rootId + '-tag-area">'
+                + '      <input type="text" id="' + state.rootId + '-search" class="connect-model-tag-input"'
+                + '        placeholder="Search &amp; add models…" autocomplete="off"'
+                + '        oninput="selectorSearch(\'' + key + '\', this.value)"'
+                + '        onfocus="selectorShowDropdown(\'' + key + '\')"'
+                + '        onblur="selectorScheduleHideDropdown(\'' + key + '\')"'
+                + '        onkeydown="selectorKeydown(\'' + key + '\', event)">'
+                + '    </div>'
+                + '    <div class="connect-model-dropdown" id="' + state.rootId + '-dropdown"></div>'
                 + '  </div>'
                 + '</div>'
                 + '<div class="connect-side-controls">'
                 + '  <div class="connect-control-card">'
                 + '    <label for="' + state.rootId + '-default">Default model</label>'
                 + '    <select id="' + state.rootId + '-default" class="connect-select" ' + (state.allowDefault ? '' : 'disabled') + ' onchange="selectorSetDefaultModel(\'' + key + '\', this.value)">'
-                + state.selectedModels.map(function(id) {
-                    return '<option value="' + escHtml(id) + '"' + (id === state.defaultModel ? ' selected' : '') + '>' + escHtml(id) + '</option>';
-                }).join('')
                 + '    </select>'
                 + '    <div class="connect-help-text">'
                 + (state.allowDefault ? 'Use a flattened model ID here and let the proxy resolve the actual backend at request time.' : 'This target format does not use a default model field.')
@@ -3949,41 +3962,202 @@
                 + '</div>'
                 + '</div>';
 
-            if (state.onActiveModelChange) state.onActiveModelChange(state.activeModel || state.defaultModel || '');
+            updateSelectorBadges(key);
+            updateSelectorDefaultSelect(key);
+            updateSelectorDropdown(key);
             rebuildSelectorConfig(key);
+        }
+
+        function updateSelectorBadges(key) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            var area = document.getElementById(state.rootId + '-tag-area');
+            if (!area) return;
+            var inp = document.getElementById(state.rootId + '-search');
+            // Remove existing badges
+            Array.prototype.slice.call(area.querySelectorAll('.connect-model-tag')).forEach(function(el) { el.parentNode.removeChild(el); });
+            // Insert badges before the input
+            state.selectedModels.slice().reverse().forEach(function(bareID) {
+                var tag = document.createElement('span');
+                tag.className = 'connect-model-tag';
+                tag.title = bareID;
+                var label = document.createElement('span');
+                label.textContent = bareID;
+                label.style.overflow = 'hidden';
+                label.style.textOverflow = 'ellipsis';
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'connect-model-tag-remove';
+                btn.setAttribute('aria-label', 'Remove ' + bareID);
+                btn.textContent = '×';
+                btn.addEventListener('mousedown', (function(id) {
+                    return function(ev) { ev.preventDefault(); selectorRemoveModel(key, id); };
+                })(bareID));
+                tag.appendChild(label);
+                tag.appendChild(btn);
+                area.insertBefore(tag, inp);
+            });
+            // Update meta pills
+            var flat = flattenModels(state.selectedBackends);
+            var pillB = document.getElementById(state.rootId + '-meta-backends');
+            var pillM = document.getElementById(state.rootId + '-meta-models');
+            if (pillB) pillB.textContent = 'backends ' + state.selectedBackends.size + '/' + selectableBackends().length;
+            if (pillM) pillM.textContent = 'models ' + state.selectedModels.length + '/' + flat.length;
+        }
+
+        function updateSelectorDropdown(key) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            var dropdown = document.getElementById(state.rootId + '-dropdown');
+            if (!dropdown) return;
+            var flat = flattenModels(state.selectedBackends);
+            var selectedSet = new Set(state.selectedModels);
+            var q = (state.search || '').toLowerCase();
+            var candidates = flat.filter(function(model) {
+                if (selectedSet.has(model.bareID)) return false;
+                if (!q) return true;
+                return [model.bareID, model.displayName].concat(model.backends).join(' ').toLowerCase().indexOf(q) !== -1;
+            }).slice(0, 60);
+
+            dropdown.innerHTML = '';
+            if (!candidates.length) {
+                var empty = document.createElement('div');
+                empty.className = 'connect-model-dropdown-empty';
+                empty.textContent = selectedSet.size === flat.length ? 'All available models already added.' : (q ? 'No matches.' : 'No models available.');
+                dropdown.appendChild(empty);
+                return;
+            }
+            candidates.forEach(function(model) {
+                var item = document.createElement('div');
+                item.className = 'connect-model-dropdown-item';
+                var name = document.createElement('span');
+                name.textContent = model.bareID;
+                item.appendChild(name);
+                var tags = [];
+                if (model.contextLength) tags.push(fmtN(model.contextLength) + ' ctx');
+                if (model.maxOutputTokens) tags.push(fmtN(model.maxOutputTokens) + ' out');
+                if (tags.length) {
+                    var meta = document.createElement('span');
+                    meta.className = 'connect-model-dropdown-meta';
+                    meta.textContent = tags.join('  ');
+                    item.appendChild(meta);
+                }
+                item.addEventListener('mousedown', (function(id) {
+                    return function(ev) { ev.preventDefault(); selectorAddModel(key, id); };
+                })(model.bareID));
+                dropdown.appendChild(item);
+            });
+        }
+
+        function updateSelectorDefaultSelect(key) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            var sel = document.getElementById(state.rootId + '-default');
+            if (!sel) return;
+            ensureDefaultModel(state);
+            sel.innerHTML = '';
+            if (!state.selectedModels.length) {
+                var opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'No models selected';
+                sel.appendChild(opt);
+                return;
+            }
+            state.selectedModels.forEach(function(id) {
+                var opt = document.createElement('option');
+                opt.value = id;
+                opt.textContent = id;
+                if (id === state.defaultModel) opt.selected = true;
+                sel.appendChild(opt);
+            });
         }
 
         function rebuildSelectorConfig(key) {
             var state = connectSelectors[key];
             if (!state) return;
-            refreshSelectorState(state);
-            var target = document.getElementById(state.configTargetId);
-            if (!target) return;
+            // Rebuild the config output (no refreshSelectorState here — avoids fighting "clear all")
             var flat = flattenModels(state.selectedBackends).filter(function(model) {
                 return state.selectedModels.indexOf(model.bareID) !== -1;
             });
-            if (!flat.length) {
-                target.textContent = state.selectedBackends.size === 0 ? 'No backends selected.' : 'No models selected.';
-                return;
+            if (state.configTargetId) {
+                var target = document.getElementById(state.configTargetId);
+                if (target) {
+                    if (!flat.length) {
+                        target.textContent = state.selectedBackends.size === 0 ? 'No backends selected.' : 'No models selected.';
+                    } else {
+                        target.textContent = state.renderConfig(flat, state);
+                    }
+                }
+            } else if (flat.length) {
+                // No target element — still call renderConfig for side effects (e.g., curl)
+                state.renderConfig(flat, state);
             }
-            target.textContent = state.renderConfig(flat, state);
+            // Notify active-model change listeners (curl uses this)
+            var activeModel = state.defaultModel || state.activeModel || (flat[0] ? flat[0].bareID : '');
+            if (state.onActiveModelChange) state.onActiveModelChange(activeModel);
+        }
+
+        function selectorShowDropdown(key) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            updateSelectorDropdown(key);
+            var dropdown = document.getElementById(state.rootId + '-dropdown');
+            if (dropdown) dropdown.classList.add('open');
+        }
+
+        function selectorScheduleHideDropdown(key) {
+            setTimeout(function() {
+                var state = connectSelectors[key];
+                if (!state) return;
+                var dropdown = document.getElementById(state.rootId + '-dropdown');
+                if (dropdown) dropdown.classList.remove('open');
+                // Clear search text on close
+                state.search = '';
+                var inp = document.getElementById(state.rootId + '-search');
+                if (inp) inp.value = '';
+                updateSelectorDropdown(key);
+            }, 160);
+        }
+
+        function selectorAddModel(key, bareID) {
+            var state = connectSelectors[key];
+            if (!state || state.selectedModels.indexOf(bareID) !== -1) return;
+            state.selectedModels.push(bareID);
+            ensureDefaultModel(state);
+            // Clear search and re-focus input
+            state.search = '';
+            var inp = document.getElementById(state.rootId + '-search');
+            if (inp) { inp.value = ''; inp.focus(); }
+            updateSelectorBadges(key);
+            updateSelectorDropdown(key);
+            updateSelectorDefaultSelect(key);
+            rebuildSelectorConfig(key);
+        }
+
+        function selectorRemoveModel(key, bareID) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            var idx = state.selectedModels.indexOf(bareID);
+            if (idx === -1) return;
+            state.selectedModels.splice(idx, 1);
+            ensureDefaultModel(state);
+            updateSelectorBadges(key);
+            updateSelectorDropdown(key);
+            updateSelectorDefaultSelect(key);
+            rebuildSelectorConfig(key);
         }
 
         function selectorToggleBackend(key, name, checked) {
             var state = connectSelectors[key];
             if (!state) return;
             if (checked) state.selectedBackends.add(name); else state.selectedBackends.delete(name);
+            state.search = '';
             renderSelector(key);
         }
 
         function selectorToggleModel(key, bareID, checked) {
-            var state = connectSelectors[key];
-            if (!state) return;
-            var idx = state.selectedModels.indexOf(bareID);
-            if (checked && idx === -1) state.selectedModels.push(bareID);
-            if (!checked && idx !== -1) state.selectedModels.splice(idx, 1);
-            ensureDefaultModel(state);
-            renderSelector(key);
+            if (checked) selectorAddModel(key, bareID);
+            else selectorRemoveModel(key, bareID);
         }
 
         function selectorSetDefaultModel(key, bareID) {
@@ -3997,14 +4171,10 @@
             var state = connectSelectors[key];
             if (!state) return;
             state.search = value || '';
-            renderSelector(key);
-        }
-
-        function selectorClearModelSearch(key) {
-            var state = connectSelectors[key];
-            if (!state) return;
-            state.search = '';
-            renderSelector(key);
+            // Only update dropdown — never re-render the whole selector (avoids focus loss)
+            updateSelectorDropdown(key);
+            var dropdown = document.getElementById(state.rootId + '-dropdown');
+            if (dropdown) dropdown.classList.add('open');
         }
 
         function selectorSelectAllModels(key) {
@@ -4012,7 +4182,59 @@
             if (!state) return;
             state.selectedModels = flattenModels(state.selectedBackends).map(function(model) { return model.bareID; });
             ensureDefaultModel(state);
-            renderSelector(key);
+            updateSelectorBadges(key);
+            updateSelectorDropdown(key);
+            updateSelectorDefaultSelect(key);
+            rebuildSelectorConfig(key);
+        }
+
+        function selectorClearAllModels(key) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            state.selectedModels = [];
+            state.defaultModel = '';
+            updateSelectorBadges(key);
+            updateSelectorDropdown(key);
+            updateSelectorDefaultSelect(key);
+            rebuildSelectorConfig(key);
+        }
+
+        function selectorKeydown(key, event) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            var dropdown = document.getElementById(state.rootId + '-dropdown');
+            var inp = document.getElementById(state.rootId + '-search');
+            if (!dropdown) return;
+            var items = dropdown.querySelectorAll('.connect-model-dropdown-item');
+
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (!dropdown.classList.contains('open')) selectorShowDropdown(key);
+                var curr = dropdown.querySelector('.connect-model-dropdown-item.active');
+                var idx = curr ? Array.prototype.indexOf.call(items, curr) : -1;
+                var next = Math.min(idx + 1, items.length - 1);
+                items.forEach(function(el, i) { el.classList.toggle('active', i === next); });
+                if (items[next]) items[next].scrollIntoView({ block: 'nearest' });
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                var curr2 = dropdown.querySelector('.connect-model-dropdown-item.active');
+                var idx2 = curr2 ? Array.prototype.indexOf.call(items, curr2) : 0;
+                var prev = Math.max(idx2 - 1, 0);
+                items.forEach(function(el, i) { el.classList.toggle('active', i === prev); });
+                if (items[prev]) items[prev].scrollIntoView({ block: 'nearest' });
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                var activeItem = dropdown.querySelector('.connect-model-dropdown-item.active');
+                if (activeItem) activeItem.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            } else if (event.key === 'Escape') {
+                dropdown.classList.remove('open');
+                state.search = '';
+                if (inp) inp.value = '';
+                updateSelectorDropdown(key);
+            } else if (event.key === 'Backspace' && inp && inp.value === '' && state.selectedModels.length) {
+                event.preventDefault();
+                selectorRemoveModel(key, state.selectedModels[state.selectedModels.length - 1]);
+            }
         }
 
         function buildZedConfig() {
@@ -4332,19 +4554,19 @@
         function buildCurlSelector() {
             ensureSelectorState('curl', {
                 rootId: 'curl-selector',
-                configTargetId: 'curl-models',
+                configTargetId: '', // curl examples are driven by onActiveModelChange, not a config pre block
                 allowDefault: true,
                 onActiveModelChange: function(model) {
                     var state = connectSelectors.curl;
-                    if (state) state.activeModel = model;
+                    if (state) state.activeModel = model || (state.selectedModels[0] || '');
                     updateCurlExamples();
                 },
                 renderConfig: function(models, state) {
-                    var chosen = state.activeModel || state.defaultModel || (models[0] ? models[0].bareID : '{{.SampleModel}}');
-                    if (state.selectedModels.indexOf(chosen) === -1) chosen = state.selectedModels[0] || chosen;
+                    // Side-effect only: sync activeModel then fire updateCurlExamples
+                    var chosen = state.defaultModel || state.activeModel || (models[0] ? models[0].bareID : '{{.SampleModel}}');
+                    if (state.selectedModels.length && state.selectedModels.indexOf(chosen) === -1) chosen = state.selectedModels[0];
                     state.activeModel = chosen;
-                    updateCurlExamples();
-                    return 'curl examples below use flattened model: ' + chosen;
+                    return '';
                 }
             });
             renderSelector('curl');

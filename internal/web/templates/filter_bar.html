@@ -170,6 +170,11 @@
     }
 
     /* ── Compact split-button mode ── */
+    .dash-header {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.75rem;
+    }
+    .dash-header h1 { margin-bottom: 0; }
     .filter-compact {
         position: relative;
         display: inline-flex;
@@ -235,6 +240,15 @@
     .compact-autorefresh-row .refresh-countdown {
         font-size: 0.65rem; font-family: var(--mono); color: var(--text-dim); opacity: 0.7;
     }
+    .compact-panel-filters .compact-secondary-content {
+        display: flex; flex-direction: column; gap: 0.6rem;
+    }
+    .compact-panel-filters .filter-group { display: flex; flex-direction: column; gap: 0.2rem; }
+    .compact-panel-filters .filter-group label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); font-weight: 600; }
+    .compact-panel-filters .filter-select { width: 100%; }
+    .compact-panel-filters .filter-checkbox-row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--text-dim); cursor: pointer; }
+    .compact-panel-wipe { border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.1rem; }
+    .compact-panel-wipe .filter-wipe-btn { width: 100%; }
     @media (max-width: 768px) {
         .filter-compact-panel { right: auto; left: 0; min-width: 300px; }
     }
@@ -248,6 +262,7 @@
 <div class="filter-compact" id="{{.BarId}}">
     <button type="button" class="filter-compact-main" id="{{.BarId}}-refresh-btn" title="Refresh data">
         &#8635; Refresh <span class="compact-window" id="{{.BarId}}-window-label">1h</span>
+        {{if .ShowSpinner}}<span id="{{.BarId}}-spinner" style="display:none;margin-left:0.3rem"><span class="filter-spinner"></span></span>{{end}}
     </button>
     <button type="button" class="filter-compact-arrow" id="{{.BarId}}-arrow" title="Settings">
         <span class="arrow">&#x25BE;</span>
@@ -288,6 +303,19 @@
                 </select>
                 <span class="refresh-countdown" id="{{.BarId}}-countdown"></span>
             </div>
+        </div>
+        {{end}}
+        {{if .HasSecondary}}
+        <div class="compact-panel-section compact-panel-filters">
+            <div class="compact-panel-label">Filters</div>
+            <div class="compact-secondary-content">
+                {{template "filter_bar_secondary" .PageData}}
+            </div>
+        </div>
+        {{end}}
+        {{if .ShowWipe}}
+        <div class="compact-panel-section compact-panel-wipe">
+            <button type="button" class="filter-wipe-btn" id="{{.BarId}}-wipe-btn" title="Delete data matching current filters">&#128465; Wipe data...</button>
         </div>
         {{end}}
     </div>

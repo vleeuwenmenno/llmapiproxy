@@ -308,9 +308,6 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        #loading-indicator { display: none; }
-        #loading-indicator.visible { display: inline-block; }
-
         .rank-container { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; overflow-x: auto; }
 
         /* ── Mobile Responsive ── */
@@ -379,16 +376,13 @@
     </button>
 </nav>
 <main>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
-        <h1 style="font-size:1.5rem;font-weight:600;letter-spacing:-0.03em">Analytics</h1>
-        <span id="loading-indicator"><span class="spinner"></span></span>
+    <div class="dash-header">
+        <h1>Analytics</h1>
+        {{template "filter_bar" (dict "BarId" "analytics-filter-bar" "Compact" true "DefaultWindow" "1d" "RefreshFn" "fetchData" "ShowSpinner" true "ShowAutoRefresh" true "AutoRefreshOptions" "5000:5s,15000:15s,30000:30s,60000:1m,300000:5m,0:Off" "DefaultAutoRefresh" "5000" "AutoRefreshKey" "analyticsAutoRefresh" "ShowWipe" true "WipeFn" "openWipeModal" "WindowStorageKey" "analyticsWindow" "HasSecondary" true "PageData" .)}}
     </div>
     {{if .Message}}
     <div style="padding:0.65rem 1rem;border-radius:6px;margin-bottom:1rem;font-size:0.875rem;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:var(--green)">{{.Message}}</div>
     {{end}}
-
-    <!-- Filter bar -->
-    {{template "filter_bar" (dict "BarId" "analytics-filter-bar" "DefaultWindow" "1d" "RefreshFn" "fetchData" "ShowRefresh" true "ShowFilters" true "ShowWipe" true "WipeFn" "openWipeModal" "WindowStorageKey" "analyticsWindow" "HasSecondary" true "PageData" .)}}
 
 {{define "filter_bar_secondary"}}
             <div class="filter-group">
@@ -636,11 +630,12 @@ function fetchData(p) {
     if (state.page > 0) params.set('page', state.page);
     history.replaceState(null, '', '/ui/analytics?' + params.toString());
 
-    document.getElementById('loading-indicator').classList.add('visible');
+    if (window.filterBarShowSpinner && window.filterBarShowSpinner['analytics-filter-bar']) window.filterBarShowSpinner['analytics-filter-bar'](true);
     fetch(url)
         .then(function(r) { return r.json(); })
         .then(function(d) {
-            document.getElementById('loading-indicator').classList.remove('visible');
+            if (window.filterBarShowSpinner && window.filterBarShowSpinner['analytics-filter-bar']) window.filterBarShowSpinner['analytics-filter-bar'](false);
+            if (window.filterBarReschedule && window.filterBarReschedule['analytics-filter-bar']) window.filterBarReschedule['analytics-filter-bar']();
             renderSummary(d.summary, d.percentiles);
             renderCharts(d.time_series);
             rankData.models   = d.top_models   || [];
@@ -650,7 +645,7 @@ function fetchData(p) {
             renderLog(d.records);
         })
         .catch(function() {
-            document.getElementById('loading-indicator').classList.remove('visible');
+            if (window.filterBarShowSpinner && window.filterBarShowSpinner['analytics-filter-bar']) window.filterBarShowSpinner['analytics-filter-bar'](false);
         });
 }
 

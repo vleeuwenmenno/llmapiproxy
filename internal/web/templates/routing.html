@@ -230,8 +230,9 @@
 </nav>
 
 <main>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem">
-        <h1 style="font-size:1.5rem;font-weight:600;letter-spacing:-0.03em">&#128260; Routing</h1>
+    <div class="dash-header">
+        <h1>&#128260; Routing</h1>
+        {{template "filter_bar" (dict "BarId" "routing-filter-bar" "Compact" true "DefaultWindow" "1d" "RefreshFn" "loadData" "ShowSpinner" true "ShowAutoRefresh" true "AutoRefreshOptions" "5000:5s,15000:15s,30000:30s,60000:1m,300000:5m,0:Off" "DefaultAutoRefresh" "5000" "AutoRefreshKey" "routingAutoRefresh")}}
     </div>
 
     <!-- ── Configuration section ──────────────────────────────── -->
@@ -259,9 +260,6 @@
             <p style="font-size:0.78rem;color:var(--text-dim);margin-top:0.85rem">Configure per-model backend order and strategy overrides on the <a href="/ui/models" style="color:var(--accent);text-decoration:none">Models page</a> &#8594; overlapping models section.</p>
         </div>
     </div>
-
-    <!-- ── Analytics section ─────────────────────────────────── -->
-    {{template "filter_bar" (dict "BarId" "routing-filter-bar" "DefaultWindow" "1d" "RefreshFn" "loadData" "ShowRefresh" true "ShowSpinner" true)}}
 
     <!-- Summary Cards -->
     <div class="summary-cards" id="summaryCards">
@@ -523,6 +521,7 @@
                 `<div class="empty-state"><div class="icon">&#9888;</div><p>Failed to load routing data: ${esc(e.message)}</p></div>`;
         } finally {
             if (window.filterBarShowSpinner && window.filterBarShowSpinner['routing-filter-bar']) window.filterBarShowSpinner['routing-filter-bar'](false);
+            if (window.filterBarReschedule && window.filterBarReschedule['routing-filter-bar']) window.filterBarReschedule['routing-filter-bar']();
         }
     }
 
