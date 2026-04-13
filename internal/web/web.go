@@ -248,11 +248,37 @@ func parseWindowParam(s string) (time.Duration, string) {
 		return 15 * time.Minute, "15m"
 	case "30m":
 		return 30 * time.Minute, "30m"
+	case "1h":
+		return 1 * time.Hour, "1h"
 	case "2h":
 		return 2 * time.Hour, "2h"
+	case "3h":
+		return 3 * time.Hour, "3h"
+	case "6h":
+		return 6 * time.Hour, "6h"
+	case "12h":
+		return 12 * time.Hour, "12h"
+	case "1d":
+		return 24 * time.Hour, "1d"
+	case "3d":
+		return 3 * 24 * time.Hour, "3d"
+	case "7d":
+		return 7 * 24 * time.Hour, "7d"
+	case "14d":
+		return 14 * 24 * time.Hour, "14d"
+	case "30d":
+		return 30 * 24 * time.Hour, "30d"
 	default:
 		return 1 * time.Hour, "1h"
 	}
+}
+
+func statsFilterForWindow(windowDur time.Duration) stats.StatsFilter {
+	var f stats.StatsFilter
+	if windowDur > 0 {
+		f.From = time.Now().Add(-windowDur)
+	}
+	return f
 }
 
 func (u *UI) Dashboard(w http.ResponseWriter, r *http.Request) {
@@ -303,39 +329,63 @@ func (u *UI) DashboardData(w http.ResponseWriter, r *http.Request) {
 		page = 0
 	}
 
-	windowStats := u.collector.Summarize(windowDur)
-	today := u.collector.Summarize(24 * time.Hour)
-	allTime := u.collector.Summarize(0)
+	windowFilter := statsFilterForWindow(windowDur)
+	todayFilter := statsFilterForWindow(24 * time.Hour)
+
+	windowStats, err := u.store.FilteredSummary(windowFilter)
+	if err != nil {
+		log.Error().Err(err).Msg("dashboard: window summary error")
+	}
+	today, err := u.store.FilteredSummary(todayFilter)
+	if err != nil {
+		log.Error().Err(err).Msg("dashboard: today summary error")
+	}
+	allTime, err := u.store.FilteredSummary(stats.StatsFilter{})
+	if err != nil {
+		log.Error().Err(err).Msg("dashboard: all-time summary error")
+	}
 
 	// Backends — window-scoped
-	backends := make([]dashBackend, 0, len(windowStats.ByBackend))
-	for name, count := range windowStats.ByBackend {
+	backendRows, err := u.store.RankBy(windowFilter, "backend", 20)
+	if err != nil {
+		log.Error().Err(err).Msg("dashboard: rank backends error")
+	}
+	backends := make([]dashBackend, 0, len(backendRows))
+	for _, row := range backendRows {
 		backends = append(backends, dashBackend{
-			Name:     name,
-			Requests: count,
-			Tokens:   windowStats.TokensByBackend[name],
-			Errors:   windowStats.ErrorsByBackend[name],
+			Name:     row.Name,
+			Requests: row.Requests,
+			Tokens:   row.Tokens,
+			Errors:   row.Errors,
 		})
 	}
-	sort.Slice(backends, func(i, j int) bool { return backends[i].Requests > backends[j].Requests })
 
 	// Clients — window-scoped
-	clients := make([]dashClient, 0, len(windowStats.ByClient))
-	for name, count := range windowStats.ByClient {
+	clientRows, err := u.store.RankBy(windowFilter, "client", 20)
+	if err != nil {
+		log.Error().Err(err).Msg("dashboard: rank clients error")
+	}
+	clients := make([]dashClient, 0, len(clientRows))
+	for _, row := range clientRows {
 		clients = append(clients, dashClient{
-			Name:     name,
-			Requests: count,
-			Tokens:   windowStats.TokensByClient[name],
+			Name:     row.Name,
+			Requests: row.Requests,
+			Tokens:   row.Tokens,
 		})
 	}
-	sort.Slice(clients, func(i, j int) bool { return clients[i].Requests > clients[j].Requests })
 
 	// Recent requests — window-scoped, paginated
-	recent, total := u.collector.FilteredPaged(windowDur, page, pageSize)
+	recent, total, err := u.store.FilteredRecords(windowFilter, page, pageSize)
+	if err != nil {
+		log.Error().Err(err).Msg("dashboard: recent records error")
+	}
 	totalPages := (total + pageSize - 1) / pageSize
 	if totalPages > 0 && page >= totalPages {
 		page = totalPages - 1
-		recent, total = u.collector.FilteredPaged(windowDur, page, pageSize)
+		recent, total, err = u.store.FilteredRecords(windowFilter, page, pageSize)
+		if err != nil {
+			log.Error().Err(err).Msg("dashboard: recent records page reset error")
+		}
 	}
 
 	resp := dashboardDataResponse{

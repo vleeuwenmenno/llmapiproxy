@@ -232,7 +232,7 @@
 <main>
     <div class="dash-header">
         <h1>&#128260; Routing</h1>
-        {{template "filter_bar" (dict "BarId" "routing-filter-bar" "Compact" true "DefaultWindow" "1d" "RefreshFn" "loadData" "ShowSpinner" true "ShowAutoRefresh" true "AutoRefreshOptions" "5000:5s,15000:15s,30000:30s,60000:1m,300000:5m,0:Off" "DefaultAutoRefresh" "5000" "AutoRefreshKey" "routingAutoRefresh")}}
+        {{template "filter_bar" (dict "BarId" "routing-filter-bar" "Compact" true "DefaultWindow" "1d" "RefreshFn" "loadData" "ShowSpinner" true "ShowAutoRefresh" true "AutoRefreshOptions" "5000:5s,15000:15s,30000:30s,60000:1m,300000:5m,0:Off" "DefaultAutoRefresh" "5000" "AutoRefreshKey" "globalAutoRefresh" "WindowStorageKey" "globalWindow")}}
     </div>
 
     <!-- ── Configuration section ──────────────────────────────── -->

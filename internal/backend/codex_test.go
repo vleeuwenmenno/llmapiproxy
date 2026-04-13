@@ -1055,6 +1055,84 @@ func TestCodexBackend_Streaming_ResponseCreatedSetsID(t *testing.T) {
 	}
 }
 
+// TestCodexBackend_Streaming_UsageChunkEmitted verifies that a trailing usage chunk
+// (with empty choices and a "usage" field) is emitted after the finish_reason chunk
+// so that the proxy handler can record token stats for streaming Codex requests.
+func TestCodexBackend_Streaming_UsageChunkEmitted(t *testing.T) {
+	b, upstream, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+
+		events := []string{
+			`{"type":"response.created","response":{"id":"resp-usage-test","model":"o4-mini","created_at":1000}}`,
+			`{"type":"response.output_item.added","item":{"type":"message","id":"item1","role":"assistant","content":[]}}`,
+			`{"type":"response.output_text.delta","item_id":"item1","delta":"hello","output_index":0,"content_index":0}`,
+			`{"type":"response.completed","response":{"id":"resp-usage-test","status":"completed","model":"o4-mini","output":[],"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}}}`,
+		}
+		for _, event := range events {
+			fmt.Fprintf(w, "data: %s\n\n", event)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	})
+
+	stream, err := b.ChatCompletionStream(context.Background(), &ChatCompletionRequest{
+		Model:    "o4-mini",
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletionStream: %v", err)
+	}
+	defer stream.Close()
+
+	body, _ := io.ReadAll(stream)
+
+	// Find the usage chunk — a chunk where "usage" is present.
+	var foundUsage bool
+	lines := strings.Split(string(body), "\n")
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "data: ") || line == "data: [DONE]" {
+			continue
+		}
+		data := line[6:]
+		var chunk map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+		if _, ok := chunk["usage"]; !ok {
+			continue
+		}
+		// Verify the usage values are correct.
+		var usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		}
+		if err := json.Unmarshal(chunk["usage"], &usage); err != nil {
+			t.Fatalf("unmarshal usage: %v", err)
+		}
+		if usage.PromptTokens != 10 {
+			t.Errorf("prompt_tokens = %d, want 10", usage.PromptTokens)
+		}
+		if usage.CompletionTokens != 5 {
+			t.Errorf("completion_tokens = %d, want 5", usage.CompletionTokens)
+		}
+		if usage.TotalTokens != 15 {
+			t.Errorf("total_tokens = %d, want 15", usage.TotalTokens)
+		}
+		foundUsage = true
+		break
+	}
+
+	if !foundUsage {
+		t.Error("expected a trailing usage chunk in the stream but none was found")
+	}
+}
+
 // --- VAL-CODEX-008/009: Model listing ---
 
 func TestCodexBackend_ListModels(t *testing.T) {

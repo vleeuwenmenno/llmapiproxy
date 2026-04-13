@@ -618,7 +618,7 @@
     <main>
         <div class="dash-header">
             <h1>Dashboard</h1>
-            {{template "filter_bar" (dict "BarId" "dash-filter-bar" "Compact" true "DefaultWindow" "1h" "RefreshFn" "fetchDash" "ShowAutoRefresh" true "AutoRefreshOptions" "5000:5s,15000:15s,30000:30s,60000:1m,0:Off" "DefaultAutoRefresh" "5000" "AutoRefreshKey" "dashAutoRefresh" "WindowStorageKey" "dashWindow")}}
+            {{template "filter_bar" (dict "BarId" "dash-filter-bar" "Compact" true "DefaultWindow" "1h" "RefreshFn" "fetchDash" "ShowAutoRefresh" true "AutoRefreshOptions" "5000:5s,15000:15s,30000:30s,60000:1m,0:Off" "DefaultAutoRefresh" "5000" "AutoRefreshKey" "globalAutoRefresh" "WindowStorageKey" "globalWindow")}}
         </div>
 
         <!-- Summary cards — the card <div> elements are permanent; only inner text is updated -->

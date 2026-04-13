@@ -1635,6 +1635,28 @@ func (r *codexStreamReader) handleCompleted(data string) {
 	r.buf.WriteString("data: ")
 	r.buf.Write(b)
 	r.buf.WriteString("\n\n")
+
+	// Emit a trailing usage-only chunk (empty choices) so the handler's
+	// rewriteStreamChunk picks up the usage field for stats recording.
+	// This mirrors the pattern used by OpenAI's own streaming API.
+	if r.usage != nil {
+		usageChunk := ChatCompletionStreamChunk{
+			ID:      r.responseID,
+			Object:  "chat.completion.chunk",
+			Created: time.Now().Unix(),
+			Model:   r.modelName,
+			Choices: []ChunkChoice{},
+			Usage: &Usage{
+				PromptTokens:     r.usage.InputTokens,
+				CompletionTokens: r.usage.OutputTokens,
+				TotalTokens:      r.usage.TotalTokens,
+			},
+		}
+		ub, _ := json.Marshal(usageChunk)
+		r.buf.WriteString("data: ")
+		r.buf.Write(ub)
+		r.buf.WriteString("\n\n")
+	}
 }
 
 // Close closes the underlying stream.
@@ -1649,6 +1671,7 @@ type ChatCompletionStreamChunk struct {
 	Created int64         `json:"created"`
 	Model   string        `json:"model"`
 	Choices []ChunkChoice `json:"choices"`
+	Usage   *Usage        `json:"usage,omitempty"`
 }
 
 // ChunkChoice represents a choice in a streaming chunk.

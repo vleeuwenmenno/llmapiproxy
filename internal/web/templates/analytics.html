@@ -378,7 +378,7 @@
 <main>
     <div class="dash-header">
         <h1>Analytics</h1>
-        {{template "filter_bar" (dict "BarId" "analytics-filter-bar" "Compact" true "DefaultWindow" "1d" "RefreshFn" "fetchData" "ShowSpinner" true "ShowAutoRefresh" true "AutoRefreshOptions" "5000:5s,15000:15s,30000:30s,60000:1m,300000:5m,0:Off" "DefaultAutoRefresh" "5000" "AutoRefreshKey" "analyticsAutoRefresh" "ShowWipe" true "WipeFn" "openWipeModal" "WindowStorageKey" "analyticsWindow" "HasSecondary" true "PageData" .)}}
+        {{template "filter_bar" (dict "BarId" "analytics-filter-bar" "Compact" true "DefaultWindow" "1d" "RefreshFn" "fetchData" "ShowSpinner" true "ShowAutoRefresh" true "AutoRefreshOptions" "5000:5s,15000:15s,30000:30s,60000:1m,300000:5m,0:Off" "DefaultAutoRefresh" "5000" "AutoRefreshKey" "globalAutoRefresh" "ShowWipe" true "WipeFn" "openWipeModal" "WindowStorageKey" "globalWindow" "HasSecondary" true "PageData" .)}}
     </div>
     {{if .Message}}
     <div style="padding:0.65rem 1rem;border-radius:6px;margin-bottom:1rem;font-size:0.875rem;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:var(--green)">{{.Message}}</div>

@@ -1472,15 +1472,6 @@
             padding: 0.9rem;
             margin-bottom: 1rem;
         }
-        .connect-configurator-grid {
-            display: grid;
-            grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
-            gap: 0.9rem;
-            align-items: start;
-        }
-        .connect-configurator-panel {
-            min-width: 0;
-        }
         .connect-selector-toolbar {
             display: flex;
             flex-wrap: wrap;
@@ -1565,15 +1556,10 @@
         }
         .connect-model-tag-area {
             display: flex;
-            flex-wrap: wrap;
-            gap: 0.4rem;
             align-items: center;
-            min-height: 42px;
-            padding: 0.4rem 0.55rem;
             background: var(--bg);
             border: 1px solid var(--border);
             border-radius: 8px;
-            cursor: text;
             transition: border-color 0.15s;
         }
         .connect-model-tag-area:focus-within { border-color: var(--accent); }
@@ -1614,14 +1600,14 @@
         .connect-model-tag-remove:hover { opacity: 1; }
         .connect-model-tag-input {
             flex: 1;
-            min-width: 140px;
             background: none;
             border: none;
             outline: none;
             color: var(--text);
             font-family: var(--mono);
             font-size: 0.8rem;
-            padding: 0.15rem 0.1rem;
+            padding: 0.55rem 0.75rem;
+            width: 100%;
         }
         .connect-model-tag-input::placeholder { color: var(--text-dim); }
         .connect-model-dropdown {
@@ -1663,16 +1649,12 @@
             color: var(--text-dim);
             font-style: italic;
         }
-        .connect-side-controls {
-            display: flex;
-            flex-direction: column;
-            gap: 0.85rem;
-        }
         .connect-control-card {
             background: var(--bg);
             border: 1px solid var(--border);
             border-radius: 10px;
             padding: 0.8rem;
+            margin-top: 0.7rem;
         }
         .connect-control-card label {
             display: block;
@@ -1701,8 +1683,25 @@
             color: var(--text-dim);
             line-height: 1.5;
         }
-        @media (max-width: 980px) {
-            .connect-configurator-grid { grid-template-columns: 1fr; }
+        .connect-model-badges-area {
+            display: none;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            align-items: center;
+            padding: 0.6rem 0.75rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 1rem;
+        }
+        .connect-model-badges-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            white-space: nowrap;
+            margin-right: 0.3rem;
         }
 
         .copy-block-btn {
@@ -2690,6 +2689,7 @@
                     </div>
                     <pre id="zed-config">Loading models…</pre>
                 </div>
+                <div class="connect-model-badges-area" id="zed-badges"></div>
 
                 <div class="step">Step 2 — Set your API key</div>
                 <p>Zed reads the key from the environment variable <strong>LLM_API_PROXY_API_KEY</strong>. Set it in your shell profile:</p>
@@ -2725,6 +2725,7 @@
                     </div>
                     <pre id="opencode-config">Loading models…</pre>
                 </div>
+                <div class="connect-model-badges-area" id="opencode-badges"></div>
 
                 <div class="step">Step 2 — Set your API key</div>
                 <p>OpenCode should read the key from the environment variable <strong>LLM_API_PROXY_API_KEY</strong>. Set it in your shell profile:</p>
@@ -2761,6 +2762,7 @@
                     </div>
                     <pre id="droid-config">Loading models…</pre>
                 </div>
+                <div class="connect-model-badges-area" id="droid-badges"></div>
 
                 <div class="step">Step 2 — Set your API key</div>
                 <p>Droid supports environment variable interpolation in <strong>settings.json</strong>. Set <strong>LLM_API_PROXY_API_KEY</strong> in your shell profile:</p>
@@ -2804,6 +2806,7 @@
                         </select>
                     </div>
                 </div>
+                <div class="connect-model-badges-area" id="curl-badges"></div>
 
                 <div class="step">List all models</div>
                 <div class="code-block">
@@ -3878,6 +3881,7 @@
                     activeModel: '',
                     renderConfig: options.renderConfig,
                     configTargetId: options.configTargetId,
+                    badgesAreaId: options.badgesAreaId || '',
                     onActiveModelChange: options.onActiveModelChange || null
                 };
             }
@@ -3913,9 +3917,7 @@
 
             var flat = flattenModels(state.selectedBackends);
 
-            root.innerHTML = '<div class="connect-configurator-grid">'
-                + '<div class="connect-configurator-panel">'
-                + '  <div class="connect-selector-toolbar">'
+            root.innerHTML = '<div class="connect-selector-toolbar">'
                 + '    <div class="connect-selector-meta">'
                 + '      <span class="connect-meta-pill" id="' + state.rootId + '-meta-backends">backends ' + state.selectedBackends.size + '/' + selectableBackends().length + '</span>'
                 + '      <span class="connect-meta-pill" id="' + state.rootId + '-meta-models">models ' + state.selectedModels.length + '/' + flat.length + '</span>'
@@ -3937,7 +3939,7 @@
                         + '</label>';
                 }).join('')
                 + '  </div>'
-                + '  <div class="connect-selector-group-label">Models</div>'
+                + '<div class="connect-selector-group-label">Add models</div>'
                 + '  <div class="connect-model-tag-wrap">'
                 + '    <div class="connect-model-tag-area" id="' + state.rootId + '-tag-area">'
                 + '      <input type="text" id="' + state.rootId + '-search" class="connect-model-tag-input"'
@@ -3948,19 +3950,14 @@
                 + '        onkeydown="selectorKeydown(\'' + key + '\', event)">'
                 + '    </div>'
                 + '    <div class="connect-model-dropdown" id="' + state.rootId + '-dropdown"></div>'
-                + '  </div>'
                 + '</div>'
-                + '<div class="connect-side-controls">'
-                + '  <div class="connect-control-card">'
-                + '    <label for="' + state.rootId + '-default">Default model</label>'
-                + '    <select id="' + state.rootId + '-default" class="connect-select" ' + (state.allowDefault ? '' : 'disabled') + ' onchange="selectorSetDefaultModel(\'' + key + '\', this.value)">'
-                + '    </select>'
-                + '    <div class="connect-help-text">'
-                + (state.allowDefault ? 'Use a flattened model ID here and let the proxy resolve the actual backend at request time.' : 'This target format does not use a default model field.')
-                + '    </div>'
-                + '  </div>'
-                + '</div>'
-                + '</div>';
+                + (state.allowDefault
+                    ? '<div class="connect-control-card">'
+                        + '<label for="' + state.rootId + '-default">Default model</label>'
+                        + '<select id="' + state.rootId + '-default" class="connect-select" onchange="selectorSetDefaultModel(\'' + key + '\', this.value)"></select>'
+                        + '<div class="connect-help-text">Use a flattened model ID here and let the proxy resolve the actual backend at request time.</div>'
+                        + '</div>'
+                    : '');
 
             updateSelectorBadges(key);
             updateSelectorDefaultSelect(key);
@@ -3971,20 +3968,34 @@
         function updateSelectorBadges(key) {
             var state = connectSelectors[key];
             if (!state) return;
-            var area = document.getElementById(state.rootId + '-tag-area');
+            // Update meta pills inside the selector
+            var flat = flattenModels(state.selectedBackends);
+            var pillB = document.getElementById(state.rootId + '-meta-backends');
+            var pillM = document.getElementById(state.rootId + '-meta-models');
+            if (pillB) pillB.textContent = 'backends ' + state.selectedBackends.size + '/' + selectableBackends().length;
+            if (pillM) pillM.textContent = 'models ' + state.selectedModels.length + '/' + flat.length;
+            // Populate the external badges area below the code block
+            if (!state.badgesAreaId) return;
+            var area = document.getElementById(state.badgesAreaId);
             if (!area) return;
-            var inp = document.getElementById(state.rootId + '-search');
-            // Remove existing badges
-            Array.prototype.slice.call(area.querySelectorAll('.connect-model-tag')).forEach(function(el) { el.parentNode.removeChild(el); });
-            // Insert badges before the input
-            state.selectedModels.slice().reverse().forEach(function(bareID) {
+            area.innerHTML = '';
+            if (!state.selectedModels.length) {
+                area.style.display = 'none';
+                return;
+            }
+            area.style.display = 'flex';
+            var labelEl = document.createElement('span');
+            labelEl.className = 'connect-model-badges-label';
+            labelEl.textContent = 'Selected:';
+            area.appendChild(labelEl);
+            state.selectedModels.forEach(function(bareID) {
                 var tag = document.createElement('span');
                 tag.className = 'connect-model-tag';
                 tag.title = bareID;
-                var label = document.createElement('span');
-                label.textContent = bareID;
-                label.style.overflow = 'hidden';
-                label.style.textOverflow = 'ellipsis';
+                var nameSpan = document.createElement('span');
+                nameSpan.textContent = bareID;
+                nameSpan.style.overflow = 'hidden';
+                nameSpan.style.textOverflow = 'ellipsis';
                 var btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'connect-model-tag-remove';
@@ -3993,16 +4004,10 @@
                 btn.addEventListener('mousedown', (function(id) {
                     return function(ev) { ev.preventDefault(); selectorRemoveModel(key, id); };
                 })(bareID));
-                tag.appendChild(label);
+                tag.appendChild(nameSpan);
                 tag.appendChild(btn);
-                area.insertBefore(tag, inp);
+                area.appendChild(tag);
             });
-            // Update meta pills
-            var flat = flattenModels(state.selectedBackends);
-            var pillB = document.getElementById(state.rootId + '-meta-backends');
-            var pillM = document.getElementById(state.rootId + '-meta-models');
-            if (pillB) pillB.textContent = 'backends ' + state.selectedBackends.size + '/' + selectableBackends().length;
-            if (pillM) pillM.textContent = 'models ' + state.selectedModels.length + '/' + flat.length;
         }
 
         function updateSelectorDropdown(key) {
@@ -4243,6 +4248,7 @@
             ensureSelectorState('zed', {
                 rootId: 'zed-selector',
                 configTargetId: 'zed-config',
+                badgesAreaId: 'zed-badges',
                 allowDefault: true,
                 renderConfig: function(models, state) {
                     var displayAddr = '{{.DisplayAddr}}';
@@ -4302,6 +4308,7 @@
             ensureSelectorState('opencode', {
                 rootId: 'opencode-selector',
                 configTargetId: 'opencode-config',
+                badgesAreaId: 'opencode-badges',
                 allowDefault: true,
                 renderConfig: function(models, state) {
                     var displayAddr = '{{.DisplayAddr}}';
@@ -4349,6 +4356,7 @@
             ensureSelectorState('droid', {
                 rootId: 'droid-selector',
                 configTargetId: 'droid-config',
+                badgesAreaId: 'droid-badges',
                 allowDefault: true,
                 renderConfig: function(models, state) {
                     var displayAddr = '{{.DisplayAddr}}';
@@ -4554,7 +4562,8 @@
         function buildCurlSelector() {
             ensureSelectorState('curl', {
                 rootId: 'curl-selector',
-                configTargetId: '', // curl examples are driven by onActiveModelChange, not a config pre block
+                configTargetId: '',
+                badgesAreaId: 'curl-badges',
                 allowDefault: true,
                 onActiveModelChange: function(model) {
                     var state = connectSelectors.curl;

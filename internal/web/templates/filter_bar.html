@@ -399,13 +399,19 @@
     var bar = document.getElementById(barId);
     var pillsContainer = document.getElementById(barId + '-pills');
 
+    function runRefresh() {
+        if (typeof window[refreshFn] === 'function') {
+            window[refreshFn]();
+        }
+    }
+
     // ── Button event bindings ──
     var refreshBtn = document.getElementById(barId + '-refresh-btn');
     var compactWindowLabel = document.getElementById(barId + '-window-label');
 
-    if (refreshBtn && typeof window[refreshFn] === 'function') {
+    if (refreshBtn) {
         refreshBtn.addEventListener('click', function() {
-            window[refreshFn]();
+            runRefresh();
             if (isCompact) bar.classList.remove('open');
         });
     }
@@ -483,7 +489,7 @@
         var btn = e.target.closest('.pill');
         if (!btn) return;
         setActiveWindow(btn.dataset.window);
-        if (typeof window[refreshFn] === 'function') window[refreshFn]();
+        runRefresh();
     });
 
     // Dropdown item clicks
@@ -496,7 +502,7 @@
                 if (!btn) return;
                 setActiveWindow(btn.dataset.window);
                 moreContainer.classList.remove('open');
-                if (typeof window[refreshFn] === 'function') window[refreshFn]();
+                runRefresh();
             });
         }
         if (moreBtn) {
@@ -567,7 +573,7 @@
             clearTimeout(autoTimer);
             if (autoMs > 0) {
                 autoTimer = setTimeout(function() {
-                    if (typeof window[refreshFn] === 'function') window[refreshFn]();
+                    runRefresh();
                     scheduleAutoRefresh();
                 }, autoMs);
                 startCountdown();
