@@ -1,6 +1,8 @@
 # Stage 1: Build
 FROM golang:1.25-alpine AS builder
 
+ARG VERSION=dev
+
 WORKDIR /build
 
 # Install build dependencies
@@ -12,7 +14,7 @@ RUN go mod download
 
 # Copy source and build
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o llmapiproxy ./cmd/llmapiproxy
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o llmapiproxy ./cmd/llmapiproxy
 
 # Stage 2: Runtime
 FROM alpine:3.21

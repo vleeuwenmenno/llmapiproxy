@@ -26,6 +26,8 @@ import (
 	"github.com/menno/llmapiproxy/internal/web"
 )
 
+var version = "dev"
+
 func main() {
 	configPath := flag.String("config", "data/config.yaml", "Path to configuration file")
 	logLevel := flag.String("log-level", "info", "Log level: debug, info, warn, error")
@@ -86,6 +88,7 @@ func main() {
 
 	appBaseURL := oauth.BaseURL(cfg.Server.Domain, cfg.Server.Listen)
 
+	web.SetVersion(version)
 	ui := web.NewUI(cfgMgr, collector, registry, store, chatStore)
 
 	r := chi.NewRouter()

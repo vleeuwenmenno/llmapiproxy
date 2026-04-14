@@ -72,7 +72,6 @@ type ServerConfig struct {
 	Listen        string        `yaml:"listen,omitempty"` // Legacy: host:port. New host/port fields take precedence.
 	Domain        string        `yaml:"domain,omitempty"` // Externally-reachable domain for OAuth callbacks and links (e.g. "myserver.tail", "https://example.com").
 	APIKeys       []string      `yaml:"api_keys"`
-	AdminKey      string        `yaml:"admin_key"`
 	StatsPath     string        `yaml:"stats_path"`
 	DisableStats  bool          `yaml:"disable_stats"`
 	ChatDBPath    string        `yaml:"chat_db_path"`
@@ -184,7 +183,6 @@ func (sc *ServerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	sc.Listen = r.Listen
 	sc.Domain = r.Domain
 	sc.APIKeys = r.APIKeys
-	sc.AdminKey = r.AdminKey
 	sc.StatsPath = r.StatsPath
 	sc.DisableStats = r.DisableStats
 	sc.ChatDBPath = r.ChatDBPath
@@ -248,7 +246,6 @@ func (sc *ServerConfig) MarshalYAML() (interface{}, error) {
 		Listen:        sc.Listen,
 		Domain:        sc.Domain,
 		APIKeys:       sc.APIKeys,
-		AdminKey:      sc.AdminKey,
 		StatsPath:     sc.StatsPath,
 		DisableStats:  sc.DisableStats,
 		ChatDBPath:    sc.ChatDBPath,

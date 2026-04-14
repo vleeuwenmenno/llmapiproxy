@@ -32,9 +32,18 @@ var staticFS embed.FS
 
 var templates *template.Template
 
+// appVersion holds the build version, injected via -ldflags or set at startup.
+var appVersion string
+
+// SetVersion sets the application version for display in the web UI.
+func SetVersion(v string) {
+	appVersion = v
+}
+
 func init() {
 	templates = template.Must(template.New("").Funcs(template.FuncMap{
-		"maskKey": maskKey,
+		"appVersion": func() string { return appVersion },
+		"maskKey":    maskKey,
 		"json": func(v any) template.JS {
 			b, _ := json.Marshal(v)
 			return template.JS(b)

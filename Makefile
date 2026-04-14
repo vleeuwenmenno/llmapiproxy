@@ -4,6 +4,7 @@
 IMAGE      ?= llmapiproxy
 TAG        ?= dev
 CONTAINER  ?= llmapiproxy
+VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 # ── Help ───────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ help: ## Show this help message
 # ── Docker ─────────────────────────────────────────────────────
 
 docker-build: ## Build the Docker image
-	docker build -t $(IMAGE):$(TAG) .
+	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE):$(TAG) .
 
 up: ## Start the container (rebuild if needed)
 	docker compose up --build -d
@@ -51,7 +52,7 @@ shell: ## Open a shell inside the running container
 # ── Development ────────────────────────────────────────────────
 
 build: ## Build the binary locally
-	go build -o llmapiproxy ./cmd/llmapiproxy
+	go build -ldflags "-X main.version=$(VERSION)" -o llmapiproxy ./cmd/llmapiproxy
 
 test: ## Run all tests
 	go test -count=1 ./...
