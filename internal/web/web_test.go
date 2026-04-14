@@ -602,6 +602,12 @@ func TestModelsPage_ContainsOAuthSection(t *testing.T) {
 	if !strings.Contains(body, "codex") {
 		t.Error("expected 'codex' backend in models page")
 	}
+	if !strings.Contains(body, "model-scroll") {
+		t.Error("expected scrollable model list container in models page")
+	}
+	if strings.Contains(body, "show-more-btn") {
+		t.Error("did not expect legacy show-more button styling in models page")
+	}
 }
 
 func TestModelsPage_UsesCodexAndCopilotIcons(t *testing.T) {

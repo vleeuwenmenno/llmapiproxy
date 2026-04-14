@@ -288,7 +288,7 @@
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 10px;
-            overflow: visible;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
             animation: fadeIn 0.3s ease both;
@@ -390,8 +390,42 @@
         }
 
         .model-list {
-            padding: 0.5rem 0;
+            display: flex;
+            flex-direction: column;
             flex: 1 1 auto;
+            min-height: 0;
+        }
+
+        .model-list-meta {
+            padding-top: 0.5rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .model-list-base-url {
+            padding: 0 1.1rem 0.35rem;
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            word-break: break-all;
+        }
+
+        .model-list-status {
+            padding: 0 1.1rem 0.5rem;
+        }
+
+        .model-scroll {
+            overflow-y: auto;
+            max-height: 50vh;
+            min-height: 0;
+            overscroll-behavior: contain;
+        }
+
+        .model-scroll-empty {
+            padding: 0.85rem 1.1rem;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            font-family: var(--mono);
         }
 
         .model-item {
@@ -572,7 +606,7 @@
             border: 1px solid rgba(167,139,250,0.3);
             padding: 0.15rem 0.5rem;
             border-radius: 4px;
-            margin: 0.5rem 1.1rem;
+            margin: 0;
             display: inline-block;
             font-family: var(--mono);
         }
@@ -759,22 +793,6 @@
             flex-shrink: 0;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-
-        /* ── Show-more toggle ────────────────────────────────── */
-        .show-more-btn {
-            width: 100%;
-            background: transparent;
-            border: none;
-            border-top: 1px solid var(--border);
-            color: var(--text-dim);
-            font-family: var(--mono);
-            font-size: 0.68rem;
-            padding: 0.55rem 1.1rem;
-            cursor: pointer;
-            text-align: left;
-            transition: color 0.1s, background 0.1s;
-        }
-        .show-more-btn:hover { color: var(--accent); background: var(--accent-dim); }
 
         /* ── Collapsible card ────────────────────────────────── */
         .backend-card.collapsed .model-list { display: none; }
@@ -1549,31 +1567,6 @@
             letter-spacing: 0.08em;
             margin-bottom: 0.45rem;
         }
-        .connect-backend-chips {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.45rem;
-            margin-bottom: 0.85rem;
-        }
-        .connect-backend-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            padding: 0.32rem 0.6rem;
-            border: 1px solid var(--border);
-            border-radius: 999px;
-            background: var(--bg);
-            color: var(--text-dim);
-            font-size: 0.76rem;
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-        .connect-backend-chip input { accent-color: var(--accent); cursor: pointer; }
-        .connect-backend-chip.active {
-            border-color: var(--accent);
-            color: var(--accent);
-            background: var(--accent-dim);
-        }
         /* ── Tag-input model selector ── */
         .connect-model-tag-wrap {
             position: relative;
@@ -2317,13 +2310,19 @@
                     </div>
                 </div>
                 <div class="model-list" id="models-{{.Name}}">
-                    <div style="padding:0.3rem 1.1rem 0.2rem;font-family:var(--mono);font-size:0.65rem;color:var(--text-dim)">{{.BaseURL}}</div>
-                    {{if and $oauth (not $oauth.Authenticated) .Enabled}}
-                    <div style="padding:0.85rem 1.1rem;font-size:0.8rem;color:var(--text-dim);font-style:italic">Authentication required — connect below to load models.</div>
-                    {{else if .IsDynamic}}
-                    <span class="dynamic-badge">&#x221E; dynamic &#x2014; uses /v1/models from upstream</span>
-                    {{if .Enabled}}<div class="model-loading"><div class="spinner"></div><span>Loading models&#x2026;</span></div>{{else}}<div style="padding:0.85rem 1.1rem;font-size:0.75rem;color:var(--text-dim);font-family:var(--mono)">Enable this backend to load models.</div>{{end}}
-                    {{else}}
+                    <div class="model-list-meta">
+                        <div class="model-list-base-url">{{.BaseURL}}</div>
+                        <div class="model-list-status" id="models-status-{{.Name}}">
+                            {{if and $oauth (not $oauth.Authenticated) .Enabled}}
+                            <div style="font-size:0.8rem;color:var(--text-dim);font-style:italic">Authentication required — connect below to load models.</div>
+                            {{else if .IsDynamic}}
+                            <span class="dynamic-badge">&#x221E; dynamic &#x2014; uses /v1/models from upstream</span>
+                            {{if .Enabled}}<div class="model-loading"><div class="spinner"></div><span>Loading models&#x2026;</span></div>{{else}}<div class="model-scroll-empty">Enable this backend to load models.</div>{{end}}
+                            {{end}}
+                        </div>
+                    </div>
+                    <div class="model-scroll" id="models-scroll-{{.Name}}">
+                    {{if and (not (and $oauth (not $oauth.Authenticated) .Enabled)) (not .IsDynamic)}}
                     {{$backendName := .Name}}
                     {{range .Models}}
                     <div class="model-item{{if .Disabled}} model-disabled{{end}}">
@@ -2333,6 +2332,7 @@
                     </div>
                     {{end}}
                     {{end}}
+                    </div>
                 </div>
                 {{if and $oauth .Enabled}}
                 {{template "models_oauth_card" (dict "Name" .Name "Type" .Type "OAuth" $oauth)}}
@@ -2409,7 +2409,7 @@
 
         <div class="section-title">Quick Connect</div>
         <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1.25rem;line-height:1.6">
-            This proxy exposes a standard OpenAI-compatible API at <strong>http://{{.DisplayAddr}}/v1</strong>. Point any OpenAI-compatible client at that URL with your proxy API key.
+            This proxy exposes a standard OpenAI-compatible API at <strong id="quick-connect-endpoint"></strong>. Point any OpenAI-compatible client at that URL with your proxy API key.
         </p>
         <div class="connect-buttons">
             <button class="connect-btn" onclick="openModal('modal-zed')">
@@ -2861,7 +2861,7 @@
                         <span>bash</span>
                         <button class="copy-block-btn" onclick="copyCurlBlock(this, 'curl-health')">copy</button>
                     </div>
-                    <pre id="curl-health">curl http://{{.DisplayAddr}}/health</pre>
+                    <pre id="curl-health"></pre>
                 </div>
             </div>
         </div>
@@ -3554,7 +3554,6 @@
         });
 
         // ── Lazy-load per-backend model lists ──────────────────────────
-        var PREVIEW_COUNT = 12;
         var allBackendModels = {}; // backendName → model array (populated as each backend loads)
         var pendingLoads = 0;      // counts outstanding loadBackendModels calls
 
@@ -3949,6 +3948,14 @@
             }).sort(function(a, b) { return a.localeCompare(b); });
         }
 
+        // Dynamic endpoint URL — always matches the browser's current address
+        function getDisplayAddr() {
+            return window.location.host;
+        }
+        function getEndpointURL() {
+            return window.location.origin + '/v1';
+        }
+
         function flattenModels(selectedBackends) {
             var seen = {};
             var order = [];
@@ -4053,23 +4060,11 @@
                 + '      <button type="button" class="connect-action-btn" onclick="selectorClearAllModels(\'' + key + '\')">clear all</button>'
                 + '    </div>'
                 + '  </div>'
-                + '  <div class="connect-selector-group-label">Included backends</div>'
-                + '  <div class="connect-backend-chips">'
-                + selectableBackends().map(function(name) {
-                    var active = state.selectedBackends.has(name);
-                    var count = (allBackendModels[name] || []).length;
-                    return '<label class="connect-backend-chip' + (active ? ' active' : '') + '">'
-                        + '<input type="checkbox" ' + (active ? 'checked' : '') + ' onchange="selectorToggleBackend(\'' + key + '\', \'' + escHtml(name) + '\', this.checked)">'
-                        + '<span>' + escHtml(name) + '</span>'
-                        + '<span style="opacity:.65">(' + count + ')</span>'
-                        + '</label>';
-                }).join('')
-                + '  </div>'
-                + '<div class="connect-selector-group-label">Add models</div>'
+                + '<div class="connect-selector-group-label">Add Models &amp; Backends</div>'
                 + '  <div class="connect-model-tag-wrap">'
                 + '    <div class="connect-model-tag-area" id="' + state.rootId + '-tag-area">'
                 + '      <input type="text" id="' + state.rootId + '-search" class="connect-model-tag-input"'
-                + '        placeholder="Search &amp; add models…" autocomplete="off"'
+                + '        placeholder="Search models &amp; backends…" autocomplete="off"'
                 + '        oninput="selectorSearch(\'' + key + '\', this.value)"'
                 + '        onfocus="selectorShowDropdown(\'' + key + '\')"'
                 + '        onblur="selectorScheduleHideDropdown(\'' + key + '\')"'
@@ -4150,14 +4145,48 @@
                 return [model.bareID, model.displayName].concat(model.backends).join(' ').toLowerCase().indexOf(q) !== -1;
             }).slice(0, 60);
 
+            // Build backend entries: show backends whose name matches the query
+            // and that still have models not yet selected
+            var backendEntries = [];
+            var allBackends = selectableBackends();
+            allBackends.forEach(function(bName) {
+                var models = allBackendModels[bName] || [];
+                var unselectedCount = models.filter(function(m) {
+                    return m && m.BareID && !selectedSet.has(m.BareID);
+                }).length;
+                if (unselectedCount === 0) return;
+                if (q && bName.toLowerCase().indexOf(q) === -1) return;
+                backendEntries.push({ name: bName, count: unselectedCount, total: models.length });
+            });
+
             dropdown.innerHTML = '';
-            if (!candidates.length) {
+            if (!candidates.length && !backendEntries.length) {
                 var empty = document.createElement('div');
                 empty.className = 'connect-model-dropdown-empty';
                 empty.textContent = selectedSet.size === flat.length ? 'All available models already added.' : (q ? 'No matches.' : 'No models available.');
                 dropdown.appendChild(empty);
                 return;
             }
+
+            // Render backend entries first
+            backendEntries.forEach(function(be) {
+                var item = document.createElement('div');
+                item.className = 'connect-model-dropdown-item';
+                var name = document.createElement('span');
+                name.textContent = be.name;
+                item.appendChild(name);
+                var meta = document.createElement('span');
+                meta.className = 'connect-model-dropdown-meta';
+                meta.textContent = 'backend · ' + be.count + ' model' + (be.count !== 1 ? 's' : '');
+                meta.style.color = 'var(--accent)';
+                item.appendChild(meta);
+                item.addEventListener('mousedown', (function(backendName) {
+                    return function(ev) { ev.preventDefault(); selectorAddBackendModels(key, backendName); };
+                })(be.name));
+                dropdown.appendChild(item);
+            });
+
+            // Then render model entries
             candidates.forEach(function(model) {
                 var item = document.createElement('div');
                 item.className = 'connect-model-dropdown-item';
@@ -4278,6 +4307,30 @@
             rebuildSelectorConfig(key);
         }
 
+        // Add all models from a specific backend (called from dropdown backend entries)
+        function selectorAddBackendModels(key, backendName) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            var models = allBackendModels[backendName] || [];
+            var added = 0;
+            models.forEach(function(m) {
+                if (!m || !m.BareID) return;
+                if (state.selectedModels.indexOf(m.BareID) === -1) {
+                    state.selectedModels.push(m.BareID);
+                    added++;
+                }
+            });
+            if (!added) return;
+            ensureDefaultModel(state);
+            state.search = '';
+            var inp = document.getElementById(state.rootId + '-search');
+            if (inp) { inp.value = ''; inp.focus(); }
+            updateSelectorBadges(key);
+            updateSelectorDropdown(key);
+            updateSelectorDefaultSelect(key);
+            rebuildSelectorConfig(key);
+        }
+
         function selectorToggleBackend(key, name, checked) {
             var state = connectSelectors[key];
             if (!state) return;
@@ -4377,13 +4430,13 @@
                 badgesAreaId: 'zed-badges',
                 allowDefault: true,
                 renderConfig: function(models, state) {
-                    var displayAddr = '{{.DisplayAddr}}';
+                    var endpointURL = getEndpointURL();
                     var sampleModel = state.defaultModel || (models[0] ? models[0].bareID : '');
                     return JSON.stringify({
                         language_models: {
                             openai_compatible: {
                                 'LLM API Proxy': {
-                                    api_url: 'http://' + displayAddr + '/v1',
+                                    api_url: endpointURL,
                                     available_models: models.map(function(model) {
                                         return {
                                             name: model.bareID,
@@ -4437,7 +4490,7 @@
                 badgesAreaId: 'opencode-badges',
                 allowDefault: true,
                 renderConfig: function(models, state) {
-                    var displayAddr = '{{.DisplayAddr}}';
+                    var endpointURL = getEndpointURL();
                     var defaultModel = state.defaultModel || (models[0] ? models[0].bareID : '');
                     return JSON.stringify({
                         $schema: 'https://opencode.ai/config.json',
@@ -4447,7 +4500,7 @@
                                 npm: '@ai-sdk/openai-compatible',
                                 options: {
                                     apiKey: '${LLM_API_PROXY_API_KEY}',
-                                    baseURL: 'http://' + displayAddr + '/v1'
+                                    baseURL: endpointURL
                                 },
                                 models: models.reduce(function(acc, model) {
                                     acc[model.bareID] = {
@@ -4481,13 +4534,13 @@
                 badgesAreaId: 'droid-badges',
                 allowDefault: true,
                 renderConfig: function(models, state) {
-                    var displayAddr = '{{.DisplayAddr}}';
+                    var endpointURL = getEndpointURL();
                     return JSON.stringify({
                         customModels: models.map(function(model) {
                             return {
                                 model: model.bareID,
                                 displayName: model.displayName,
-                                baseUrl: 'http://' + displayAddr + '/v1',
+                                baseUrl: endpointURL,
                                 apiKey: '${LLM_API_PROXY_API_KEY}',
                                 provider: 'generic-chat-completion-api',
                                 maxOutputTokens: model.maxOutputTokens || 16384
@@ -4543,33 +4596,22 @@
                 + '</div>';
         }
 
-        function toggleMore(name, totalRest) {
-            var rest = document.getElementById('rest-' + name);
-            var btn = document.getElementById('showmore-' + name);
-            if (!rest || !btn) return;
-            if (rest.style.display === 'none' || rest.style.display === '') {
-                rest.style.display = 'block';
-                btn.innerHTML = '\u25B4 Show less';
-            } else {
-                rest.style.display = 'none';
-                btn.innerHTML = '\u25BE Show ' + totalRest + ' more models';
-            }
-        }
-
         function refreshBackendModels(e, name) {
             e.stopPropagation();
             var btn = e.currentTarget;
             if (btn.classList.contains('spinning')) return;
             btn.classList.add('spinning');
             // Show loading spinner in the model list while fetching.
-            var listEl = document.getElementById('models-' + name);
-            var baseUrlEl = listEl ? listEl.querySelector(':scope > div:first-child') : null;
-            var dynBadgeEl = listEl ? listEl.querySelector('.dynamic-badge') : null;
-            var baseUrlHtml = baseUrlEl ? baseUrlEl.outerHTML : '';
-            var dynHtml = dynBadgeEl ? dynBadgeEl.outerHTML : '';
-            if (listEl) {
-                listEl.innerHTML = baseUrlHtml + dynHtml
-                    + '<div class="model-loading"><div class="spinner"></div><span>Loading models&#x2026;</span></div>';
+            var statusEl = document.getElementById('models-status-' + name);
+            var scrollEl = document.getElementById('models-scroll-' + name);
+            var dynBadgeEl = statusEl ? statusEl.querySelector('.dynamic-badge') : null;
+            var dynHtml = dynBadgeEl ? dynBadgeEl.outerHTML : '<span class="dynamic-badge">&#x221E; dynamic &#x2014; uses /v1/models from upstream</span>';
+            if (statusEl) {
+                statusEl.innerHTML = dynHtml + '<div class="model-loading"><div class="spinner"></div><span>Loading models&#x2026;</span></div>';
+            }
+            if (scrollEl) {
+                scrollEl.innerHTML = '';
+                scrollEl.scrollTop = 0;
             }
             fetch('/ui/backends/' + encodeURIComponent(name) + '/refresh-models', { method: 'POST' })
                 .then(function(res) {
@@ -4593,23 +4635,19 @@
                     buildZedConfig();
                     var countEl = document.getElementById('count-' + name);
                     if (countEl) countEl.textContent = models.length + ' model' + (models.length !== 1 ? 's' : '');
-                    if (!listEl) return;
-                    var preview = normalized.slice(0, PREVIEW_COUNT);
-                    var rest = normalized.slice(PREVIEW_COUNT);
-                    var html = baseUrlHtml + dynHtml;
-                    html += preview.map(function(m) { return renderModelItem(m, name); }).join('');
-                    if (rest.length > 0) {
-                        html += '<div class="model-rest" id="rest-' + name + '" style="display:none">'
-                            + rest.map(function(m) { return renderModelItem(m, name); }).join('') + '</div>';
-                        html += '<button class="show-more-btn" id="showmore-' + name + '" onclick="toggleMore(\'' + name + '\',' + rest.length + ')">\u25BE Show ' + rest.length + ' more models</button>';
-                    }
-                    listEl.innerHTML = html;
+                    if (statusEl) statusEl.innerHTML = dynHtml;
+                    if (!scrollEl) return;
+                    scrollEl.innerHTML = normalized.length
+                        ? normalized.map(function(m) { return renderModelItem(m, name); }).join('')
+                        : '<div class="model-scroll-empty">No models available.</div>';
+                    scrollEl.scrollTop = 0;
                 })
                 .catch(function(err) {
-                    if (listEl) {
-                        listEl.innerHTML = baseUrlHtml + dynHtml
-                            + '<div style="padding:0.75rem 1.1rem;font-size:0.75rem;color:var(--red);font-family:var(--mono)">&#x2717; Refresh failed: ' + escHtml(err.message) + '</div>';
+                    if (statusEl) {
+                        statusEl.innerHTML = dynHtml
+                            + '<div class="model-scroll-empty" style="color:var(--red)">&#x2717; Refresh failed: ' + escHtml(err.message) + '</div>';
                     }
+                    if (scrollEl) scrollEl.innerHTML = '';
                 })
                 .finally(function() {
                     btn.classList.remove('spinning');
@@ -4620,12 +4658,10 @@
             var listEl = document.getElementById('models-' + name);
             var countEl = document.getElementById('count-' + name);
             if (!listEl) return;
-
-            // Preserve the base-url line and dynamic badge if present.
-            var baseUrlEl = listEl.querySelector(':scope > div:first-child');
-            var dynBadgeEl = listEl.querySelector('.dynamic-badge');
-            var baseUrlHtml = baseUrlEl ? baseUrlEl.outerHTML : '';
-            var dynHtml = dynBadgeEl ? dynBadgeEl.outerHTML : '';
+            var statusEl = document.getElementById('models-status-' + name);
+            var scrollEl = document.getElementById('models-scroll-' + name);
+            var dynBadgeEl = statusEl ? statusEl.querySelector('.dynamic-badge') : null;
+            var dynHtml = dynBadgeEl ? dynBadgeEl.outerHTML : '<span class="dynamic-badge">&#x221E; dynamic &#x2014; uses /v1/models from upstream</span>';
 
             // Auto-expand collapsed cards so the loading spinner is visible.
             var card = listEl.closest('.backend-card');
@@ -4633,9 +4669,13 @@
                 card.classList.remove('collapsed');
             }
 
-            // Replace content with spinner (keep header elements).
-            listEl.innerHTML = baseUrlHtml + dynHtml
-                + '<div class="model-loading"><div class="spinner"></div><span>Loading models\u2026</span></div>';
+            if (statusEl) {
+                statusEl.innerHTML = dynHtml + '<div class="model-loading"><div class="spinner"></div><span>Loading models\u2026</span></div>';
+            }
+            if (scrollEl) {
+                scrollEl.innerHTML = '';
+                scrollEl.scrollTop = 0;
+            }
 
             fetch('/ui/backends/' + encodeURIComponent(name) + '/models?_=' + Date.now())
                 .then(function(res) {
@@ -4665,33 +4705,30 @@
                     if (pendingLoads <= 0) { recomputeOverlaps(); buildZedConfig(); }
 
                     if (countEl) countEl.textContent = models.length + ' model' + (models.length !== 1 ? 's' : '');
-
-                    var preview = models.slice(0, PREVIEW_COUNT);
-                    var rest = models.slice(PREVIEW_COUNT);
-                    var html = baseUrlHtml + dynHtml;
-                    html += preview.map(function(m) { return renderModelItem(m, name); }).join('');
-                    if (rest.length > 0) {
-                        html += '<div class="model-rest" id="rest-' + name + '" style="display:none">'
-                            + rest.map(function(m) { return renderModelItem(m, name); }).join('') + '</div>';
-                        html += '<button class="show-more-btn" id="showmore-' + name + '" onclick="toggleMore(\'' + name + '\',' + rest.length + ')">'
-                            + '\u25BE Show ' + rest.length + ' more models</button>';
+                    if (statusEl) statusEl.innerHTML = dynHtml;
+                    if (scrollEl) {
+                        scrollEl.innerHTML = models.length
+                            ? models.map(function(m) { return renderModelItem(m, name); }).join('')
+                            : '<div class="model-scroll-empty">No models available.</div>';
+                        scrollEl.scrollTop = 0;
                     }
-                    listEl.innerHTML = html;
                 })
                 .catch(function(e) {
                     allBackendModels[name] = []; // treat as empty so pending count still completes
                     pendingLoads--;
                     if (pendingLoads <= 0) { recomputeOverlaps(); buildZedConfig(); }
 
-                    listEl.innerHTML = baseUrlHtml + dynHtml
-                        + '<div style="padding:0.75rem 1.1rem;font-size:0.75rem;color:var(--red);font-family:var(--mono)">\u2717 ' + escHtml(e.message) + '</div>';
+                    if (statusEl) {
+                        statusEl.innerHTML = dynHtml
+                            + '<div class="model-scroll-empty" style="color:var(--red)">\u2717 ' + escHtml(e.message) + '</div>';
+                    }
+                    if (scrollEl) scrollEl.innerHTML = '';
                     if (countEl) countEl.textContent = 'error';
                 });
         }
 
         // ── curl modal: dynamic model & key selectors ──────────────────
         var curlAllModels = {{json .CurlModels}};
-        var curlDisplayAddr = "{{.DisplayAddr}}";
         var curlActiveIdx = -1;
 
         function curlGetKey() {
@@ -4736,7 +4773,7 @@
             var key     = curlGetKey();
             var masked  = curlGetMaskedKey();
             var model   = curlGetModel();
-            var addr    = curlDisplayAddr;
+            var addr    = getDisplayAddr();
 
             function set(id, display, copy) {
                 var el = document.getElementById(id);
@@ -4788,6 +4825,11 @@
                 '    "stream": true\n' +
                 "  }'"
             );
+
+            set('curl-health',
+                'curl http://' + addr + '/health',
+                'curl http://' + addr + '/health'
+            );
         }
 
         function copyCurlBlock(btn, id) {
@@ -4803,6 +4845,10 @@
             initOverlapControls();
             setOverlapItems(normalizeOverlapEntries(overlapBootstrap));
             buildCurlSelector();
+
+            // Set the dynamic endpoint URL in the Quick Connect subtitle
+            var endpointEl = document.getElementById('quick-connect-endpoint');
+            if (endpointEl) endpointEl.textContent = getEndpointURL();
 
             var allCards = document.querySelectorAll('.backend-card[data-backend]');
             var cards = [];
