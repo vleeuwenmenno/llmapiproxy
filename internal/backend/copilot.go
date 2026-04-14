@@ -287,7 +287,7 @@ func (b *CopilotBackend) ListModels(ctx context.Context) ([]Model, error) {
 				OwnedBy: b.name,
 			})
 		}
-		return b.filterDisabled(models), nil
+		return b.markDisabled(models), nil
 	}
 
 	// Fetch live model list from the Copilot API when authenticated.
@@ -373,21 +373,20 @@ func (b *CopilotBackend) ListModels(ctx context.Context) ([]Model, error) {
 	b.capCache = newCache
 	b.capMu.Unlock()
 
-	return b.filterDisabled(models), nil
+	return b.markDisabled(models), nil
 }
 
-// filterDisabled removes models that are in the disabledModels set.
-func (b *CopilotBackend) filterDisabled(models []Model) []Model {
+// markDisabled sets the Disabled field on models in the disabledModels set.
+func (b *CopilotBackend) markDisabled(models []Model) []Model {
 	if len(b.disabledModels) == 0 {
 		return models
 	}
-	filtered := make([]Model, 0, len(models))
-	for _, m := range models {
-		if !b.disabledModels[m.ID] {
-			filtered = append(filtered, m)
+	for i := range models {
+		if b.disabledModels[models[i].ID] {
+			models[i].Disabled = true
 		}
 	}
-	return filtered
+	return models
 }
 
 // getCap returns the cached capabilities for modelID, if present.

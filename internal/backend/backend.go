@@ -101,6 +101,10 @@ type Model struct {
 	// RoutingStrategy is the effective routing strategy for this model
 	// (e.g. "priority", "round-robin", "race", "staggered-race").
 	RoutingStrategy string `json:"routing_strategy,omitempty"`
+	// Disabled indicates this model is disabled on this backend via config.
+	// It is still listed (so the UI can show it greyed out) but excluded
+	// from routing and the /v1/models API response.
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 type ModelList struct {

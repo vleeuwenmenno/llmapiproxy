@@ -1043,6 +1043,9 @@ func (h *Handler) listModelsFlat(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		for _, m := range models {
+			if m.Disabled {
+				continue // skip disabled models in the API response
+			}
 			baseID := strings.TrimPrefix(m.ID, b.Name()+"/")
 
 			if existing, ok := seen[baseID]; ok {
@@ -1127,6 +1130,9 @@ func (h *Handler) listModelsRaw(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		for _, m := range models {
+			if m.Disabled {
+				continue // skip disabled models in the API response
+			}
 			mCopy := m
 			// Ensure the ID is backend-prefixed for raw mode.
 			if !strings.HasPrefix(mCopy.ID, b.Name()+"/") {

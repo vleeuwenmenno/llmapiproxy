@@ -2324,10 +2324,11 @@
                     <span class="dynamic-badge">&#x221E; dynamic &#x2014; uses /v1/models from upstream</span>
                     {{if .Enabled}}<div class="model-loading"><div class="spinner"></div><span>Loading models&#x2026;</span></div>{{else}}<div style="padding:0.85rem 1.1rem;font-size:0.75rem;color:var(--text-dim);font-family:var(--mono)">Enable this backend to load models.</div>{{end}}
                     {{else}}
+                    {{$backendName := .Name}}
                     {{range .Models}}
                     <div class="model-item{{if .Disabled}} model-disabled{{end}}">
                         <span class="model-id">{{.BareID}}</span>
-                        <button class="model-disable-btn" onclick="toggleModelDisabled(this, '{{$.Name}}', '{{.BareID}}', {{.Disabled}})" title="{{if .Disabled}}Enable{{else}}Disable{{end}} this model on this backend">{{if .Disabled}}&#x25B6;{{else}}&#x23FB;{{end}}</button>
+                        <button class="model-disable-btn" onclick="toggleModelDisabled(this, '{{$backendName}}', '{{.BareID}}', {{.Disabled}})" title="{{if .Disabled}}Enable{{else}}Disable{{end}} this model on this backend">{{if .Disabled}}&#x25B6;{{else}}&#x23FB;{{end}}</button>
                         <button class="copy-btn" onclick="copyText(this, '{{.FullID}}')" title="Copy full ID: {{.FullID}}">copy</button>
                     </div>
                     {{end}}
@@ -3264,6 +3265,13 @@
                 body: JSON.stringify({ backend: backendName, model: modelID, disabled: disable })
             }).then(function(r) {
                 if (!r.ok) { r.text().then(function(t) { alert('Error: ' + t); }); return; }
+                // Update client-side cache
+                if (!allBackendDisabledModels[backendName]) allBackendDisabledModels[backendName] = {};
+                if (disable) {
+                    allBackendDisabledModels[backendName][modelID] = true;
+                } else {
+                    delete allBackendDisabledModels[backendName][modelID];
+                }
                 // Update the item visually without full page reload
                 var item = btn.closest('.model-item');
                 if (item) {
@@ -4483,13 +4491,15 @@
             var srcSym = { upstream: '\u2191', config: '\u2699', builtin: '\uD83D\uDCCB' };
             var displayId = m.BareID || m.FullID;
             var disableBtn = '';
+            var isDisabled = false;
             if (backendName) {
                 var bareID = displayId;
-                var isDisabled = !!(allBackendDisabledModels[backendName] && allBackendDisabledModels[backendName][bareID]);
+                // Check both the model data (from API) and the server-side config map
+                isDisabled = !!(m.Disabled || (allBackendDisabledModels[backendName] && allBackendDisabledModels[backendName][bareID]));
                 disableBtn = '<button class="model-disable-btn" onclick="toggleModelDisabled(this, \'' + escHtml(backendName).replace(/'/g, "\\'") + '\', \'' + escHtml(bareID).replace(/'/g, "\\'") + '\', ' + isDisabled + ')" title="' + (isDisabled ? 'Enable' : 'Disable') + ' this model on this backend">' + (isDisabled ? '\u25B6' : '\u23FB') + '</button>';
             }
             var cls = 'model-item';
-            if (backendName && allBackendDisabledModels[backendName] && allBackendDisabledModels[backendName][displayId]) cls += ' model-disabled';
+            if (isDisabled) cls += ' model-disabled';
             return '<div class="' + cls + '">'
                 + '<span class="model-id">' + escHtml(displayId) + '</span>'
                 + (m.ContextLength ? '<span class="ctx-badge" title="Context window">' + fmtN(m.ContextLength) + 'ctx</span>' : '')
@@ -4537,8 +4547,10 @@
                 .then(function(models) {
                     models = models || [];
                     // Normalize to PascalCase ModelEntry shape so recomputeOverlaps works.
+                    var disabledMap = allBackendDisabledModels[name] || {};
                     var normalized = models.map(function(m) {
-                        return { FullID: m.id, BareID: m.id ? m.id.split('/').pop() : '', ContextLength: m.context_length, MaxOutputTokens: m.max_output_tokens, Capabilities: m.capabilities || [] };
+                        var bareID = m.id ? m.id.split('/').pop() : '';
+                        return { FullID: m.id, BareID: bareID, ContextLength: m.context_length, MaxOutputTokens: m.max_output_tokens, Capabilities: m.capabilities || [], Disabled: !!(m.disabled || disabledMap[bareID]) };
                     });
                     allBackendModels[name] = normalized;
                     zedConfigBuilt = false;
@@ -4593,13 +4605,27 @@
             listEl.innerHTML = baseUrlHtml + dynHtml
                 + '<div class="model-loading"><div class="spinner"></div><span>Loading models\u2026</span></div>';
 
-            fetch('/ui/backends/' + encodeURIComponent(name) + '/models')
+            fetch('/ui/backends/' + encodeURIComponent(name) + '/models?_=' + Date.now())
                 .then(function(res) {
                     if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
                     return res.json();
                 })
                 .then(function(models) {
                     models = models || [];
+
+                    var disabledMap = allBackendDisabledModels[name] || {};
+                    models = models.map(function(m) {
+                        var bareID = m.BareID || m.bare_id || '';
+                        return {
+                            FullID: m.FullID || m.full_id || '',
+                            BareID: bareID,
+                            ContextLength: m.ContextLength || m.context_length || null,
+                            MaxOutputTokens: m.MaxOutputTokens || m.max_output_tokens || null,
+                            Capabilities: m.Capabilities || m.capabilities || [],
+                            DataSource: m.DataSource || m.data_source || '',
+                            Disabled: !!(m.Disabled || m.disabled || disabledMap[bareID])
+                        };
+                    });
 
                     // Track for client-side overlap recomputation.
                     allBackendModels[name] = models;

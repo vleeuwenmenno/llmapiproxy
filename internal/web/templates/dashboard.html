@@ -110,7 +110,7 @@
         .amber { color: var(--amber); }
 
         /* ── Charts ── */
-        .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.25rem; }
+        .charts-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-bottom: 1.25rem; }
         .chart-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
         .chart-box .chart-title { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); margin-bottom: 0.5rem; }
         .chart-box canvas { width: 100%; }
@@ -299,6 +299,11 @@
             <div class="value" id="c-latency">—</div>
             <div class="sub" id="c-percentiles"></div>
         </div>
+        <div class="card" id="c-tps-card" style="display:none">
+            <div class="label">Avg TPS</div>
+            <div class="value" style="color:#06b6d4" id="c-tps">—</div>
+            <div class="sub" id="c-tps-sub"></div>
+        </div>
         <div class="card">
             <div class="label">Errors</div>
             <div class="value green" id="c-errors">—</div>
@@ -322,6 +327,10 @@
         <div class="chart-box">
             <div class="chart-title">Latency Over Time</div>
             <canvas id="chart-latency" height="160"></canvas>
+        </div>
+        <div class="chart-box">
+            <div class="chart-title">TPS Over Time</div>
+            <canvas id="chart-tps" height="160"></canvas>
         </div>
     </div>
 
@@ -564,6 +573,8 @@ function renderSummary(s, p) {
     document.getElementById('c-requests').textContent = fmtNum(s.total_requests);
     document.getElementById('c-tokens').textContent = fmtNum(s.total_tokens);
     document.getElementById('c-latency').textContent = fmtDur(s.avg_latency_ms);
+    var tpsCard = document.getElementById('c-tps-card');
+    if (s.avg_tps > 0) { tpsCard.style.display = ''; document.getElementById('c-tps').textContent = s.avg_tps.toFixed(1) + ' tok/s'; } else { tpsCard.style.display = 'none'; }
     var errEl = document.getElementById('c-errors');
     errEl.textContent = fmtNum(s.total_errors);
     errEl.className = 'value ' + (s.total_errors > 0 ? 'red' : 'green');
@@ -576,10 +587,13 @@ function renderSummary(s, p) {
 
 // ── Charts ─────────────────────────────────────────────────
 function renderCharts(series) {
-    if (!series || series.length === 0) { clearCanvas('chart-requests', 'No data'); clearCanvas('chart-latency', 'No data'); return; }
+    if (!series || series.length === 0) { clearCanvas('chart-requests', 'No data'); clearCanvas('chart-latency', 'No data'); clearCanvas('chart-tps', 'No data'); return; }
     var labels = series.map(function(p) { return new Date(p.t).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); });
     drawBarChart('chart-requests', labels, series.map(function(p) { return p.req; }), getAccentColor(), series.map(function(p) { return p.err; }));
     drawLineChart('chart-latency', labels, series.map(function(p) { return p.lat; }), '#34d399');
+    var tpsValues = series.map(function(p) { return p.tps || 0; });
+    var hasTps = tpsValues.some(function(v) { return v > 0; });
+    if (hasTps) { drawLineChart('chart-tps', labels, tpsValues, '#06b6d4', function(v) { return v + ' tps'; }); } else { clearCanvas('chart-tps', 'No TPS data'); }
 }
 
 function getAccentColor() { return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#22d3ee'; }
@@ -636,7 +650,7 @@ function drawBarChart(id, labels, values, color, errValues) {
     for (var i = 0; i < n; i += step) { ctx.fillText(labels[i], padL + i*(bw+gap) + bw/2, H - 4); }
 }
 
-function drawLineChart(id, labels, values, color) {
+function drawLineChart(id, labels, values, color, fmtLabel) {
     var s = setupCanvas(id);
     var ctx = s.ctx, W = s.w, H = s.h;
     var padL=40, padR=8, padT=10, padB=28;
@@ -645,10 +659,11 @@ function drawLineChart(id, labels, values, color) {
     var max = Math.max.apply(null, values) || 1;
     var n = values.length;
     if (n < 2) { clearCanvas(id, 'Not enough data'); return; }
+    if (!fmtLabel) fmtLabel = fmtDur;
     [0, 0.5, 1].forEach(function(f) {
         var y = padT + chartH * (1 - f);
         ctx.fillStyle = getTextDimColor(); ctx.font = '9px monospace'; ctx.textAlign = 'right';
-        ctx.fillText(fmtDur(Math.round(max*f)), padL - 4, y + 3);
+        ctx.fillText(fmtLabel(Math.round(max*f)), padL - 4, y + 3);
         ctx.strokeStyle = getBorderColor(); ctx.lineWidth = 0.5;
         ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
     });

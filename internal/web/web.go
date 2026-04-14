@@ -541,13 +541,13 @@ type BackendEntry struct {
 
 // ModelEntry holds display data for a single model in the UI.
 type ModelEntry struct {
-	FullID          string // backend/model-id
-	BareID          string // model-id without backend prefix
-	ContextLength   *int64
-	MaxOutputTokens *int64
-	Capabilities    []string
-	DataSource      string // "upstream", "config", "builtin", or ""
-	Disabled        bool   // true when this model is in the backend's disabled_models list
+	FullID          string   `json:"full_id"`                    // backend/model-id
+	BareID          string   `json:"bare_id"`                    // model-id without backend prefix
+	ContextLength   *int64   `json:"context_length,omitempty"`
+	MaxOutputTokens *int64   `json:"max_output_tokens,omitempty"`
+	Capabilities    []string `json:"capabilities,omitempty"`
+	DataSource      string   `json:"data_source,omitempty"`      // "upstream", "config", "builtin", or ""
+	Disabled        bool     `json:"disabled,omitempty"`         // true when this model is in the backend's disabled_models list
 }
 
 // iconForBackend maps a backend name to a static icon URL.
@@ -798,6 +798,15 @@ func (u *UI) BackendModels(w http.ResponseWriter, r *http.Request) {
 	isDynamic := len(bc.Models) == 0
 	var entries []ModelEntry
 
+	disabledSet := make(map[string]bool, len(bc.DisabledModels))
+	for _, dm := range bc.DisabledModels {
+		disabledSet[dm] = true
+	}
+
+	if len(disabledSet) > 0 {
+		log.Debug().Str("backend", name).Int("disabled_count", len(disabledSet)).Interface("disabled_models", bc.DisabledModels).Msg("BackendModels disabled set")
+	}
+
 	if isDynamic {
 		for _, m := range liveModels {
 			entries = append(entries, ModelEntry{
@@ -807,13 +816,15 @@ func (u *UI) BackendModels(w http.ResponseWriter, r *http.Request) {
 				MaxOutputTokens: m.MaxOutputTokens,
 				Capabilities:    m.Capabilities,
 				DataSource:      "upstream",
+				Disabled:        m.Disabled || disabledSet[m.ID],
 			})
 		}
 	} else {
 		for _, mc := range bc.Models {
 			entry := ModelEntry{
-				FullID: bc.Name + "/" + mc.ID,
-				BareID: mc.ID,
+				FullID:   bc.Name + "/" + mc.ID,
+				BareID:   mc.ID,
+				Disabled: disabledSet[mc.ID],
 			}
 			if live, ok := liveByID[mc.ID]; ok {
 				entry.ContextLength = live.ContextLength
@@ -850,6 +861,7 @@ func (u *UI) BackendModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
 	if err := json.NewEncoder(w).Encode(entries); err != nil {
 		log.Error().Err(err).Msg("BackendModels encode error")
 	}
@@ -890,6 +902,7 @@ func (u *UI) RefreshBackendModels(w http.ResponseWriter, r *http.Request) {
 		ContextLength   *int64   `json:"context_length,omitempty"`
 		MaxOutputTokens *int64   `json:"max_output_tokens,omitempty"`
 		Capabilities    []string `json:"capabilities,omitempty"`
+		Disabled        bool     `json:"disabled,omitempty"`
 	}
 
 	resp := make([]modelResp, len(models))
@@ -900,10 +913,12 @@ func (u *UI) RefreshBackendModels(w http.ResponseWriter, r *http.Request) {
 			ContextLength:   m.ContextLength,
 			MaxOutputTokens: m.MaxOutputTokens,
 			Capabilities:    m.Capabilities,
+			Disabled:        m.Disabled,
 		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(w).Encode(resp)
 }
 

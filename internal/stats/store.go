@@ -493,7 +493,9 @@ func (s *Store) TimeSeries(f StatsFilter, bucketSecs int64) ([]TimePoint, error)
 		       COUNT(*),
 		       COALESCE(SUM(total_tokens),0),
 		       COALESCE(SUM(CASE WHEN error!='' THEN 1 ELSE 0 END),0),
-		       COALESCE(AVG(latency_ms),0)
+		       COALESCE(AVG(latency_ms),0),
+		       COALESCE(SUM(CASE WHEN tps > 0 THEN tps * completion_tokens ELSE 0 END), 0),
+		       COALESCE(SUM(CASE WHEN tps > 0 THEN completion_tokens ELSE 0 END), 0)
 		FROM requests %s
 		GROUP BY (timestamp / %d)
 		ORDER BY (timestamp / %d)`,
@@ -508,11 +510,15 @@ func (s *Store) TimeSeries(f StatsFilter, bucketSecs int64) ([]TimePoint, error)
 		var tsMs int64
 		var pt TimePoint
 		var avgLat float64
-		if err := rows.Scan(&tsMs, &pt.Requests, &pt.Tokens, &pt.Errors, &avgLat); err != nil {
+		var tpsWeightedSum, tpsWeightCount float64
+		if err := rows.Scan(&tsMs, &pt.Requests, &pt.Tokens, &pt.Errors, &avgLat, &tpsWeightedSum, &tpsWeightCount); err != nil {
 			return nil, err
 		}
 		pt.BucketTime = time.UnixMilli(tsMs)
 		pt.AvgLatencyMs = int64(avgLat)
+		if tpsWeightCount > 0 {
+			pt.AvgTPS = tpsWeightedSum / tpsWeightCount
+		}
 		pts = append(pts, pt)
 	}
 	return pts, rows.Err()

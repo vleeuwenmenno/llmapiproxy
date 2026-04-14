@@ -64,6 +64,7 @@ type TimePoint struct {
 	Tokens       int       `json:"tok"`
 	Errors       int       `json:"err"`
 	AvgLatencyMs int64     `json:"lat"`
+	AvgTPS       float64   `json:"tps"`
 }
 
 // Percentiles holds latency distribution values.

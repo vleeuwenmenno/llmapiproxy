@@ -913,7 +913,7 @@ func (b *AnthropicBackend) getCachedOrFetchModels() []Model {
 
 func (b *AnthropicBackend) ListModels(ctx context.Context) ([]Model, error) {
 	if len(b.models) > 0 {
-		return b.filterDisabled(b.staticModelList()), nil
+		return b.markDisabled(b.staticModelList()), nil
 	}
 
 	if b.modelCacheTTL > 0 {
@@ -921,7 +921,7 @@ func (b *AnthropicBackend) ListModels(ctx context.Context) ([]Model, error) {
 		if !b.cacheExpiry.IsZero() && time.Now().Before(b.cacheExpiry) {
 			cached := b.cachedModels
 			b.cacheMu.RUnlock()
-			return b.filterDisabled(cached), nil
+			return b.markDisabled(cached), nil
 		}
 		b.cacheMu.RUnlock()
 	}
@@ -933,7 +933,7 @@ func (b *AnthropicBackend) ListModels(ctx context.Context) ([]Model, error) {
 			if b.cachedModels != nil {
 				cached := b.cachedModels
 				b.cacheMu.RUnlock()
-				return b.filterDisabled(cached), nil
+				return b.markDisabled(cached), nil
 			}
 			b.cacheMu.RUnlock()
 		}
@@ -946,21 +946,20 @@ func (b *AnthropicBackend) ListModels(ctx context.Context) ([]Model, error) {
 		b.cacheExpiry = time.Now().Add(b.modelCacheTTL)
 		b.cacheMu.Unlock()
 	}
-	return b.filterDisabled(models), nil
+	return b.markDisabled(models), nil
 }
 
-// filterDisabled removes models that are in the disabledModels set.
-func (b *AnthropicBackend) filterDisabled(models []Model) []Model {
+// markDisabled sets the Disabled field on models in the disabledModels set.
+func (b *AnthropicBackend) markDisabled(models []Model) []Model {
 	if len(b.disabledModels) == 0 {
 		return models
 	}
-	filtered := make([]Model, 0, len(models))
-	for _, m := range models {
-		if !b.disabledModels[m.ID] {
-			filtered = append(filtered, m)
+	for i := range models {
+		if b.disabledModels[models[i].ID] {
+			models[i].Disabled = true
 		}
 	}
-	return filtered
+	return models
 }
 
 func (b *AnthropicBackend) staticModelList() []Model {

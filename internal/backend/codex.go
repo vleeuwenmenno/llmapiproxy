@@ -955,7 +955,7 @@ func (b *CodexBackend) ListModels(ctx context.Context) ([]Model, error) {
 			cached := b.cachedModels
 			b.cacheMu.RUnlock()
 			log.Debug().Str("backend", b.name).Int("models", len(cached)).Msg("model cache hit")
-			return b.filterDisabled(cached), nil
+			return b.markDisabled(cached), nil
 		}
 		b.cacheMu.RUnlock()
 	}
@@ -971,7 +971,7 @@ func (b *CodexBackend) ListModels(ctx context.Context) ([]Model, error) {
 				cached := b.cachedModels
 				b.cacheMu.RUnlock()
 				log.Warn().Err(err).Str("backend", b.name).Int("models", len(cached)).Msg("model list build failed, returning stale cache")
-				return b.filterDisabled(cached), nil
+				return b.markDisabled(cached), nil
 			}
 			b.cacheMu.RUnlock()
 		}
@@ -986,21 +986,20 @@ func (b *CodexBackend) ListModels(ctx context.Context) ([]Model, error) {
 		b.cacheMu.Unlock()
 	}
 
-	return b.filterDisabled(models), nil
+	return b.markDisabled(models), nil
 }
 
-// filterDisabled removes models that are in the disabledModels set.
-func (b *CodexBackend) filterDisabled(models []Model) []Model {
+// markDisabled sets the Disabled field on models in the disabledModels set.
+func (b *CodexBackend) markDisabled(models []Model) []Model {
 	if len(b.disabledModels) == 0 {
 		return models
 	}
-	filtered := make([]Model, 0, len(models))
-	for _, m := range models {
-		if !b.disabledModels[m.ID] {
-			filtered = append(filtered, m)
+	for i := range models {
+		if b.disabledModels[models[i].ID] {
+			models[i].Disabled = true
 		}
 	}
-	return filtered
+	return models
 }
 
 // buildCodexModelList builds the model list from config, upstream, or defaults.
