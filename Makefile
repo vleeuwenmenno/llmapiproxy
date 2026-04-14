@@ -23,7 +23,7 @@ help: ## Show this help message
 	@grep -E '^(up|down|restart|logs|ps|shell|docker-build):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "    \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 	@echo ''
 	@printf '  \033[1mDevelopment\033[0m\n'
-	@grep -E '^(build|test|vet|check|clean):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "    \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(run|build|test|vet|check|clean):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "    \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 	@echo ''
 
 # ── Docker ─────────────────────────────────────────────────────
@@ -50,6 +50,9 @@ shell: ## Open a shell inside the running container
 	docker compose exec $(CONTAINER) /bin/sh || docker compose run --rm $(CONTAINER) /bin/sh
 
 # ── Development ────────────────────────────────────────────────
+
+run: ## Run the proxy locally
+	go run ./cmd/llmapiproxy serve --config data/config.yaml
 
 build: ## Build the binary locally
 	go build -ldflags "-X main.version=$(VERSION)" -o llmapiproxy ./cmd/llmapiproxy

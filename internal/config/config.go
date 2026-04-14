@@ -79,6 +79,20 @@ type ServerConfig struct {
 	DefaultModel  string        `yaml:"default_model,omitempty"`
 	ModelCacheTTL time.Duration `yaml:"-"` // Set via custom YAML unmarshal; use ModelCacheTTLSec for JSON.
 
+	// WebAuth enables username/password authentication for the web UI.
+	// When enabled, all /ui/* routes require a valid session cookie.
+	// The proxy API (/v1/*) is unaffected — it continues using API key auth.
+	WebAuth bool `yaml:"web_auth"`
+
+	// UsersDBPath is the path to the SQLite database storing web UI users.
+	// Defaults to data/users.db when empty.
+	UsersDBPath string `yaml:"users_db_path,omitempty"`
+
+	// WebAuthSecret is the HMAC key for signing session cookies.
+	// When empty, a random key is generated on startup (sessions invalidated on restart).
+	// When set, sessions survive restarts. Must be at least 16 characters.
+	WebAuthSecret string `yaml:"web_auth_secret,omitempty"`
+
 	// modelCacheTTLSet tracks whether model_cache_ttl was explicitly provided.
 	// When false (field absent), ModelCacheTTL defaults to DefaultModelCacheTTL in Validate().
 	// When true and ModelCacheTTL == 0, caching is disabled.
@@ -173,6 +187,9 @@ func (sc *ServerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		TitleModel    string      `yaml:"title_model"`
 		DefaultModel  string      `yaml:"default_model,omitempty"`
 		ModelCacheTTL interface{} `yaml:"model_cache_ttl,omitempty"`
+		WebAuth       bool        `yaml:"web_auth"`
+		UsersDBPath   string      `yaml:"users_db_path,omitempty"`
+		WebAuthSecret string      `yaml:"web_auth_secret,omitempty"`
 	}
 	var r raw
 	if err := unmarshal(&r); err != nil {
@@ -188,6 +205,9 @@ func (sc *ServerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	sc.ChatDBPath = r.ChatDBPath
 	sc.TitleModel = r.TitleModel
 	sc.DefaultModel = r.DefaultModel
+	sc.WebAuth = r.WebAuth
+	sc.UsersDBPath = r.UsersDBPath
+	sc.WebAuthSecret = r.WebAuthSecret
 
 	switch v := r.ModelCacheTTL.(type) {
 	case string:
@@ -233,6 +253,9 @@ func (sc *ServerConfig) MarshalYAML() (interface{}, error) {
 		TitleModel    string   `yaml:"title_model"`
 		DefaultModel  string   `yaml:"default_model,omitempty"`
 		ModelCacheTTL string   `yaml:"model_cache_ttl,omitempty"`
+		WebAuth       bool     `yaml:"web_auth"`
+		UsersDBPath   string   `yaml:"users_db_path,omitempty"`
+		WebAuthSecret string   `yaml:"web_auth_secret,omitempty"`
 	}
 
 	var ttlStr string
@@ -252,6 +275,9 @@ func (sc *ServerConfig) MarshalYAML() (interface{}, error) {
 		TitleModel:    sc.TitleModel,
 		DefaultModel:  sc.DefaultModel,
 		ModelCacheTTL: ttlStr,
+		WebAuth:       sc.WebAuth,
+		UsersDBPath:   sc.UsersDBPath,
+		WebAuthSecret: sc.WebAuthSecret,
 	}, nil
 }
 
@@ -378,6 +404,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.ChatDBPath == "" {
 		c.Server.ChatDBPath = filepath.Join("data", "chat.db")
+	}
+	if c.Server.UsersDBPath == "" {
+		c.Server.UsersDBPath = filepath.Join("data", "users.db")
 	}
 	// Default model cache TTL: 5 minutes when not explicitly set.
 	// Setting model_cache_ttl to "0s" or "0" explicitly disables caching.

@@ -121,6 +121,13 @@
             transition: all 0.15s;
         }
         .theme-toggle:hover { background: var(--accent-dim); color: var(--text); }
+        .user-badge { display: inline-flex; align-items: center; gap: 0.5rem; margin-left: 0.5rem; padding: 0.3rem 0.6rem; background: var(--accent-dim); border: 1px solid rgba(34,211,238,0.2); border-radius: 6px; color: var(--accent); font-size: 0.75rem; font-weight: 600; }
+        .user-badge form { display: inline; position: relative; }
+        .logout-btn { background: none; border: none; color: var(--accent); cursor: pointer; padding: 2px; opacity: 0.6; transition: opacity 0.15s, transform 0.15s; display: inline-flex; align-items: center; }
+        .logout-btn:hover { opacity: 1; transform: scale(1.15); }
+        .logout-btn svg { width: 14px; height: 14px; }
+        .logout-btn::after { content: attr(data-tooltip); position: absolute; top: calc(100% + 6px); right: 0; background: var(--bg-card); color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s; border: 1px solid rgba(34,211,238,0.15); }
+        .logout-btn:hover::after { opacity: 1; }
 
         /* ── Mobile Menu Styles ── */
         .mobile-menu-btn {
@@ -1118,6 +1125,7 @@
             <a href="/ui/chat" class="active">Chat</a>
             <a href="/ui/settings">Settings</a>
             <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">&#9728;</button>
+        {{if .User}}<span class="user-badge">{{.User.Username}}<form method="POST" action="/ui/logout" style="display:inline"><button type="submit" class="logout-btn" data-tooltip="Logout" aria-label="Logout"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button></form></span>{{end}}
         </div>
         <button class="mobile-menu-btn" onclick="openMobileMenu()" aria-label="Open menu">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

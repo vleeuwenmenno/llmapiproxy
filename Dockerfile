@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26.2-alpine3.23 AS builder
 
 ARG VERSION=dev
 
@@ -17,7 +17,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o llmapiproxy ./cmd/llmapiproxy
 
 # Stage 2: Runtime
-FROM alpine:3.21
+FROM alpine:3.23
 
 # ca-certificates needed for HTTPS calls to AI backends
 RUN apk add --no-cache ca-certificates curl
@@ -31,4 +31,4 @@ VOLUME ["/data"]
 
 EXPOSE 8080
 
-ENTRYPOINT ["./llmapiproxy", "-config", "/app/data/config.yaml"]
+ENTRYPOINT ["./llmapiproxy", "serve", "--config", "/app/data/config.yaml"]

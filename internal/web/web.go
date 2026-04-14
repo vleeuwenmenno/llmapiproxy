@@ -21,6 +21,7 @@ import (
 	"github.com/menno/llmapiproxy/internal/chat"
 	"github.com/menno/llmapiproxy/internal/config"
 	"github.com/menno/llmapiproxy/internal/stats"
+	"github.com/menno/llmapiproxy/internal/users"
 	"gopkg.in/yaml.v3"
 )
 
@@ -225,26 +226,180 @@ type modelOAuthCardData struct {
 }
 
 type UI struct {
-	cfgMgr    *config.Manager
-	collector *stats.Collector
-	registry  *backend.Registry
-	store     *stats.Store
-	chatStore *chat.ChatStore
+	cfgMgr        *config.Manager
+	collector     *stats.Collector
+	registry      *backend.Registry
+	store         *stats.Store
+	chatStore     *chat.ChatStore
+	userStore     *users.UserStore
+	sessionSecret []byte
 }
 
-func NewUI(cfgMgr *config.Manager, collector *stats.Collector, registry *backend.Registry, store *stats.Store, chatStore *chat.ChatStore) *UI {
+func NewUI(cfgMgr *config.Manager, collector *stats.Collector, registry *backend.Registry, store *stats.Store, chatStore *chat.ChatStore, userStore *users.UserStore, sessionSecret []byte) *UI {
 	return &UI{
-		cfgMgr:    cfgMgr,
-		collector: collector,
-		registry:  registry,
-		store:     store,
-		chatStore: chatStore,
+		cfgMgr:        cfgMgr,
+		collector:     collector,
+		registry:      registry,
+		store:         store,
+		chatStore:     chatStore,
+		userStore:     userStore,
+		sessionSecret: sessionSecret,
 	}
 }
 
 // StaticFS returns the embedded static file system.
 func StaticFS() embed.FS {
 	return staticFS
+}
+
+// injectAuth adds the authenticated user to the template data map.
+// Returns the same map with a "User" key set if the user is logged in.
+func injectAuth(r *http.Request, data map[string]any) map[string]any {
+	if data == nil {
+		data = make(map[string]any)
+	}
+	if user := users.UserFromContext(r.Context()); user != nil {
+		data["User"] = user
+	}
+	return data
+}
+
+// ── Login / Setup / Logout Handlers ──────────────────────
+
+// LoginPage renders the login form.
+func (u *UI) LoginPage(w http.ResponseWriter, r *http.Request) {
+	data := map[string]any{
+		"Error": "",
+		"Next":  r.URL.Query().Get("next"),
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	templates.ExecuteTemplate(w, "login.html", data)
+}
+
+// LoginPost authenticates a user and sets a session cookie.
+func (u *UI) LoginPost(w http.ResponseWriter, r *http.Request) {
+	if u.userStore == nil {
+		http.Redirect(w, r, "/ui/", http.StatusFound)
+		return
+	}
+
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+	next := r.FormValue("next")
+	if next == "" {
+		next = "/ui/"
+	}
+
+	user, err := u.userStore.Authenticate(username, password)
+	if err != nil {
+		log.Error().Err(err).Str("username", username).Msg("authentication error")
+	}
+	if user == nil || err != nil {
+		data := map[string]any{
+			"Error": "Invalid username or password.",
+			"Next":  next,
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusUnauthorized)
+		templates.ExecuteTemplate(w, "login.html", data)
+		return
+	}
+
+	token, err := users.CreateSessionToken(user.Username, u.sessionSecret)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to create session token")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	secure := strings.HasPrefix(u.cfgMgr.Get().Server.Domain, "https://")
+	users.SetSessionCookie(w, token, secure)
+	log.Info().Str("username", user.Username).Msg("user logged in")
+	http.Redirect(w, r, next, http.StatusFound)
+}
+
+// SetupPage renders the first-user setup form. Only shown when web auth is enabled but no users exist.
+func (u *UI) SetupPage(w http.ResponseWriter, r *http.Request) {
+	if u.userStore == nil {
+		http.Redirect(w, r, "/ui/", http.StatusFound)
+		return
+	}
+	count, _ := u.userStore.UserCount()
+	if count > 0 {
+		// Users already exist, redirect to login
+		http.Redirect(w, r, "/ui/login", http.StatusFound)
+		return
+	}
+
+	data := map[string]any{
+		"Error": "",
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	templates.ExecuteTemplate(w, "setup.html", data)
+}
+
+// SetupPost creates the first admin user and logs them in.
+func (u *UI) SetupPost(w http.ResponseWriter, r *http.Request) {
+	if u.userStore == nil {
+		http.Redirect(w, r, "/ui/", http.StatusFound)
+		return
+	}
+
+	count, _ := u.userStore.UserCount()
+	if count > 0 {
+		http.Redirect(w, r, "/ui/login", http.StatusFound)
+		return
+	}
+
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+	password2 := r.FormValue("password2")
+
+	if username == "" || password == "" {
+		renderSetupError(w, "Username and password are required.")
+		return
+	}
+	if len(password) < 8 {
+		renderSetupError(w, "Password must be at least 8 characters.")
+		return
+	}
+	if password != password2 {
+		renderSetupError(w, "Passwords do not match.")
+		return
+	}
+
+	if err := u.userStore.CreateUser(username, password); err != nil {
+		log.Error().Err(err).Str("username", username).Msg("failed to create initial user")
+		renderSetupError(w, "Failed to create user: "+err.Error())
+		return
+	}
+
+	token, err := users.CreateSessionToken(username, u.sessionSecret)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to create session token")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	secure := strings.HasPrefix(u.cfgMgr.Get().Server.Domain, "https://")
+	users.SetSessionCookie(w, token, secure)
+	log.Info().Str("username", username).Msg("initial admin user created via setup page")
+	http.Redirect(w, r, "/ui/", http.StatusFound)
+}
+
+func renderSetupError(w http.ResponseWriter, errMsg string) {
+	data := map[string]any{
+		"Error": errMsg,
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusBadRequest)
+	templates.ExecuteTemplate(w, "setup.html", data)
+}
+
+// LogoutPost clears the session cookie and redirects to the login page.
+func (u *UI) LogoutPost(w http.ResponseWriter, r *http.Request) {
+	users.ClearSessionCookie(w)
+	http.Redirect(w, r, "/ui/login", http.StatusFound)
 }
 
 const pageSize = 25
@@ -304,6 +459,7 @@ func (u *UI) Dashboard(w http.ResponseWriter, r *http.Request) {
 		"Clients":     clients,
 		"RoutingJSON": template.JS(routingJSON),
 	}
+	injectAuth(r, data)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "dashboard.html", data); err != nil {
 		log.Error().Err(err).Msg("template error")
@@ -477,6 +633,7 @@ func (u *UI) ConfigPage(w http.ResponseWriter, r *http.Request) {
 		"Config":  string(configData),
 		"Message": "",
 	}
+	injectAuth(r, data)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "config.html", data); err != nil {
@@ -757,6 +914,7 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		"CurlModels":         curlModels,
 		"OAuthByBackend":     oauthByBackend,
 	}
+	injectAuth(r, data)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "models.html", data); err != nil {
@@ -1141,6 +1299,7 @@ func (u *UI) PlaygroundPage(w http.ResponseWriter, r *http.Request) {
 		"PlaygroundAPIKey": playgroundAPIKey,
 		"Models":           models,
 	}
+	injectAuth(r, data)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "playground.html", data); err != nil {
@@ -1187,6 +1346,7 @@ func (u *UI) ChatPage(w http.ResponseWriter, r *http.Request) {
 		"DefaultModel": cfg.Server.DefaultModel,
 	}
 
+	injectAuth(r, data)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "chat.html", data); err != nil {
 		log.Error().Err(err).Msg("template error")
@@ -1812,6 +1972,7 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 		"ModelCacheTTL": cfg.Server.ModelCacheTTL.String(),
 		"RoutingJSON":   template.JS(func() []byte { b, _ := json.Marshal(cfg.Routing); return b }()),
 	}
+	injectAuth(r, data)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "settings.html", data); err != nil {
 		log.Error().Err(err).Msg("template error")

@@ -34,6 +34,21 @@ server:
   # If not set, the web UI is accessible without auth (bind to localhost!).
   admin_key: "your-admin-key-here"
 
+  # Enable username/password authentication for the web UI dashboard.
+  # When enabled, all /ui/* routes require a valid session cookie.
+  # The proxy API (/v1/*) is NOT affected — it continues using API key auth.
+  # Manage users via CLI: llmapiproxy user add <username>
+  # web_auth: false
+
+  # Path to the SQLite database storing web UI users.
+  # Defaults to data/users.db when web_auth is enabled.
+  # users_db_path: "/app/data/users.db"
+
+  # HMAC secret for signing session cookies. When empty (default), a random
+  # secret is generated on startup — sessions are invalidated on restart.
+  # Set this (16+ characters) to persist sessions across restarts.
+  # web_auth_secret: ""
+
   # Path to the SQLite database used to persist request statistics.
   # Defaults to data/stats.db in the current working directory.
   stats_path: "/app/data/stats.db"

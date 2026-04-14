@@ -58,7 +58,7 @@ backends:
 	registry.LoadFromConfig(cfgMgr.Get())
 
 	collector := stats.NewCollector(1000)
-	ui := NewUI(cfgMgr, collector, registry, nil, nil)
+	ui := NewUI(cfgMgr, collector, registry, nil, nil, nil, nil)
 
 	cleanup := func() {
 		os.RemoveAll(tmpDir)
@@ -728,7 +728,7 @@ backends:
 	registry := backend.NewRegistry()
 	registry.LoadFromConfig(cfgMgr.Get())
 	collector := stats.NewCollector(1000)
-	ui := NewUI(cfgMgr, collector, registry, nil, nil)
+	ui := NewUI(cfgMgr, collector, registry, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ui/oauth/status", nil)
 	w := httptest.NewRecorder()
@@ -1063,7 +1063,7 @@ backends:
 
 	collector := stats.NewCollector(1000)
 
-	ui := NewUI(cfgMgr, collector, registry, nil, nil)
+	ui := NewUI(cfgMgr, collector, registry, nil, nil, nil, nil)
 
 	cleanup := func() {
 		os.RemoveAll(tmpDir)
