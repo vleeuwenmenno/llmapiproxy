@@ -14,22 +14,33 @@ server:
   # The host and port fields above take precedence.
   # listen: ":8000"
 
+  # Optional: externally-reachable domain for OAuth callbacks and UI links.
+  # Set this when the proxy runs on a different machine from the user's browser,
+  # e.g. behind a reverse proxy or on a Tailscale tailnet.
+  # Examples:
+  #   "myserver"                → http://myserver:<port>
+  #   "myserver.tail:8000"      → http://myserver.tail:8000
+  #   "https://example.com"     → https://example.com (scheme used verbatim)
+  # When empty, the URL is derived from the host/port/listen fields (defaults to localhost).
+  # domain: ""
+
   # API keys that clients must use to authenticate with this proxy.
   # Clients send: Authorization: Bearer <one-of-these-keys>
   api_keys:
     - "your-proxy-api-key-here"
 
-  # Optional: separate admin key for the web UI config editor.
+  # Admin key for the web UI. Automatically gets converted into a bcrypt hash on startup.
+  # If set, the web UI is protected by this key. Users must enter it to access the UI.
   # If not set, the web UI is accessible without auth (bind to localhost!).
-  # admin_key: "your-admin-key-here"
+  admin_key: "your-admin-key-here"
 
   # Path to the SQLite database used to persist request statistics.
   # Defaults to data/stats.db in the current working directory.
-  # stats_path: "data/stats.db"
+  stats_path: "/app/data/stats.db"
 
   # Path to the SQLite database used for persistent chat sessions.
   # Defaults to data/chat.db in the current working directory.
-  # chat_db_path: "data/chat.db"
+  chat_db_path: "/app/data/chat.db"
 
   # Model used to auto-generate chat session titles.
   # Must match a model ID available through one of your backends.

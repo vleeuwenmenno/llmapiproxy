@@ -84,7 +84,7 @@ func main() {
 	}
 	log.Info().Str("path", cfg.Server.ChatDBPath).Msg("chat database opened")
 
-	appBaseURL := oauth.DeriveLocalServerBaseURL(cfg.Server.Listen)
+	appBaseURL := oauth.BaseURL(cfg.Server.Domain, cfg.Server.Listen)
 
 	ui := web.NewUI(cfgMgr, collector, registry, store, chatStore)
 

@@ -64,3 +64,4 @@ check: ## Run vet + test
 
 clean: ## Remove build artifacts
 	rm -f llmapiproxy
+	

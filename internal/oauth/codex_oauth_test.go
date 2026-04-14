@@ -1045,67 +1045,127 @@ func TestDeriveLocalServerBaseURL_PortOnly(t *testing.T) {
 }
 
 func TestDeriveRedirectURI_PortOnly(t *testing.T) {
-	got := DeriveRedirectURI(":8000", "codex")
+	got := DeriveRedirectURI("", ":8000", "codex")
 	want := "http://localhost:8000/ui/oauth/callback/codex"
 	if got != want {
-		t.Errorf("DeriveRedirectURI(\":8000\", \"codex\") = %q, want %q", got, want)
+		t.Errorf("DeriveRedirectURI(\"\", \":8000\", \"codex\") = %q, want %q", got, want)
 	}
 }
 
 func TestDeriveRedirectURI_PortOnlyDifferentPort(t *testing.T) {
-	got := DeriveRedirectURI(":3000", "mybackend")
+	got := DeriveRedirectURI("", ":3000", "mybackend")
 	want := "http://localhost:3000/ui/oauth/callback/mybackend"
 	if got != want {
-		t.Errorf("DeriveRedirectURI(\":3000\", \"mybackend\") = %q, want %q", got, want)
+		t.Errorf("DeriveRedirectURI(\"\", \":3000\", \"mybackend\") = %q, want %q", got, want)
 	}
 }
 
 func TestDeriveRedirectURI_WildcardAddress(t *testing.T) {
-	got := DeriveRedirectURI("0.0.0.0:8000", "codex")
+	got := DeriveRedirectURI("", "0.0.0.0:8000", "codex")
 	want := "http://localhost:8000/ui/oauth/callback/codex"
 	if got != want {
-		t.Errorf("DeriveRedirectURI(\"0.0.0.0:8000\", \"codex\") = %q, want %q", got, want)
+		t.Errorf("DeriveRedirectURI(\"\", \"0.0.0.0:8000\", \"codex\") = %q, want %q", got, want)
 	}
 }
 
 func TestDeriveRedirectURI_LocalhostExplicit(t *testing.T) {
-	got := DeriveRedirectURI("localhost:9000", "codex")
+	got := DeriveRedirectURI("", "localhost:9000", "codex")
 	want := "http://localhost:9000/ui/oauth/callback/codex"
 	if got != want {
-		t.Errorf("DeriveRedirectURI(\"localhost:9000\", \"codex\") = %q, want %q", got, want)
+		t.Errorf("DeriveRedirectURI(\"\", \"localhost:9000\", \"codex\") = %q, want %q", got, want)
 	}
 }
 
 func TestDeriveRedirectURI_CustomHost(t *testing.T) {
-	got := DeriveRedirectURI("192.168.1.100:8080", "codex")
+	got := DeriveRedirectURI("", "192.168.1.100:8080", "codex")
 	want := "http://192.168.1.100:8080/ui/oauth/callback/codex"
 	if got != want {
-		t.Errorf("DeriveRedirectURI(\"192.168.1.100:8080\", \"codex\") = %q, want %q", got, want)
+		t.Errorf("DeriveRedirectURI(\"\", \"192.168.1.100:8080\", \"codex\") = %q, want %q", got, want)
 	}
 }
 
 func TestDeriveRedirectURI_EmptyListenAddr(t *testing.T) {
-	got := DeriveRedirectURI("", "codex")
+	got := DeriveRedirectURI("", "", "codex")
 	want := "http://localhost:8000/ui/oauth/callback/codex"
 	if got != want {
-		t.Errorf("DeriveRedirectURI(\"\", \"codex\") = %q, want %q", got, want)
+		t.Errorf("DeriveRedirectURI(\"\", \"\", \"codex\") = %q, want %q", got, want)
 	}
 }
 
 func TestDeriveRedirectURI_DifferentBackendName(t *testing.T) {
-	got := DeriveRedirectURI(":8000", "my-codex-backend")
+	got := DeriveRedirectURI("", ":8000", "my-codex-backend")
 	want := "http://localhost:8000/ui/oauth/callback/my-codex-backend"
 	if got != want {
-		t.Errorf("DeriveRedirectURI(\":8000\", \"my-codex-backend\") = %q, want %q", got, want)
+		t.Errorf("DeriveRedirectURI(\"\", \":8000\", \"my-codex-backend\") = %q, want %q", got, want)
 	}
 }
 
 func TestDeriveRedirectURI_IPv6Localhost(t *testing.T) {
 	// IPv6 addresses use brackets in host:port form.
-	got := DeriveRedirectURI("[::1]:8000", "codex")
+	got := DeriveRedirectURI("", "[::1]:8000", "codex")
 	want := "http://[::1]:8000/ui/oauth/callback/codex"
 	if got != want {
-		t.Errorf("DeriveRedirectURI(\"[::1]:8000\", \"codex\") = %q, want %q", got, want)
+		t.Errorf("DeriveRedirectURI(\"\", \"[::1]:8000\", \"codex\") = %q, want %q", got, want)
+	}
+}
+
+// ============================================================================
+// Domain-aware BaseURL Tests
+// ============================================================================
+
+func TestBaseURL_EmptyDomain(t *testing.T) {
+	got := BaseURL("", ":8000")
+	want := "http://localhost:8000"
+	if got != want {
+		t.Errorf("BaseURL(\"\", \":8000\") = %q, want %q", got, want)
+	}
+}
+
+func TestBaseURL_DomainWithScheme(t *testing.T) {
+	got := BaseURL("https://example.com", ":8000")
+	want := "https://example.com"
+	if got != want {
+		t.Errorf("BaseURL(\"https://example.com\", \":8000\") = %q, want %q", got, want)
+	}
+}
+
+func TestBaseURL_DomainWithoutScheme(t *testing.T) {
+	got := BaseURL("myserver.tail", ":8000")
+	want := "http://myserver.tail:8000"
+	if got != want {
+		t.Errorf("BaseURL(\"myserver.tail\", \":8000\") = %q, want %q", got, want)
+	}
+}
+
+func TestBaseURL_DomainWithPort(t *testing.T) {
+	got := BaseURL("myserver:3000", ":8000")
+	want := "http://myserver:3000"
+	if got != want {
+		t.Errorf("BaseURL(\"myserver:3000\", \":8000\") = %q, want %q", got, want)
+	}
+}
+
+func TestBaseURL_HTTPScheme(t *testing.T) {
+	got := BaseURL("http://myserver.local", ":8000")
+	want := "http://myserver.local"
+	if got != want {
+		t.Errorf("BaseURL(\"http://myserver.local\", \":8000\") = %q, want %q", got, want)
+	}
+}
+
+func TestDeriveRedirectURI_WithDomain(t *testing.T) {
+	got := DeriveRedirectURI("myserver.tail", ":8000", "codex")
+	want := "http://myserver.tail:8000/ui/oauth/callback/codex"
+	if got != want {
+		t.Errorf("DeriveRedirectURI(\"myserver.tail\", \":8000\", \"codex\") = %q, want %q", got, want)
+	}
+}
+
+func TestDeriveRedirectURI_DomainWithScheme(t *testing.T) {
+	got := DeriveRedirectURI("https://example.com", ":8000", "codex")
+	want := "https://example.com/ui/oauth/callback/codex"
+	if got != want {
+		t.Errorf("DeriveRedirectURI(\"https://example.com\", \":8000\", \"codex\") = %q, want %q", got, want)
 	}
 }
 

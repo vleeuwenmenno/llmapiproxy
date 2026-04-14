@@ -495,16 +495,61 @@ func maskTokenBody(body []byte) string {
 	return s
 }
 
-// DeriveRedirectURI constructs the OAuth redirect URI from the server's listen
-// address and the backend name. The listen address may be in the form
-// ":8000", "0.0.0.0:8000", "localhost:8000", or any host:port combination.
-// The resulting redirect URI has the form:
+// BaseURL returns the externally-reachable base URL for the proxy server.
+// If domain is set, it is used directly:
 //
-//	http://<host>:<port>/ui/oauth/callback/<backendName>
+//	domain contains a scheme (e.g. "https://example.com") → used verbatim
+//	domain has no scheme (e.g. "myserver.tail") → "http://<domain>:<port>"
+//	domain already has a port (e.g. "myserver:8000") → "http://myserver:8000"
 //
-// For ":port" or "0.0.0.0:port" forms, "localhost" is used as the host since
-// the redirect must point back to the local machine for the OAuth callback to
-// reach the proxy server.
+// If domain is empty, the base URL is derived from the listen address via
+// DeriveLocalServerBaseURL.
+func BaseURL(domain, listenAddr string) string {
+	if domain == "" {
+		return DeriveLocalServerBaseURL(listenAddr)
+	}
+
+	// If the domain already includes a scheme, use it as-is.
+	if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
+		return domain
+	}
+
+	// Domain without scheme: extract the port from the listen address
+	// and build "http://<domain>:<port>", unless the domain already has a port.
+	if strings.Contains(domain, ":") {
+		// Domain already has a port (e.g. "myserver:8000").
+		return "http://" + domain
+	}
+
+	// No port in domain — append the port from the listen address.
+	port := extractPort(listenAddr)
+	return fmt.Sprintf("http://%s:%s", domain, port)
+}
+
+// extractPort extracts the port from a listen address string.
+// Returns "8000" as a fallback.
+func extractPort(listenAddr string) string {
+	if listenAddr == "" {
+		return "8000"
+	}
+	if strings.HasPrefix(listenAddr, ":") {
+		p := listenAddr[1:]
+		if p != "" {
+			return p
+		}
+	}
+	lastColon := strings.LastIndex(listenAddr, ":")
+	if lastColon >= 0 {
+		return listenAddr[lastColon+1:]
+	}
+	return "8000"
+}
+
+// DeriveLocalServerBaseURL derives the base URL from a listen address.
+// The listen address may be in the form ":8000", "0.0.0.0:8000",
+// "localhost:8000", or any host:port combination.
+// The resulting URL has the form "http://<host>:<port>".
+// For ":port" or "0.0.0.0:port" forms, "localhost" is used as the host.
 func DeriveLocalServerBaseURL(listenAddr string) string {
 	host := "localhost"
 	port := "8000"
@@ -537,10 +582,11 @@ func DeriveLocalServerBaseURL(listenAddr string) string {
 	return fmt.Sprintf("http://%s:%s", host, port)
 }
 
-// DeriveRedirectURI constructs the OAuth redirect URI from the server's listen
-// address and the backend name.
-func DeriveRedirectURI(listenAddr, backendName string) string {
-	return fmt.Sprintf("%s/ui/oauth/callback/%s", DeriveLocalServerBaseURL(listenAddr), backendName)
+// DeriveRedirectURI constructs the OAuth redirect URI from the server's domain
+// (or listen address) and the backend name. If domain is non-empty it takes
+// precedence over the listen address for constructing the base URL.
+func DeriveRedirectURI(domain, listenAddr, backendName string) string {
+	return fmt.Sprintf("%s/ui/oauth/callback/%s", BaseURL(domain, listenAddr), backendName)
 }
 
 // SetRedirectURI updates the redirect URI used in the OAuth flow.

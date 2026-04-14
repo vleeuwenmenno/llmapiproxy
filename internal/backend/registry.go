@@ -24,6 +24,7 @@ type Registry struct {
 	backends    map[string]Backend
 	tokenStores map[string]*oauth.TokenStore // preserved across reloads
 	listenAddr  string                       // server listen address for deriving OAuth redirect URIs
+	domain      string                       // externally-reachable domain for OAuth callbacks and links
 	rrTracker   *RoundRobinTracker
 
 	// modelCacheStore persists model lists to disk so they survive restarts.
@@ -48,8 +49,9 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Store the listen address for deriving OAuth redirect URIs.
+	// Store the listen address and domain for deriving OAuth redirect URIs.
 	r.listenAddr = cfg.Server.Listen
+	r.domain = cfg.Server.Domain
 
 	cacheTTL := cfg.Server.ModelCacheTTL
 
@@ -234,10 +236,10 @@ func (r *Registry) createCodexBackend(bc config.BackendConfig, existingTS *oauth
 	usesBuiltinCodexClient = oauthCfg.ClientID == oauth.BuiltinCodexClientID()
 
 	// The bundled Codex client expects the official loopback callback on
-	// localhost:1455. Custom OAuth clients can keep using the proxy-hosted
+	// localhost:1455. Custom OAuth clients keep using the proxy-hosted
 	// callback route under /ui/oauth/callback/<backend>.
 	if !usesBuiltinCodexClient {
-		oauthCfg.RedirectURI = oauth.DeriveRedirectURI(r.listenAddr, bc.Name)
+		oauthCfg.RedirectURI = oauth.DeriveRedirectURI(r.domain, r.listenAddr, bc.Name)
 	}
 
 	oauthHandler := oauth.NewCodexOAuthHandler(ts, oauthCfg)
