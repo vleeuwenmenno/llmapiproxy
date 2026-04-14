@@ -3232,7 +3232,7 @@
         function wizardCopyCode(el) {
             if (!el) return;
             var code = el.textContent.trim();
-            navigator.clipboard.writeText(code).then(function() {
+            copyToClipboard(code).then(function() {
                 var orig = el.textContent;
                 el.textContent = '✓ Copied!';
                 setTimeout(function() { el.textContent = orig; }, 2000);
@@ -3249,12 +3249,48 @@
             showWizardStep(1);
         }
 
-        function copyText(btn, text) {
-            navigator.clipboard.writeText(text).then(() => {
+        // Shared clipboard helper — tries Clipboard API first, falls back to execCommand
+        function copyToClipboard(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                return navigator.clipboard.writeText(text);
+            }
+            // Fallback for non-secure contexts (HTTP on non-localhost)
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+            document.body.appendChild(ta);
+            ta.select();
+            try {
+                document.execCommand('copy');
+                return Promise.resolve();
+            } catch (e) {
+                return Promise.reject(e);
+            } finally {
+                document.body.removeChild(ta);
+            }
+        }
+
+        function copyFeedback(btn, ok) {
+            if (ok) {
                 btn.textContent = 'copied!';
                 btn.classList.add('copied');
                 setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
-            });
+            } else {
+                btn.textContent = 'failed';
+                btn.classList.add('copied');
+                btn.style.color = 'var(--red)';
+                btn.style.borderColor = 'var(--red)';
+                setTimeout(() => {
+                    btn.textContent = 'copy';
+                    btn.classList.remove('copied');
+                    btn.style.color = '';
+                    btn.style.borderColor = '';
+                }, 1500);
+            }
+        }
+
+        function copyText(btn, text) {
+            copyToClipboard(text).then(() => copyFeedback(btn, true)).catch(() => copyFeedback(btn, false));
         }
 
         function toggleModelDisabled(btn, backendName, modelID, currentlyDisabled) {
@@ -3288,12 +3324,8 @@
         }
 
         function copyBlock(btn, id) {
-            const text = document.getElementById(id).textContent;
-            navigator.clipboard.writeText(text).then(() => {
-                btn.textContent = 'copied!';
-                btn.classList.add('copied');
-                setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
-            });
+            var text = document.getElementById(id).textContent;
+            copyToClipboard(text).then(() => copyFeedback(btn, true)).catch(() => copyFeedback(btn, false));
         }
 
         (function() {
@@ -4761,11 +4793,7 @@
         function copyCurlBlock(btn, id) {
             var el   = document.getElementById(id);
             var text = el.dataset.copyText || el.textContent;
-            navigator.clipboard.writeText(text).then(function() {
-                btn.textContent = 'copied!';
-                btn.classList.add('copied');
-                setTimeout(function() { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
-            });
+            copyToClipboard(text).then(() => copyFeedback(btn, true)).catch(() => copyFeedback(btn, false));
         }
 
         // Initialise curl examples with default values
