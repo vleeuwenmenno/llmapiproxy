@@ -38,16 +38,16 @@ If you have subscriptions at several LLM providers, you end up juggling:
 
 Any OpenAI-compatible HTTP API works. The example config includes:
 
-| Provider                            | Backend type | Auth method                  | Notes                                                |
-| ----------------------------------- | ------------ | ---------------------------- | ---------------------------------------------------- |
-| [Z.ai](https://z.ai)                | `openai`     | API key                      | GLM models; separate general & coding plan endpoints |
-| [OpenRouter](https://openrouter.ai) | `openai`     | API key                      | 200+ models from many providers                      |
-| [OpenCode Zen](https://opencode.ai) | `openai`     | API key                      | Curated coding models, pay-as-you-go                 |
-| [OpenCode Go](https://opencode.ai)  | `openai`     | API key                      | Subscription tier for coding models                  |
-| [GitHub Copilot](https://github.com/features/copilot) | `copilot` | GitHub Device Code Flow | Authenticate via the web UI — no local tools needed |
-| [OpenAI Codex](https://openai.com/codex/) | `codex` | OAuth PKCE flow       | Web-based login flow managed through the settings UI |
-| Any Anthropic-compatible API        | `anthropic`  | API key                      | Uses upstream `/v1/messages` and `/v1/models`        |
-| Any OpenAI-compatible API           | `openai`     | API key                      | Self-hosted, Azure OpenAI, etc.                      |
+| Provider                                              | Backend type | Auth method             | Notes                                                |
+| ----------------------------------------------------- | ------------ | ----------------------- | ---------------------------------------------------- |
+| [Z.ai](https://z.ai)                                  | `openai`     | API key                 | GLM models; separate general & coding plan endpoints |
+| [OpenRouter](https://openrouter.ai)                   | `openai`     | API key                 | 200+ models from many providers                      |
+| [OpenCode Zen](https://opencode.ai)                   | `openai`     | API key                 | Curated coding models, pay-as-you-go                 |
+| [OpenCode Go](https://opencode.ai)                    | `openai`     | API key                 | Subscription tier for coding models                  |
+| [GitHub Copilot](https://github.com/features/copilot) | `copilot`    | GitHub Device Code Flow | Authenticate via the web UI — no local tools needed  |
+| [OpenAI Codex](https://openai.com/codex/)             | `codex`      | OAuth PKCE flow         | Web-based login flow managed through the settings UI |
+| Any Anthropic-compatible API                          | `anthropic`  | API key                 | Uses upstream `/v1/messages` and `/v1/models`        |
+| Any OpenAI-compatible API                             | `openai`     | API key                 | Self-hosted, Azure OpenAI, etc.                      |
 
 ---
 
@@ -198,9 +198,11 @@ backends:
 ```
 
 **Prerequisites:**
+
 - A GitHub account with Copilot access (Individual, Business, or Enterprise)
 
 **To authenticate:**
+
 1. Navigate to **Settings** in the web dashboard (`/ui/settings`)
 2. Find the Copilot backend in the OAuth section
 3. Click **Connect** to start the Device Code Flow
@@ -233,15 +235,16 @@ backends:
 
 **OAuth config fields:**
 
-| Field        | Description                                         |
-| ------------ | --------------------------------------------------- |
-| `client_id`  | Optional OAuth client identifier override           |
-| `scopes`     | List of OAuth scopes to request                     |
-| `auth_url`   | Authorization endpoint URL                          |
-| `token_url`  | Token exchange endpoint URL                         |
-| `token_path` | *(optional)* Directory to store tokens (default: `data/tokens/`) |
+| Field        | Description                                                      |
+| ------------ | ---------------------------------------------------------------- |
+| `client_id`  | Optional OAuth client identifier override                        |
+| `scopes`     | List of OAuth scopes to request                                  |
+| `auth_url`   | Authorization endpoint URL                                       |
+| `token_url`  | Token exchange endpoint URL                                      |
+| `token_path` | _(optional)_ Directory to store tokens (default: `data/tokens/`) |
 
 **To authenticate:**
+
 1. Navigate to **Settings** in the web dashboard (`/ui/settings`)
 2. Find the Codex backend in the OAuth section
 3. Click **Connect** to start the OAuth login flow
@@ -255,10 +258,10 @@ Tokens are persisted to disk and refreshed automatically. You can disconnect a b
 
 Navigate to [http://localhost:8080/ui/](http://localhost:8080/ui/) to access the dashboard.
 
-| Page      | Path           | Description                                                           |
-| --------- | -------------- | --------------------------------------------------------------------- |
-| Dashboard | `/ui/`         | Live request feed, token totals, per-backend breakdown, latency stats |
-| Models    | `/ui/models`   | Browse models, enable/disable backends, quick-connect setup guides    |
+| Page      | Path           | Description                                                                    |
+| --------- | -------------- | ------------------------------------------------------------------------------ |
+| Dashboard | `/ui/`         | Live request feed, token totals, per-backend breakdown, latency stats          |
+| Models    | `/ui/models`   | Browse models, enable/disable backends, quick-connect setup guides             |
 | Settings  | `/ui/settings` | API key management, OAuth status & login, raw config editor, stats, appearance |
 
 Stats persist to SQLite across server restarts. The dashboard auto-refreshes every 10 seconds.
@@ -317,21 +320,21 @@ backends:
 
 ## API Endpoints
 
-| Endpoint                | Method | Description                                       |
-| ----------------------- | ------ | ------------------------------------------------- |
-| `/v1/chat/completions`  | POST   | OpenAI-compatible chat completions (all backends)  |
-| `/v1/responses`         | POST   | Native Responses API passthrough (Codex backends)  |
-| `/v1/models`            | GET    | List available models across all backends           |
-| `/health`               | GET    | Health check with OAuth backend status              |
+| Endpoint               | Method | Description                                       |
+| ---------------------- | ------ | ------------------------------------------------- |
+| `/v1/chat/completions` | POST   | OpenAI-compatible chat completions (all backends) |
+| `/v1/responses`        | POST   | Native Responses API passthrough (Codex backends) |
+| `/v1/models`           | GET    | List available models across all backends         |
+| `/health`              | GET    | Health check with OAuth backend status            |
 
 ### OAuth Management Endpoints
 
-| Endpoint                       | Method | Description                               |
-| ------------------------------ | ------ | ----------------------------------------- |
-| `/ui/oauth/status`             | GET    | OAuth status for all OAuth backends       |
-| `/ui/oauth/login/{backend}`    | GET    | Initiate OAuth login for a backend        |
-| `/ui/oauth/callback/{backend}` | GET    | OAuth callback handler                    |
-| `/ui/oauth/disconnect/{backend}` | POST | Clear stored tokens for a backend         |
+| Endpoint                         | Method | Description                         |
+| -------------------------------- | ------ | ----------------------------------- |
+| `/ui/oauth/status`               | GET    | OAuth status for all OAuth backends |
+| `/ui/oauth/login/{backend}`      | GET    | Initiate OAuth login for a backend  |
+| `/ui/oauth/callback/{backend}`   | GET    | OAuth callback handler              |
+| `/ui/oauth/disconnect/{backend}` | POST   | Clear stored tokens for a backend   |
 
 ---
 
