@@ -80,13 +80,13 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 	r.tokenStores = newTokenStores
 
 	// Warm model caches in the background so SupportsModel works immediately.
-	go r.warmModelCaches()
+	go r.warmModelCaches(cacheTTL)
 }
 
 // warmModelCaches calls ListModels on every registered backend to populate
 // their model caches. This runs in the background at startup so that
 // SupportsModel returns accurate results from the first request.
-func (r *Registry) warmModelCaches() {
+func (r *Registry) warmModelCaches(cacheTTL time.Duration) {
 	r.mu.RLock()
 	backends := make(map[string]Backend, len(r.backends))
 	for k, v := range r.backends {
@@ -105,14 +105,13 @@ func (r *Registry) warmModelCaches() {
 			defer cancel()
 			models, err := b.ListModels(ctx)
 			if err != nil {
-				log.Warn().Err(err).Str("backend", name).Msg("model cache warming failed")
+				log.Warn().Err(err).Str("backend", name).Str("cache_ttl", cacheTTL.String()).Msg("model cache warming failed")
 				return
 			}
-			log.Info().Str("backend", name).Int("models", len(models)).Msg("model cache warmed")
+			log.Info().Str("backend", name).Int("models", len(models)).Str("cache_ttl", cacheTTL.String()).Msg("model cache warmed")
 		}(name, b)
 	}
 	wg.Wait()
-	log.Info().Msg("model cache warming complete")
 }
 
 // createBackend instantiates the appropriate backend based on the config type.
