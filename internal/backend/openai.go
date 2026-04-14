@@ -38,6 +38,9 @@ type OpenAIBackend struct {
 	cacheMu       sync.RWMutex
 	cachedModels  []Model
 	cacheExpiry   time.Time
+
+	// cacheStore persists model lists to disk. May be nil if disk caching is disabled.
+	cacheStore *ModelCacheStore
 }
 
 func NewOpenAI(cfg config.BackendConfig, cacheTTL time.Duration) *OpenAIBackend {
@@ -59,6 +62,12 @@ func NewOpenAI(cfg config.BackendConfig, cacheTTL time.Duration) *OpenAIBackend 
 }
 
 func (b *OpenAIBackend) Name() string { return b.name }
+
+// SetModelCacheStore sets the disk cache store for persisting model lists.
+// Must be called before the first ListModels call.
+func (b *OpenAIBackend) SetModelCacheStore(store *ModelCacheStore) {
+	b.cacheStore = store
+}
 
 func (b *OpenAIBackend) SupportsModel(modelID string) bool {
 	if b.disabledModels[modelID] {
@@ -131,6 +140,19 @@ func (b *OpenAIBackend) getCachedOrFetchModels() []Model {
 		return models
 	}
 	b.cacheMu.RUnlock()
+
+	// Try loading from disk cache before hitting upstream.
+	if b.cacheStore != nil {
+		if models, expiry, ok := b.cacheStore.Load(b.name); ok && len(models) > 0 {
+			b.cacheMu.Lock()
+			if b.cachedModels == nil {
+				b.cachedModels = models
+				b.cacheExpiry = expiry
+			}
+			b.cacheMu.Unlock()
+			return models
+		}
+	}
 
 	// Cache miss — fetch from upstream.
 	log.Debug().Str("backend", b.name).Msg("model cache miss, fetching from upstream")
@@ -280,14 +302,32 @@ func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
 			return b.markDisabled(cached), nil
 		}
 		b.cacheMu.RUnlock()
+
+		// In-memory cache expired — try disk cache before hitting upstream.
+		if b.cacheStore != nil {
+			if models, expiry, ok := b.cacheStore.Load(b.name); ok && len(models) > 0 && time.Now().Before(expiry) {
+				b.cacheMu.Lock()
+				b.cachedModels = models
+				b.cacheExpiry = expiry
+				b.cacheMu.Unlock()
+				log.Debug().Str("backend", b.name).Int("models", len(models)).Msg("model cache restored from disk")
+				return b.markDisabled(models), nil
+			}
+		}
 	}
 
 	// Slow path: fetch from upstream and build model list.
 	log.Debug().Str("backend", b.name).Msg("fetching models from upstream")
 	models, err := b.buildModelList(ctx)
 	if err != nil {
-		// Stale-while-error: return stale cache if available.
+		// Stale-while-error: try disk cache, then in-memory stale cache.
 		if b.modelCacheTTL > 0 {
+			if b.cacheStore != nil {
+				if diskModels, _, ok := b.cacheStore.Load(b.name); ok && len(diskModels) > 0 {
+					log.Warn().Err(err).Str("backend", b.name).Int("models", len(diskModels)).Msg("upstream fetch failed, returning disk cache")
+					return b.markDisabled(diskModels), nil
+				}
+			}
 			b.cacheMu.RLock()
 			if b.cachedModels != nil {
 				cached := b.cachedModels
@@ -303,10 +343,15 @@ func (b *OpenAIBackend) ListModels(ctx context.Context) ([]Model, error) {
 
 	// Store in cache if caching is enabled.
 	if b.modelCacheTTL > 0 {
+		expiry := time.Now().Add(b.modelCacheTTL)
 		b.cacheMu.Lock()
 		b.cachedModels = models
-		b.cacheExpiry = time.Now().Add(b.modelCacheTTL)
+		b.cacheExpiry = expiry
 		b.cacheMu.Unlock()
+		// Persist to disk (best-effort).
+		if b.cacheStore != nil {
+			b.cacheStore.Save(b.name, models, expiry)
+		}
 	}
 
 	return b.markDisabled(models), nil

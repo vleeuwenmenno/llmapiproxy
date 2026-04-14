@@ -80,7 +80,7 @@ func newTestCopilotBackend(t *testing.T) (*CopilotBackend, *httptest.Server) {
 		BaseURL: upstream.URL,
 	}
 
-	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts, nil)
 
 	return b, upstream
 }
@@ -143,7 +143,7 @@ func newTestCopilotBackendWithExchange(t *testing.T) (*CopilotBackend, *httptest
 		BaseURL: upstream.URL,
 	}
 
-	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts, nil)
 
 	return b, upstream, githubAPI
 }
@@ -345,7 +345,7 @@ func TestCopilotBackend_ListModels(t *testing.T) {
 
 	ts, _ := oauth.NewTokenStore(filepath.Join(dir, "copilot-token.json"))
 	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
-	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts, nil)
 
 	models, err := b.ListModels(context.Background())
 	if err != nil {
@@ -492,7 +492,7 @@ func TestCopilotBackend_NoToken(t *testing.T) {
 
 	ts, _ := oauth.NewTokenStore(filepath.Join(dir, "copilot-token.json"))
 	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
-	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts, nil)
 
 	req := &ChatCompletionRequest{
 		Model:    "gpt-4o",
@@ -725,7 +725,7 @@ func TestCopilotBackend_BusinessURL(t *testing.T) {
 
 	ts, _ := oauth.NewTokenStore(filepath.Join(dir, "copilot-token.json"))
 	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
-	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts, nil)
 
 	if b.Name() != "copilot-biz" {
 		t.Errorf("Name() = %q, want %q", b.Name(), "copilot-biz")
@@ -747,7 +747,7 @@ func TestCopilotBackend_EnterpriseURL(t *testing.T) {
 
 	ts, _ := oauth.NewTokenStore(filepath.Join(dir, "copilot-token.json"))
 	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
-	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts, nil)
 
 	if b.Name() != "copilot-ent" {
 		t.Errorf("Name() = %q, want %q", b.Name(), "copilot-ent")
@@ -786,7 +786,7 @@ func TestCopilotBackend_SupportsModel(t *testing.T) {
 
 			ts, _ := oauth.NewTokenStore(filepath.Join(dir, "copilot-token.json"))
 			deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
-			b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
+			b := NewCopilotBackend(cfg, deviceCodeHandler, ts, nil)
 
 			if got := b.SupportsModel(tt.check); got != tt.want {
 				t.Errorf("SupportsModel(%q) = %v, want %v", tt.check, got, tt.want)
@@ -868,7 +868,7 @@ func TestCopilotBackend_PartialPrefixNoMatch(t *testing.T) {
 		Type:    "copilot",
 		BaseURL: "https://api.githubcopilot.com",
 		Models: []config.ModelConfig{{ID: "gpt-4o"}, {ID: "o3"}},
-	}, deviceCodeHandler, ts)
+	}, deviceCodeHandler, ts, nil)
 
 	r.backends["copilot"] = backend
 
@@ -997,7 +997,7 @@ func TestCopilotBackend_Name(t *testing.T) {
 
 	ts, _ := oauth.NewTokenStore(filepath.Join(dir, "copilot-token.json"))
 	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
-	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts, nil)
 
 	if b.Name() != "my-copilot" {
 		t.Errorf("Name() = %q, want %q", b.Name(), "my-copilot")
@@ -1242,7 +1242,7 @@ func TestCopilotBackend_RefreshOAuthStatus_Success(t *testing.T) {
 		BaseURL: "https://api.githubcopilot.com",
 		Models: []config.ModelConfig{{ID: "gpt-4o"}},
 	}
-	b := NewCopilotBackend(cfg, deviceCodeHandler, ts)
+	b := NewCopilotBackend(cfg, deviceCodeHandler, ts, nil)
 
 	// RefreshOAuthStatus should succeed by re-exchanging the GitHub token
 	err = b.RefreshOAuthStatus(context.Background())
@@ -1642,6 +1642,6 @@ func newTestCopilotBackendAt(t *testing.T, baseURL string) (*CopilotBackend, fun
 		Name:    "copilot",
 		Type:    "copilot",
 		BaseURL: baseURL,
-	}, oauth.NewDeviceCodeHandler(ts), ts)
+	}, oauth.NewDeviceCodeHandler(ts), ts, nil)
 	return b, cleanup
 }

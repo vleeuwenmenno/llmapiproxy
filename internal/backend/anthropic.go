@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/menno/llmapiproxy/internal/config"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -40,6 +41,9 @@ type AnthropicBackend struct {
 	cacheMu       sync.RWMutex
 	cachedModels  []Model
 	cacheExpiry   time.Time
+
+	// cacheStore persists model lists to disk. May be nil if disk caching is disabled.
+	cacheStore *ModelCacheStore
 }
 
 func NewAnthropic(cfg config.BackendConfig, cacheTTL time.Duration) *AnthropicBackend {
@@ -60,6 +64,11 @@ func NewAnthropic(cfg config.BackendConfig, cacheTTL time.Duration) *AnthropicBa
 }
 
 func (b *AnthropicBackend) Name() string { return b.name }
+
+// SetModelCacheStore sets the disk cache store for persisting model lists.
+func (b *AnthropicBackend) SetModelCacheStore(store *ModelCacheStore) {
+	b.cacheStore = store
+}
 
 func (b *AnthropicBackend) SupportsModel(modelID string) bool {
 	if b.disabledModels[modelID] {
@@ -895,6 +904,19 @@ func (b *AnthropicBackend) getCachedOrFetchModels() []Model {
 	}
 	b.cacheMu.RUnlock()
 
+	// Try loading from disk cache before hitting upstream.
+	if b.cacheStore != nil {
+		if models, expiry, ok := b.cacheStore.Load(b.name); ok && len(models) > 0 {
+			b.cacheMu.Lock()
+			if b.cachedModels == nil {
+				b.cachedModels = models
+				b.cacheExpiry = expiry
+			}
+			b.cacheMu.Unlock()
+			return models
+		}
+	}
+
 	models, err := b.buildModelList(context.Background())
 	if err != nil {
 		return nil
@@ -924,11 +946,30 @@ func (b *AnthropicBackend) ListModels(ctx context.Context) ([]Model, error) {
 			return b.markDisabled(cached), nil
 		}
 		b.cacheMu.RUnlock()
+
+		// In-memory cache expired — try disk cache before hitting upstream.
+		if b.cacheStore != nil {
+			if models, expiry, ok := b.cacheStore.Load(b.name); ok && len(models) > 0 && time.Now().Before(expiry) {
+				b.cacheMu.Lock()
+				b.cachedModels = models
+				b.cacheExpiry = expiry
+				b.cacheMu.Unlock()
+				log.Debug().Str("backend", b.name).Int("models", len(models)).Msg("model cache restored from disk")
+				return b.markDisabled(models), nil
+			}
+		}
 	}
 
 	models, err := b.buildModelList(ctx)
 	if err != nil {
 		if b.modelCacheTTL > 0 {
+			// Stale-while-error: try disk cache, then in-memory stale cache.
+			if b.cacheStore != nil {
+				if diskModels, _, ok := b.cacheStore.Load(b.name); ok && len(diskModels) > 0 {
+					log.Warn().Err(err).Str("backend", b.name).Int("models", len(diskModels)).Msg("upstream fetch failed, returning disk cache")
+					return b.markDisabled(diskModels), nil
+				}
+			}
 			b.cacheMu.RLock()
 			if b.cachedModels != nil {
 				cached := b.cachedModels
@@ -941,10 +982,14 @@ func (b *AnthropicBackend) ListModels(ctx context.Context) ([]Model, error) {
 	}
 
 	if b.modelCacheTTL > 0 {
+		expiry := time.Now().Add(b.modelCacheTTL)
 		b.cacheMu.Lock()
 		b.cachedModels = models
-		b.cacheExpiry = time.Now().Add(b.modelCacheTTL)
+		b.cacheExpiry = expiry
 		b.cacheMu.Unlock()
+		if b.cacheStore != nil {
+			b.cacheStore.Save(b.name, models, expiry)
+		}
 	}
 	return b.markDisabled(models), nil
 }

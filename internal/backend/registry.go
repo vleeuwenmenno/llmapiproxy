@@ -25,6 +25,10 @@ type Registry struct {
 	tokenStores map[string]*oauth.TokenStore // preserved across reloads
 	listenAddr  string                       // server listen address for deriving OAuth redirect URIs
 	rrTracker   *RoundRobinTracker
+
+	// modelCacheStore persists model lists to disk so they survive restarts.
+	// Preserved across config reloads.
+	modelCacheStore *ModelCacheStore
 }
 
 func NewRegistry() *Registry {
@@ -48,6 +52,18 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 	r.listenAddr = cfg.Server.Listen
 
 	cacheTTL := cfg.Server.ModelCacheTTL
+
+	// Create or reuse the disk model cache store.
+	if r.modelCacheStore == nil {
+		cacheDir := filepath.Join("data", "caches")
+		store, err := NewModelCacheStore(cacheDir)
+		if err != nil {
+			log.Warn().Err(err).Msg("failed to create model cache store; disk caching disabled")
+		} else {
+			r.modelCacheStore = store
+			log.Info().Str("path", cacheDir).Msg("model cache store initialized")
+		}
+	}
 
 	newBackends := make(map[string]Backend, len(cfg.Backends))
 	newTokenStores := make(map[string]*oauth.TokenStore)
@@ -132,9 +148,13 @@ func (r *Registry) createBackend(bc config.BackendConfig, existingTS *oauth.Toke
 		}
 		return b, ts, nil
 	case "anthropic":
-		return NewAnthropic(bc, cacheTTL), nil, nil
+		b := NewAnthropic(bc, cacheTTL)
+		b.SetModelCacheStore(r.modelCacheStore)
+		return b, nil, nil
 	case "openai", "":
-		return NewOpenAI(bc, cacheTTL), nil, nil
+		b := NewOpenAI(bc, cacheTTL)
+		b.SetModelCacheStore(r.modelCacheStore)
+		return b, nil, nil
 	default:
 		return nil, nil, fmt.Errorf("unknown backend type %q", bc.Type)
 	}
@@ -175,7 +195,7 @@ func (r *Registry) createCopilotBackend(bc config.BackendConfig, existingTS *oau
 	}
 	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts, deviceCodeOpts...)
 
-	return NewCopilotBackend(bc, deviceCodeHandler, ts), ts, nil
+	return NewCopilotBackend(bc, deviceCodeHandler, ts, r.modelCacheStore), ts, nil
 }
 
 // createCodexBackend creates a CodexBackend, reusing the existing token store
@@ -225,7 +245,7 @@ func (r *Registry) createCodexBackend(bc config.BackendConfig, existingTS *oauth
 	// Create a device code handler for headless/SSH login support.
 	deviceCodeHandler := oauth.NewCodexDeviceCodeHandler(ts, oauthCfg)
 
-	return NewCodexBackend(bc, oauthHandler, ts, deviceCodeHandler, cacheTTL), ts, nil
+	return NewCodexBackend(bc, oauthHandler, ts, deviceCodeHandler, cacheTTL, r.modelCacheStore), ts, nil
 }
 
 // HandleCodexLoopbackCallback routes a loopback OAuth callback to the Codex

@@ -722,6 +722,10 @@ function renderRankTab() {
     html += '<th onclick="sortRank(\'' + tab + '\',\'tok\')">Tokens' + arrow('tok') + '</th>';
     html += '<th onclick="sortRank(\'' + tab + '\',\'err\')">Errors' + arrow('err') + '</th>';
     html += '<th onclick="sortRank(\'' + tab + '\',\'err_pct\')">Error %' + arrow('err_pct') + '</th>';
+    // Only show attempt fail column for backends tab
+    if (tab === 'backends') {
+        html += '<th onclick="sortRank(\'' + tab + '\',\'attempt_failure_pct\')">Attempt Fail %' + arrow('attempt_failure_pct') + '</th>';
+    }
     html += '<th onclick="sortRank(\'' + tab + '\',\'lat\')">Avg Lat' + arrow('lat') + '</th>';
     html += '<th onclick="sortRank(\'' + tab + '\',\'p50\')">P50' + arrow('p50') + '</th>';
     html += '<th onclick="sortRank(\'' + tab + '\',\'p90\')">P90' + arrow('p90') + '</th>';
@@ -729,7 +733,8 @@ function renderRankTab() {
     html += '</tr></thead><tbody>';
 
     if (rows.length === 0) {
-        html += '<tr><td colspan="9" class="empty">No data</td></tr>';
+        var colSpan = tab === 'backends' ? 10 : 9;
+        html += '<tr><td colspan="' + colSpan + '" class="empty">No data</td></tr>';
     } else {
         rows.forEach(function(r) {
             var errBar = r.err_pct > 0 ? '<span class="err-bar" style="width:' + Math.min(r.err_pct, 100) * 0.4 + 'px"></span>' : '';
@@ -739,6 +744,12 @@ function renderRankTab() {
             html += '<td>' + fmtNum(r.tok) + '</td>';
             html += '<td>' + (r.err > 0 ? '<span class="red">' + r.err + '</span>' : '0') + '</td>';
             html += '<td>' + r.err_pct.toFixed(1) + '%' + errBar + '</td>';
+            if (tab === 'backends') {
+                var afPct = r.attempt_failure_pct || 0;
+                var afColor = afPct === 0 ? 'var(--text-dim)' : afPct < 5 ? '#eab308' : 'var(--red)';
+                var afText = r.attempt_count > 0 ? afPct.toFixed(1) + '% <span style="color:var(--text-dim);font-size:0.8em">(' + (r.attempt_failures || 0) + '/' + r.attempt_count + ')</span>' : '<span style="color:var(--text-dim)">—</span>';
+                html += '<td style="color:' + afColor + '">' + afText + '</td>';
+            }
             html += '<td class="' + latClass(r.lat) + '">' + fmtDur(r.lat) + '</td>';
             html += '<td class="' + latClass(r.p50) + '">' + fmtDur(r.p50) + '</td>';
             html += '<td class="' + latClass(r.p90) + '">' + fmtDur(r.p90) + '</td>';
@@ -777,15 +788,19 @@ function renderRouting(models) {
         html += '<span class="strategy-badge ' + strategyClass(m.strategy) + '">' + strategyLabel(m.strategy) + '</span>';
         html += '<span class="model-meta">' + fmtNum(m.total_requests) + ' req · ' + fmtDur(m.avg_lat_ms) + ' avg · ' + (m.fallback_rate || 0).toFixed(1) + '% fallback</span>';
         html += '</div>';
-        html += '<table class="backend-table"><thead><tr><th>Backend</th><th>Avg Latency</th><th>Share</th><th>Error %</th><th>Fallbacks</th><th>Requests</th></tr></thead><tbody>';
+        html += '<table class="backend-table"><thead><tr><th>Backend</th><th>Avg Latency</th><th>Share</th><th>Error %</th><th>Attempt Fail %</th><th>Fallbacks</th><th>Requests</th></tr></thead><tbody>';
         (m.backends || []).forEach(function(b) {
             var errPct = b.requests > 0 ? (b.errors / b.requests * 100) : 0;
             var fbPct = b.requests > 0 ? (b.fallbacks / b.requests * 100) : 0;
+            var attemptFailPct = b.attempt_failure_pct || 0;
+            var attemptFailColor = attemptFailPct === 0 ? 'var(--text-dim)' : attemptFailPct < 5 ? '#eab308' : 'var(--red)';
+            var attemptFailText = b.attempt_count > 0 ? (attemptFailPct.toFixed(1) + '% <span style="color:var(--text-dim);font-size:0.8em">(' + b.attempt_failures + '/' + b.attempt_count + ')</span>') : '<span style="color:var(--text-dim)">—</span>';
             html += '<tr>';
             html += '<td><span class="backend-name" onclick="showBackendDrilldown(\'' + esc(b.name) + '\')">' + esc(b.name) + '</span></td>';
             html += '<td class="' + latClass(b.avg_lat_ms) + '">' + fmtDur(b.avg_lat_ms) + '</td>';
             html += '<td><span class="bar-track" style="width:80px"><span class="bar-fill" style="width:' + (b.win_pct || 0) + '%"></span></span> ' + (b.win_pct || 0).toFixed(0) + '%</td>';
             html += '<td>' + (errPct > 0 ? '<span class="red">' + errPct.toFixed(1) + '%</span>' : '<span style="color:var(--text-dim)">0%</span>') + '</td>';
+            html += '<td style="color:' + attemptFailColor + '">' + attemptFailText + '</td>';
             html += '<td>' + b.fallbacks + (b.requests > 0 ? ' (' + fbPct.toFixed(0) + '%)' : '') + '</td>';
             html += '<td>' + fmtNum(b.requests) + '</td>';
             html += '</tr>';
@@ -802,7 +817,7 @@ function showBackendDrilldown(name) {
     modal.classList.add('open');
     content.innerHTML = '<p style="color:var(--text-dim)">Loading fallback data for <strong>' + esc(name) + '</strong>…</p>';
     var w = state.window === 'custom' ? '24h' : state.window;
-    fetch('/ui/routing/backend-fallbacks?name=' + encodeURIComponent(name) + '&window=' + w)
+    fetch('/ui/routing/backend-fallbacks?name=' + encodeURIComponent(name) + '&window=' + w + '&attempts=1')
         .then(function(r) { return r.json(); })
         .then(function(d) { renderDrilldown(d.items || [], name); })
         .catch(function() { content.innerHTML = '<p class="red">Failed to load data</p>'; });
@@ -811,11 +826,36 @@ function showBackendDrilldown(name) {
 function renderDrilldown(items, name) {
     var c = document.getElementById('drilldownContent');
     if (items.length === 0) { c.innerHTML = '<p style="color:var(--text-dim)">No fallback records for <strong>' + esc(name) + '</strong></p>'; return; }
-    var html = '<h3 style="margin-bottom:1rem;font-size:0.95rem">Fallback log for <span style="color:var(--accent)">' + esc(name) + '</span></h3>';
-    html += '<table class="backend-table"><thead><tr><th>Time</th><th>Model</th><th>Error</th><th>Latency</th><th>Won By</th></tr></thead><tbody>';
+    // Summary stats
+    var totalFails = 0;
+    var totalLat = 0;
+    items.forEach(function(r) { totalLat += (r.latency_ms || 0); });
+    var avgLat = items.length > 0 ? Math.round(totalLat / items.length) : 0;
+    var summaryHtml = '<div style="display:flex;gap:1.5rem;margin-bottom:1rem;flex-wrap:wrap">';
+    summaryHtml += '<div style="font-size:0.85rem"><span style="color:var(--text-dim)">Fallback records:</span> <strong>' + items.length + '</strong></div>';
+    summaryHtml += '<div style="font-size:0.85rem"><span style="color:var(--text-dim)">Avg latency:</span> <strong>' + fmtDur(avgLat) + '</strong></div>';
+    summaryHtml += '</div>';
+
+    var html = '<h3 style="margin-bottom:0.5rem;font-size:0.95rem">Fallback log for <span style="color:var(--accent)">' + esc(name) + '</span></h3>';
+    html += summaryHtml;
+    html += '<table class="backend-table"><thead><tr><th>Time</th><th>Model</th><th>Attempt Error</th><th>Attempt Status</th><th>Latency</th><th>Won By</th></tr></thead><tbody>';
     items.forEach(function(r) {
-        var errText = r.error ? (r.error.length > 60 ? r.error.substring(0, 60) + '…' : r.error) : '—';
-        html += '<tr><td>' + fmtTime(r.timestamp) + '</td><td>' + esc(r.model) + '</td><td title="' + esc(r.error) + '" style="color:var(--red)">' + esc(errText) + '</td><td class="' + latClass(r.latency_ms) + '">' + fmtDur(r.latency_ms) + '</td><td style="color:var(--green)">' + esc(r.backend) + '</td></tr>';
+        // Extract this backend's attempt error from attempts array
+        var attemptError = '—';
+        var attemptStatus = '—';
+        if (r.attempts && r.attempts.length > 0) {
+            for (var i = 0; i < r.attempts.length; i++) {
+                if (r.attempts[i].backend === name && r.attempts[i].error) {
+                    attemptError = r.attempts[i].error.length > 60 ? r.attempts[i].error.substring(0, 60) + '…' : r.attempts[i].error;
+                    attemptStatus = r.attempts[i].status_code || '—';
+                    break;
+                }
+            }
+        } else if (r.error) {
+            attemptError = r.error.length > 60 ? r.error.substring(0, 60) + '…' : r.error;
+        }
+        var errDisplay = attemptError !== '—' ? '<span style="color:var(--red)" title="' + esc(attemptError) + '">' + esc(attemptError) + '</span>' : '<span style="color:var(--text-dim)">—</span>';
+        html += '<tr><td>' + fmtTime(r.timestamp) + '</td><td>' + esc(r.model) + '</td><td>' + errDisplay + '</td><td>' + attemptStatus + '</td><td class="' + latClass(r.latency_ms) + '">' + fmtDur(r.latency_ms) + '</td><td style="color:var(--green)">' + esc(r.backend) + '</td></tr>';
     });
     html += '</tbody></table>';
     c.innerHTML = html;

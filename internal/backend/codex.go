@@ -57,13 +57,16 @@ type CodexBackend struct {
 	cacheMu       sync.RWMutex
 	cachedModels  []Model
 	cacheExpiry   time.Time
+
+	// cacheStore persists model lists to disk. May be nil if disk caching is disabled.
+	cacheStore *ModelCacheStore
 }
 
 // NewCodexBackend creates a new CodexBackend from the given configuration.
 // The deviceCodeHandler is optional and enables device code flow as an alternative
 // login method for headless/SSH environments.
 // cacheTTL controls how long the upstream model list is cached; 0 means no caching.
-func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHandler, tokenStore *oauth.TokenStore, deviceCodeHandler *oauth.CodexDeviceCodeHandler, cacheTTL time.Duration) *CodexBackend {
+func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHandler, tokenStore *oauth.TokenStore, deviceCodeHandler *oauth.CodexDeviceCodeHandler, cacheTTL time.Duration, cacheStore *ModelCacheStore) *CodexBackend {
 	baseURL := strings.TrimRight(cfg.BaseURL, "/")
 	if baseURL == "" {
 		baseURL = codexDefaultBaseURL
@@ -85,6 +88,7 @@ func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHan
 		cfg:               cfg,
 		modelCacheTTL:     cacheTTL,
 		disabledModels:    dm,
+		cacheStore:        cacheStore,
 	}
 }
 
@@ -958,14 +962,32 @@ func (b *CodexBackend) ListModels(ctx context.Context) ([]Model, error) {
 			return b.markDisabled(cached), nil
 		}
 		b.cacheMu.RUnlock()
+
+		// In-memory cache expired — try disk cache before hitting upstream.
+		if b.cacheStore != nil {
+			if models, expiry, ok := b.cacheStore.Load(b.name); ok && len(models) > 0 && time.Now().Before(expiry) {
+				b.cacheMu.Lock()
+				b.cachedModels = models
+				b.cacheExpiry = expiry
+				b.cacheMu.Unlock()
+				log.Debug().Str("backend", b.name).Int("models", len(models)).Msg("model cache restored from disk")
+				return b.markDisabled(models), nil
+			}
+		}
 	}
 
 	// Slow path: build model list.
 	log.Debug().Str("backend", b.name).Msg("building model list")
 	models, err := b.buildCodexModelList(ctx)
 	if err != nil {
-		// Stale-while-error: return stale cache if available.
+		// Stale-while-error: try disk cache, then in-memory stale cache.
 		if b.modelCacheTTL > 0 {
+			if b.cacheStore != nil {
+				if diskModels, _, ok := b.cacheStore.Load(b.name); ok && len(diskModels) > 0 {
+					log.Warn().Err(err).Str("backend", b.name).Int("models", len(diskModels)).Msg("model list build failed, returning disk cache")
+					return b.markDisabled(diskModels), nil
+				}
+			}
 			b.cacheMu.RLock()
 			if b.cachedModels != nil {
 				cached := b.cachedModels
@@ -980,10 +1002,14 @@ func (b *CodexBackend) ListModels(ctx context.Context) ([]Model, error) {
 
 	// Store in cache if caching is enabled.
 	if b.modelCacheTTL > 0 {
+		expiry := time.Now().Add(b.modelCacheTTL)
 		b.cacheMu.Lock()
 		b.cachedModels = models
-		b.cacheExpiry = time.Now().Add(b.modelCacheTTL)
+		b.cacheExpiry = expiry
 		b.cacheMu.Unlock()
+		if b.cacheStore != nil {
+			b.cacheStore.Save(b.name, models, expiry)
+		}
 	}
 
 	return b.markDisabled(models), nil

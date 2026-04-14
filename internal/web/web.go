@@ -2653,8 +2653,27 @@ func (u *UI) RoutingBackendFallbacks(w http.ResponseWriter, r *http.Request) {
 		records = []stats.Record{}
 	}
 
+	// When attempts=1, load per-request attempt traces so the drilldown can show
+	// which specific backend failed and why (not just the winning request's error).
+	loadAttempts := r.URL.Query().Get("attempts") == "1"
+
+	type recordWithAttempts struct {
+		stats.Record
+		Attempts []stats.Attempt `json:"attempts,omitempty"`
+	}
+
+	items := make([]recordWithAttempts, len(records))
+	for i := range records {
+		items[i] = recordWithAttempts{Record: records[i]}
+		if loadAttempts && u.store != nil {
+			if attempts, aErr := u.store.AttemptsForRequest(records[i].ID); aErr == nil && len(attempts) > 0 {
+				items[i].Attempts = attempts
+			}
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]any{"items": records}); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]any{"items": items}); err != nil {
 		log.Error().Err(err).Msg("routing: fallbacks encode error")
 	}
 }

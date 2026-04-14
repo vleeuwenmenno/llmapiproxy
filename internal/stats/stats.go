@@ -76,15 +76,18 @@ type Percentiles struct {
 
 // RankRow holds aggregated stats for one dimension value (model/backend/client).
 type RankRow struct {
-	Name     string  `json:"name"`
-	Requests int     `json:"req"`
-	Tokens   int     `json:"tok"`
-	Errors   int     `json:"err"`
-	AvgLatMs int64   `json:"lat"`
-	ErrPct   float64 `json:"err_pct"`
-	P50      int64   `json:"p50"`
-	P90      int64   `json:"p90"`
-	P99      int64   `json:"p99"`
+	Name              string  `json:"name"`
+	Requests          int     `json:"req"`
+	Tokens            int     `json:"tok"`
+	Errors            int     `json:"err"`
+	AvgLatMs          int64   `json:"lat"`
+	ErrPct            float64 `json:"err_pct"`
+	P50               int64   `json:"p50"`
+	P90               int64   `json:"p90"`
+	P99               int64   `json:"p99"`
+	AttemptCount      int     `json:"attempt_count"`       // times tried across all routing
+	AttemptFailures   int     `json:"attempt_failures"`     // failed attempts
+	AttemptFailurePct float64 `json:"attempt_failure_pct"` // AttemptFailures / AttemptCount * 100
 }
 
 // Summary provides aggregated statistics.
@@ -379,14 +382,27 @@ func (c *Collector) Summarize(since time.Duration) Summary {
 	return s
 }
 
+// AttemptStats holds per-backend attempt statistics aggregated from the request_attempts table.
+// It captures how often a backend was tried across all routing scenarios (including fallback)
+// and how often those attempts failed — independent of which backend ultimately won the request.
+type AttemptStats struct {
+	Attempts       int     `json:"attempts"`        // total times this backend was tried
+	Failures       int     `json:"failures"`        // attempts where error != ''
+	FailurePct     float64 `json:"failure_pct"`     // failures / attempts * 100
+	AvgAttemptLatMs int64  `json:"avg_attempt_lat"` // average latency across all attempts
+}
+
 // BackendRoutingStats holds aggregated routing stats for a single backend within a model.
 type BackendRoutingStats struct {
-	Name      string  `json:"name"`
-	Requests  int     `json:"requests"`
-	AvgLatMs  int64   `json:"avg_lat_ms"`
-	Errors    int     `json:"errors"`
-	Fallbacks int     `json:"fallbacks"`
-	WinPct    float64 `json:"win_pct"`
+	Name              string  `json:"name"`
+	Requests          int     `json:"requests"`
+	AvgLatMs          int64   `json:"avg_lat_ms"`
+	Errors            int     `json:"errors"`
+	Fallbacks         int     `json:"fallbacks"`
+	WinPct            float64 `json:"win_pct"`
+	AttemptCount      int     `json:"attempt_count"`       // times tried across all routing (from request_attempts)
+	AttemptFailures   int     `json:"attempt_failures"`     // failed attempts (from request_attempts)
+	AttemptFailurePct float64 `json:"attempt_failure_pct"` // AttemptFailures / AttemptCount * 100
 }
 
 // ModelRoutingStats holds aggregated routing stats for a single model.

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -15,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/menno/llmapiproxy/internal/config"
 	"github.com/menno/llmapiproxy/internal/oauth"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -73,11 +73,14 @@ type CopilotBackend struct {
 
 	capMu    sync.RWMutex
 	capCache map[string]copilotModelCap // keyed by model ID
+
+	// cacheStore persists model lists to disk. May be nil if disk caching is disabled.
+	cacheStore *ModelCacheStore
 }
 
 // NewCopilotBackend creates a new CopilotBackend from the given configuration,
 // device code handler, and token store.
-func NewCopilotBackend(cfg config.BackendConfig, deviceCodeHandler *oauth.DeviceCodeHandler, tokenStore *oauth.TokenStore) *CopilotBackend {
+func NewCopilotBackend(cfg config.BackendConfig, deviceCodeHandler *oauth.DeviceCodeHandler, tokenStore *oauth.TokenStore, cacheStore *ModelCacheStore) *CopilotBackend {
 	dm := make(map[string]bool, len(cfg.DisabledModels))
 	for _, m := range cfg.DisabledModels {
 		dm[m] = true
@@ -91,6 +94,7 @@ func NewCopilotBackend(cfg config.BackendConfig, deviceCodeHandler *oauth.Device
 		tokenStore:        tokenStore,
 		capCache:          make(map[string]copilotModelCap),
 		disabledModels:    dm,
+		cacheStore:        cacheStore,
 	}
 }
 
@@ -182,7 +186,7 @@ func (b *CopilotBackend) doChatCompletion(ctx context.Context, req *ChatCompleti
 				return nil, fmt.Errorf("model %q does not support chat completions via the Copilot API; choose a chat-capable model from the models list", req.Model)
 			}
 			if !maxTokenRetried && isMaxTokensParamError(errBody) {
-				log.Printf("copilot: retrying request with max_completion_tokens for model %s", req.Model)
+				log.Debug().Str("model", req.Model).Msg("copilot: retrying with max_completion_tokens")
 				// Cache the finding so future requests skip the round-trip.
 				b.capMu.Lock()
 				cap := b.capCache[req.Model]
@@ -253,7 +257,8 @@ func (b *CopilotBackend) doChatCompletionStream(ctx context.Context, req *ChatCo
 				return nil, fmt.Errorf("model %q does not support chat completions via the Copilot API; choose a chat-capable model from the models list", req.Model)
 			}
 			if !maxTokenRetried && isMaxTokensParamError(errBody) {
-				log.Printf("copilot: retrying request with max_completion_tokens for model %s", req.Model)
+				log.Debug().Str("model", req.Model).Msg("copilot: retrying with max_completion_tokens")
+				// Cache the finding so future requests skip the round-trip.
 				b.capMu.Lock()
 				cap := b.capCache[req.Model]
 				cap.UseMaxCompletionTokens = true
@@ -290,10 +295,40 @@ func (b *CopilotBackend) ListModels(ctx context.Context) ([]Model, error) {
 		return b.markDisabled(models), nil
 	}
 
+	// Try disk cache for capability data before hitting upstream.
+	if b.cacheStore != nil {
+		if models, _, ok := b.cacheStore.Load(b.name); ok && len(models) > 0 {
+			// Rebuild capability cache from disk data.
+			newCapCache := make(map[string]copilotModelCap, len(models))
+			for _, m := range models {
+				cap := copilotModelCap{
+					Type:                   "chat",
+					SupportsStreaming:      true,
+					UseMaxCompletionTokens: needsMaxCompletionTokensByID(m.ID),
+				}
+				if m.MaxOutputTokens != nil {
+					cap.MaxOutputTokens = *m.MaxOutputTokens
+				}
+				newCapCache[m.ID] = cap
+			}
+			b.capMu.Lock()
+			if len(b.capCache) == 0 {
+				b.capCache = newCapCache
+			}
+			b.capMu.Unlock()
+			log.Debug().Str("backend", b.name).Int("models", len(models)).Msg("model cache restored from disk")
+		}
+	}
+
 	// Fetch live model list from the Copilot API when authenticated.
 	copilotToken, err := b.getCopilotToken(ctx)
 	if err != nil {
-		// Not authenticated — return empty list rather than stale hardcoded models.
+		// Not authenticated — return disk cache if available, else empty list.
+		if b.cacheStore != nil {
+			if models, _, ok := b.cacheStore.Load(b.name); ok && len(models) > 0 {
+				return b.markDisabled(models), nil
+			}
+		}
 		return nil, nil //nolint:nilerr
 	}
 
@@ -350,7 +385,7 @@ func (b *CopilotBackend) ListModels(ctx context.Context) ([]Model, error) {
 		// Only expose chat-capable models — base/embeddings models don't work
 		// with the /chat/completions endpoint.
 		if capType != "" && capType != "chat" {
-			log.Printf("copilot: skipping non-chat model %s (type: %s)", m.ID, capType)
+			log.Debug().Str("model", m.ID).Str("type", capType).Msg("copilot: skipping non-chat model")
 			continue
 		}
 
@@ -372,6 +407,11 @@ func (b *CopilotBackend) ListModels(ctx context.Context) ([]Model, error) {
 	b.capMu.Lock()
 	b.capCache = newCache
 	b.capMu.Unlock()
+
+	// Persist to disk (best-effort).
+	if b.cacheStore != nil {
+		b.cacheStore.Save(b.name, models, time.Now().Add(5*time.Minute))
+	}
 
 	return b.markDisabled(models), nil
 }
@@ -608,16 +648,16 @@ func (b *CopilotBackend) InitiateLogin() (authURL string, state string, err erro
 	state = resp.DeviceCode
 	authURL = string(infoJSON)
 
-	log.Printf("copilot backend %s: device code flow initiated, user_code=%s", b.name, resp.UserCode)
+	log.Info().Str("backend", b.name).Str("user_code", resp.UserCode).Msg("copilot: device code flow initiated")
 
 	// Start polling in the background — the result will be stored automatically.
 	go func() {
 		bgCtx := context.Background()
 		_, pollErr := b.deviceCodeHandler.WaitForDeviceAuthorization(bgCtx, resp)
 		if pollErr != nil {
-			log.Printf("copilot backend %s: device code authorization failed: %v", b.name, pollErr)
+			log.Warn().Str("backend", b.name).Err(pollErr).Msg("copilot: device code authorization failed")
 		} else {
-			log.Printf("copilot backend %s: device code authorization completed successfully", b.name)
+			log.Info().Str("backend", b.name).Msg("copilot: device code authorization completed")
 		}
 	}()
 

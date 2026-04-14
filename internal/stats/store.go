@@ -441,6 +441,48 @@ func (s *Store) FilteredSummary(f StatsFilter) (Summary, error) {
 	sum.ErrorsByBackend = make(map[string]int)
 	sum.ByClient = make(map[string]int)
 	sum.TokensByClient = make(map[string]int)
+
+	// Populate per-dimension breakdowns.
+	groupQuery := `SELECT backend, COUNT(*), COALESCE(SUM(total_tokens),0), COALESCE(SUM(CASE WHEN error!='' THEN 1 ELSE 0 END),0) FROM requests ` + where + ` GROUP BY backend`
+	gRows, gErr := s.db.Query(groupQuery, args...)
+	if gErr == nil {
+		for gRows.Next() {
+			var name string
+			var cnt, tok, errs int
+			if gRows.Scan(&name, &cnt, &tok, &errs) == nil {
+				sum.ByBackend[name] = cnt
+				sum.TokensByBackend[name] = tok
+				sum.ErrorsByBackend[name] = errs
+			}
+		}
+		gRows.Close()
+	}
+	modelQuery := `SELECT model, COUNT(*) FROM requests ` + where + ` GROUP BY model`
+	mRows, mErr := s.db.Query(modelQuery, args...)
+	if mErr == nil {
+		for mRows.Next() {
+			var name string
+			var cnt int
+			if mRows.Scan(&name, &cnt) == nil {
+				sum.ByModel[name] = cnt
+			}
+		}
+		mRows.Close()
+	}
+	clientQuery := `SELECT client, COUNT(*), COALESCE(SUM(total_tokens),0) FROM requests ` + where + ` GROUP BY client`
+	cRows, cErr := s.db.Query(clientQuery, args...)
+	if cErr == nil {
+		for cRows.Next() {
+			var name string
+			var cnt, tok int
+			if cRows.Scan(&name, &cnt, &tok) == nil {
+				sum.ByClient[name] = cnt
+				sum.TokensByClient[name] = tok
+			}
+		}
+		cRows.Close()
+	}
+
 	return sum, nil
 }
 
@@ -601,6 +643,21 @@ func (s *Store) RankByWithPercentiles(f StatsFilter, dim string, limit int) ([]R
 			rows[i].P99 = pct(0.99)
 		}
 	}
+	// Enrich backend dimension with attempt-level failure stats.
+	if dim == "backend" {
+		attemptStats, aErr := s.AttemptErrorStats(f)
+		if aErr != nil {
+			log.Warn().Err(aErr).Msg("stats: attempt error stats for RankBy failed")
+		} else {
+			for i := range rows {
+				if as, ok := attemptStats[rows[i].Name]; ok {
+					rows[i].AttemptCount = as.Attempts
+					rows[i].AttemptFailures = as.Failures
+					rows[i].AttemptFailurePct = as.FailurePct
+				}
+			}
+		}
+	}
 	return rows, nil
 }
 
@@ -737,6 +794,11 @@ func (s *Store) RoutingStats(f StatsFilter) ([]ModelRoutingStats, error) {
 	}
 
 	out := make([]ModelRoutingStats, 0, len(modelOrder))
+	// Fetch attempt-level error stats to enrich routing data.
+	attemptStats, aErr := s.AttemptErrorStats(f)
+	if aErr != nil {
+		log.Warn().Err(aErr).Msg("stats: attempt error stats query failed, skipping attempt enrichment")
+	}
 	for _, m := range modelOrder {
 		acc := modelMap[m]
 		var avgLat int64
@@ -747,10 +809,15 @@ func (s *Store) RoutingStats(f StatsFilter) ([]ModelRoutingStats, error) {
 		if acc.totalReqs > 0 {
 			fallbackRate = float64(acc.totalFall) / float64(acc.totalReqs) * 100
 		}
-		// Compute win_pct per backend.
+		// Compute win_pct and merge attempt stats per backend.
 		for i := range acc.backends {
 			if acc.totalReqs > 0 {
 				acc.backends[i].WinPct = float64(acc.backends[i].Requests) / float64(acc.totalReqs) * 100
+			}
+			if as, ok := attemptStats[acc.backends[i].Name]; ok {
+				acc.backends[i].AttemptCount = as.Attempts
+				acc.backends[i].AttemptFailures = as.Failures
+				acc.backends[i].AttemptFailurePct = as.FailurePct
 			}
 		}
 		out = append(out, ModelRoutingStats{
@@ -819,4 +886,78 @@ func (s *Store) FallbacksForBackend(name string, f StatsFilter, limit int) ([]Re
 		records = append(records, r)
 	}
 	return records, rows.Err()
+}
+
+// AttemptErrorStats returns per-backend attempt statistics from the request_attempts table.
+// It counts how many times each backend was tried (across all routing strategies) and how
+// many of those attempts failed (error != ''). This reveals backends that frequently fail
+// during fallback — even when the final request succeeds via another backend.
+func (s *Store) AttemptErrorStats(f StatsFilter) (map[string]AttemptStats, error) {
+	if s == nil {
+		return nil, nil
+	}
+	// Build conditions against the joined tables.
+	var condParts []string
+	var condArgs []any
+	if !f.From.IsZero() {
+		condParts = append(condParts, "r.timestamp >= ?")
+		condArgs = append(condArgs, f.From.UnixMilli())
+	}
+	if !f.To.IsZero() {
+		condParts = append(condParts, "r.timestamp <= ?")
+		condArgs = append(condArgs, f.To.UnixMilli())
+	}
+	if f.Backend != "" {
+		condParts = append(condParts, "ra.backend = ?")
+		condArgs = append(condArgs, f.Backend)
+	}
+	if f.Model != "" {
+		condParts = append(condParts, "r.model = ?")
+		condArgs = append(condArgs, f.Model)
+	}
+	if f.Client != "" {
+		condParts = append(condParts, "r.client = ?")
+		condArgs = append(condArgs, f.Client)
+	}
+
+	whereClause := ""
+	if len(condParts) > 0 {
+		whereClause = "WHERE " + strings.Join(condParts, " AND ")
+	}
+
+	query := fmt.Sprintf(`
+		SELECT ra.backend,
+		       COUNT(*) AS attempts,
+		       SUM(CASE WHEN ra.error != '' THEN 1 ELSE 0 END) AS failures,
+		       COALESCE(AVG(ra.latency_ms), 0) AS avg_lat
+		FROM request_attempts ra
+		JOIN requests r ON r.id = ra.request_id
+		%s
+		GROUP BY ra.backend`, whereClause)
+
+	rows, err := s.db.Query(query, condArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("stats: attempt error stats: %w", err)
+	}
+	defer rows.Close()
+
+	out := make(map[string]AttemptStats)
+	for rows.Next() {
+		var name string
+		var attempts, failures int
+		var avgLat float64
+		if err := rows.Scan(&name, &attempts, &failures, &avgLat); err != nil {
+			return nil, err
+		}
+		as := AttemptStats{
+			Attempts:        attempts,
+			Failures:        failures,
+			AvgAttemptLatMs: int64(avgLat),
+		}
+		if attempts > 0 {
+			as.FailurePct = float64(failures) / float64(attempts) * 100
+		}
+		out[name] = as
+	}
+	return out, rows.Err()
 }
