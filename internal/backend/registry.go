@@ -148,7 +148,7 @@ func tokenStorePath(bc config.BackendConfig) string {
 		tokenPath = bc.OAuth.TokenPath
 	}
 	if !strings.Contains(tokenPath, "/") {
-		tokenPath = filepath.Join("tokens", bc.Name+"-token.json")
+		tokenPath = filepath.Join("data", "tokens", bc.Name+"-token.json")
 	}
 	return tokenPath
 }

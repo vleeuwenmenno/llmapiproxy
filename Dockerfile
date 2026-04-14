@@ -29,4 +29,4 @@ VOLUME ["/data"]
 
 EXPOSE 8080
 
-ENTRYPOINT ["./llmapiproxy", "-config", "/app/config.yaml"]
+ENTRYPOINT ["./llmapiproxy", "-config", "/app/data/config.yaml"]

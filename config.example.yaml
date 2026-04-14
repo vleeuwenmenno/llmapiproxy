@@ -24,12 +24,12 @@ server:
   # admin_key: "your-admin-key-here"
 
   # Path to the SQLite database used to persist request statistics.
-  # Defaults to stats.db in the current working directory.
-  # stats_path: "stats.db"
+  # Defaults to data/stats.db in the current working directory.
+  # stats_path: "data/stats.db"
 
   # Path to the SQLite database used for persistent chat sessions.
-  # Defaults to chat.db in the current working directory.
-  # chat_db_path: "chat.db"
+  # Defaults to data/chat.db in the current working directory.
+  # chat_db_path: "data/chat.db"
 
   # Model used to auto-generate chat session titles.
   # Must match a model ID available through one of your backends.

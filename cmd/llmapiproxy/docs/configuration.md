@@ -1,6 +1,6 @@
 # Configuration Reference
 
-Configuration is loaded from a YAML file specified with the `-config` flag (default: `config.yaml`).
+Configuration is loaded from a YAML file specified with the `-config` flag (default: `data/config.yaml`).
 
 ## Server Options
 
@@ -11,7 +11,7 @@ server:
     - "proxy-key-1"
     - "proxy-key-2"
   admin_key: "admin-key" # Optional: key for config editor access
-  stats_path: "stats.db" # SQLite database path
+  stats_path: "data/stats.db" # SQLite database path
   disable_stats: false # Set to true to disable tracking
   model_cache_ttl: "5m" # Cache upstream model lists for 5 minutes
 ```
@@ -21,7 +21,7 @@ server:
 | `listen`          | string   | `:8080`    | Address/port to bind to                                                          |
 | `api_keys`        | list     | required   | API keys clients must provide in `Authorization: Bearer <key>` header            |
 | `admin_key`       | string   | -          | Optional separate key for web UI config editor access                            |
-| `stats_path`      | string   | `stats.db` | Path to SQLite database for persistent stats                                     |
+| `stats_path`      | string   | `data/stats.db` | Path to SQLite database for persistent stats                                     |
 | `disable_stats`   | bool     | `false`    | Disable stats collection entirely                                                |
 | `model_cache_ttl` | duration | `5m`       | How long to cache upstream `/v1/models` responses. Set to `0` to disable caching |
 
@@ -114,7 +114,7 @@ server:
   listen: ":8080"
   api_keys:
     - "my-proxy-key"
-  stats_path: "stats.db"
+  stats_path: "data/stats.db"
 
 backends:
   - name: openrouter
@@ -152,7 +152,7 @@ routing:
 
 ## Hot Reload
 
-The config file is watched for changes. Edit and save `config.yaml` to apply changes without restarting the server.
+The config file is watched for changes. Edit and save `data/config.yaml` to apply changes without restarting the server.
 
 You can also trigger a reload by sending `SIGHUP`:
 

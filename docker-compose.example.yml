@@ -2,11 +2,9 @@
 #
 # Copy this file to docker-compose.yml and provide your own config.yaml.
 #
-# Your config.yaml should set the following paths so data persists in the named volume:
-#
-#   server:
-#     stats_path: /data/stats.db
-#     chat_db_path: /data/chat.db
+# By default, stats.db, chat.db, and tokens/ are stored under data/ relative
+# to the working directory (or /app/data inside the container). Mount the
+# data/ directory to persist data across container restarts.
 #
 # Then run:
 #   docker compose up -d
@@ -18,10 +16,7 @@ services:
       - "8000:8000" # Used for the API and web UI
       - "1455:1455" # Used for the optional OAuth redirect server (if any backends require it)
     volumes:
-      - ./config.yaml:/app/config.yaml
-      - ./stats.db:/app/stats.db
-      - ./chat.db:/app/chat.db
-      - ./tokens:/app/tokens
+      - ./data:/app/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]

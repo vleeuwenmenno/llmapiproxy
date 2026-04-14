@@ -239,7 +239,7 @@ backends:
 | `scopes`     | List of OAuth scopes to request                     |
 | `auth_url`   | Authorization endpoint URL                          |
 | `token_url`  | Token exchange endpoint URL                         |
-| `token_path` | *(optional)* Directory to store tokens (default: `tokens/`) |
+| `token_path` | *(optional)* Directory to store tokens (default: `data/tokens/`) |
 
 **To authenticate:**
 1. Navigate to **Settings** in the web dashboard (`/ui/settings`)
@@ -279,8 +279,8 @@ server:
   # Optional: restrict the web UI config editor with a separate key
   # admin_key: "your-admin-key"
 
-  # Optional: path to SQLite database for persistent stats (default: stats.db)
-  # stats_path: "stats.db"
+  # Optional: path to SQLite database for persistent stats (default: data/stats.db)
+  # stats_path: "data/stats.db"
 
   # Optional: disable stats tracking entirely
   # disable_stats: false
@@ -310,7 +310,7 @@ backends:
     #     - "openid"
     #   auth_url: "https://auth.example.com/authorize"
     #   token_url: "https://auth.example.com/oauth/token"
-    #   token_path: "tokens/"
+    #   token_path: "data/tokens/"
 ```
 
 ---
@@ -340,7 +340,7 @@ backends:
 - Bind to `localhost` (or a private network) when possible. The web UI does not require authentication unless `admin_key` is set.
 - Never commit `config.yaml` with real API keys to version control — use `config.example.yaml` as a template.
 - API keys are validated on every request to `/v1/*` endpoints.
-- OAuth tokens are stored locally on disk in the `tokens/` directory. Ensure this directory is not publicly accessible.
+- OAuth tokens are stored locally on disk in the `data/tokens/` directory. Ensure this directory is not publicly accessible.
 
 ---
 

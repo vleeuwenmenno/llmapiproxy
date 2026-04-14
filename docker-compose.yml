@@ -6,10 +6,7 @@ services:
       - "8000:8000"
       - "1455:1455"
     volumes:
-      - ./config.yaml:/app/config.yaml
-      - ./stats.db:/app/stats.db
-      - ./chat.db:/app/chat.db
-      - ./tokens:/app/tokens
+      - ./data:/app/data
     restart: "no"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]

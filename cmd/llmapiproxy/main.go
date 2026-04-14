@@ -27,7 +27,7 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "config.yaml", "Path to configuration file")
+	configPath := flag.String("config", "data/config.yaml", "Path to configuration file")
 	logLevel := flag.String("log-level", "info", "Log level: debug, info, warn, error")
 	logJSON := flag.Bool("log-json", false, "Output structured JSON logs")
 	flag.Parse()
@@ -55,6 +55,11 @@ func main() {
 		registry.LoadFromConfig(newCfg)
 		log.Info().Int("backends", len(newCfg.Backends)).Msg("backends reloaded")
 	})
+
+	// Ensure the data directory exists so database files and tokens can be created.
+	if err := os.MkdirAll("data/tokens", 0700); err != nil {
+		log.Fatal().Err(err).Msg("failed to create data directory")
+	}
 
 	collector := stats.NewCollector(10000)
 

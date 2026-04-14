@@ -372,10 +372,10 @@ func (c *Config) Validate() error {
 		c.Server.Listen = ":8080"
 	}
 	if c.Server.StatsPath == "" {
-		c.Server.StatsPath = "stats.db"
+		c.Server.StatsPath = filepath.Join("data", "stats.db")
 	}
 	if c.Server.ChatDBPath == "" {
-		c.Server.ChatDBPath = "chat.db"
+		c.Server.ChatDBPath = filepath.Join("data", "chat.db")
 	}
 	// Default model cache TTL: 5 minutes when not explicitly set.
 	// Setting model_cache_ttl to "0s" or "0" explicitly disables caching.
