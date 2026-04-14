@@ -17,7 +17,7 @@ const (
 
 // Session holds the decoded session data.
 type Session struct {
-	Username string
+	Username  string
 	ExpiresAt time.Time
 }
 
