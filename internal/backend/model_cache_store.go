@@ -44,8 +44,8 @@ func (t *JSONTime) UnmarshalJSON(b []byte) error {
 // Thread-safe: concurrent Save/Load calls for different backends are parallel;
 // same-backend calls are serialized per-key.
 type ModelCacheStore struct {
-	mu     sync.Mutex
-	perKey map[string]*sync.Mutex
+	mu      sync.Mutex
+	perKey  map[string]*sync.Mutex
 	baseDir string
 }
 

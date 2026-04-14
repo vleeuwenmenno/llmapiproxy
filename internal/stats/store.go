@@ -890,7 +890,7 @@ func (s *Store) FallbacksForBackend(name string, f StatsFilter, limit int) ([]Re
 
 // AttemptErrorStats returns per-backend attempt statistics from the request_attempts table.
 // It counts how many times each backend was tried (across all routing strategies) and how
-// many of those attempts failed (error != ''). This reveals backends that frequently fail
+// many of those attempts failed (error != ”). This reveals backends that frequently fail
 // during fallback — even when the final request succeeds via another backend.
 func (s *Store) AttemptErrorStats(f StatsFilter) (map[string]AttemptStats, error) {
 	if s == nil {

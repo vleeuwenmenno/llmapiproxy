@@ -541,13 +541,13 @@ type BackendEntry struct {
 
 // ModelEntry holds display data for a single model in the UI.
 type ModelEntry struct {
-	FullID          string   `json:"full_id"`                    // backend/model-id
-	BareID          string   `json:"bare_id"`                    // model-id without backend prefix
+	FullID          string   `json:"full_id"` // backend/model-id
+	BareID          string   `json:"bare_id"` // model-id without backend prefix
 	ContextLength   *int64   `json:"context_length,omitempty"`
 	MaxOutputTokens *int64   `json:"max_output_tokens,omitempty"`
 	Capabilities    []string `json:"capabilities,omitempty"`
-	DataSource      string   `json:"data_source,omitempty"`      // "upstream", "config", "builtin", or ""
-	Disabled        bool     `json:"disabled,omitempty"`         // true when this model is in the backend's disabled_models list
+	DataSource      string   `json:"data_source,omitempty"` // "upstream", "config", "builtin", or ""
+	Disabled        bool     `json:"disabled,omitempty"`    // true when this model is in the backend's disabled_models list
 }
 
 // iconForBackend maps a backend name to a static icon URL.

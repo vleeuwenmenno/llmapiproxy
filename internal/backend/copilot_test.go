@@ -337,7 +337,7 @@ func TestCopilotBackend_ListModels(t *testing.T) {
 		Name:    "copilot",
 		Type:    "copilot",
 		BaseURL: "https://api.githubcopilot.com",
-		Models: []config.ModelConfig{{ID: "gpt-4o"}, {ID: "gpt-4.1"}, {ID: "o3"}},
+		Models:  []config.ModelConfig{{ID: "gpt-4o"}, {ID: "gpt-4.1"}, {ID: "o3"}},
 	}
 
 	dir, cleanup := helperTempDir(t)
@@ -367,7 +367,7 @@ func TestCopilotBackend_ListModels(t *testing.T) {
 		}
 	}
 
-	for _, expected := range []config.ModelConfig{{ID: "gpt-4o"},{ID: "gpt-4.1"},{ID: "o3"}} {
+	for _, expected := range []config.ModelConfig{{ID: "gpt-4o"}, {ID: "gpt-4.1"}, {ID: "o3"}} {
 		if !modelIDs[expected.ID] {
 			t.Errorf("expected model %q in list", expected.ID)
 		}
@@ -867,7 +867,7 @@ func TestCopilotBackend_PartialPrefixNoMatch(t *testing.T) {
 		Name:    "copilot",
 		Type:    "copilot",
 		BaseURL: "https://api.githubcopilot.com",
-		Models: []config.ModelConfig{{ID: "gpt-4o"}, {ID: "o3"}},
+		Models:  []config.ModelConfig{{ID: "gpt-4o"}, {ID: "o3"}},
 	}, deviceCodeHandler, ts, nil)
 
 	r.backends["copilot"] = backend
@@ -1240,7 +1240,7 @@ func TestCopilotBackend_RefreshOAuthStatus_Success(t *testing.T) {
 		Name:    "copilot",
 		Type:    "copilot",
 		BaseURL: "https://api.githubcopilot.com",
-		Models: []config.ModelConfig{{ID: "gpt-4o"}},
+		Models:  []config.ModelConfig{{ID: "gpt-4o"}},
 	}
 	b := NewCopilotBackend(cfg, deviceCodeHandler, ts, nil)
 
