@@ -2894,15 +2894,42 @@ func (u *UI) IdentityProfiles(w http.ResponseWriter, r *http.Request) {
 
 // SetGlobalIdentityProfile sets the global identity profile.
 func (u *UI) SetGlobalIdentityProfile(w http.ResponseWriter, r *http.Request) {
+	// Parse both url-encoded and multipart form bodies.
 	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Msg("invalid global identity profile form")
 		http.Error(w, "invalid form", http.StatusBadRequest)
 		return
 	}
+	if r.FormValue("profile") == "" && r.Header.Get("Content-Type") != "" {
+		_ = r.ParseMultipartForm(32 << 20)
+	}
 	profileID := r.FormValue("profile")
+	currentProfile := ""
+	if cfg := u.cfgMgr.Get(); cfg != nil {
+		currentProfile = cfg.IdentityProfile
+	}
+	log.Debug().
+		Str("current_profile", currentProfile).
+		Str("requested_profile", profileID).
+		Bool("ajax", isAJAX(r)).
+		Msg("received global identity profile update request")
 	if err := u.cfgMgr.SetGlobalIdentityProfile(profileID); err != nil {
+		log.Error().Err(err).
+			Str("current_profile", currentProfile).
+			Str("requested_profile", profileID).
+			Msg("failed to update global identity profile")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	reloadedProfile := ""
+	if cfg := u.cfgMgr.Get(); cfg != nil {
+		reloadedProfile = cfg.IdentityProfile
+	}
+	log.Info().
+		Str("requested_profile", profileID).
+		Str("reloaded_profile", reloadedProfile).
+		Bool("ajax", isAJAX(r)).
+		Msg("updated global identity profile")
 	if isAJAX(r) {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -2914,18 +2941,58 @@ func (u *UI) SetGlobalIdentityProfile(w http.ResponseWriter, r *http.Request) {
 func (u *UI) SetBackendIdentityProfile(w http.ResponseWriter, r *http.Request) {
 	backendName := chi.URLParam(r, "name")
 	if backendName == "" {
+		log.Warn().Msg("missing backend name for identity profile update")
 		http.Error(w, "backend name required", http.StatusBadRequest)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Str("backend", backendName).Msg("invalid backend identity profile form")
 		http.Error(w, "invalid form", http.StatusBadRequest)
 		return
 	}
+	if r.FormValue("profile") == "" && r.Header.Get("Content-Type") != "" {
+		_ = r.ParseMultipartForm(32 << 20)
+	}
 	profileID := r.FormValue("profile")
+	currentProfile := ""
+	if cfg := u.cfgMgr.Get(); cfg != nil {
+		for _, backend := range cfg.Backends {
+			if backend.Name == backendName {
+				currentProfile = backend.IdentityProfile
+				break
+			}
+		}
+	}
+	log.Debug().
+		Str("backend", backendName).
+		Str("current_profile", currentProfile).
+		Str("requested_profile", profileID).
+		Bool("ajax", isAJAX(r)).
+		Msg("received backend identity profile update request")
 	if err := u.cfgMgr.SetBackendIdentityProfile(backendName, profileID); err != nil {
+		log.Error().Err(err).
+			Str("backend", backendName).
+			Str("current_profile", currentProfile).
+			Str("requested_profile", profileID).
+			Msg("failed to update backend identity profile")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	reloadedProfile := ""
+	if cfg := u.cfgMgr.Get(); cfg != nil {
+		for _, backend := range cfg.Backends {
+			if backend.Name == backendName {
+				reloadedProfile = backend.IdentityProfile
+				break
+			}
+		}
+	}
+	log.Info().
+		Str("backend", backendName).
+		Str("requested_profile", profileID).
+		Str("reloaded_profile", reloadedProfile).
+		Bool("ajax", isAJAX(r)).
+		Msg("updated backend identity profile")
 	if isAJAX(r) {
 		w.WriteHeader(http.StatusNoContent)
 		return

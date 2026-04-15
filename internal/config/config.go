@@ -1078,19 +1078,61 @@ func (m *Manager) UpdateServerAddr(host string, port int) error {
 // and reloads configuration.
 func (m *Manager) SetGlobalIdentityProfile(profileID string) error {
 	m.mu.Lock()
+	previousProfile := m.current.IdentityProfile
 	m.current.IdentityProfile = profileID
 	cfg := m.current
 	m.mu.Unlock()
 
+	log.Debug().
+		Str("path", m.path).
+		Str("previous_profile", previousProfile).
+		Str("new_profile", profileID).
+		Msg("persisting global identity profile change")
+
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("path", m.path).
+			Str("previous_profile", previousProfile).
+			Str("new_profile", profileID).
+			Msg("failed to marshal config for global identity profile change")
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 	m.markSelfWrite()
 	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		log.Error().
+			Err(err).
+			Str("path", m.path).
+			Str("previous_profile", previousProfile).
+			Str("new_profile", profileID).
+			Msg("failed to write config for global identity profile change")
 		return fmt.Errorf("writing config: %w", err)
 	}
-	return m.Reload()
+	log.Info().
+		Str("path", m.path).
+		Str("previous_profile", previousProfile).
+		Str("new_profile", profileID).
+		Msg("wrote global identity profile change to config")
+	if err := m.Reload(); err != nil {
+		log.Error().
+			Err(err).
+			Str("path", m.path).
+			Str("previous_profile", previousProfile).
+			Str("new_profile", profileID).
+			Msg("failed to reload config after global identity profile change")
+		return err
+	}
+	reloadedProfile := ""
+	if cfg := m.Get(); cfg != nil {
+		reloadedProfile = cfg.IdentityProfile
+	}
+	log.Info().
+		Str("path", m.path).
+		Str("requested_profile", profileID).
+		Str("reloaded_profile", reloadedProfile).
+		Msg("reloaded config after global identity profile change")
+	return nil
 }
 
 // SetBackendIdentityProfile sets the identity_profile for a specific backend,
@@ -1098,8 +1140,10 @@ func (m *Manager) SetGlobalIdentityProfile(profileID string) error {
 func (m *Manager) SetBackendIdentityProfile(backendName, profileID string) error {
 	m.mu.Lock()
 	found := false
+	previousProfile := ""
 	for i, b := range m.current.Backends {
 		if b.Name == backendName {
+			previousProfile = m.current.Backends[i].IdentityProfile
 			m.current.Backends[i].IdentityProfile = profileID
 			found = true
 			break
@@ -1109,16 +1153,73 @@ func (m *Manager) SetBackendIdentityProfile(backendName, profileID string) error
 	m.mu.Unlock()
 
 	if !found {
+		log.Warn().
+			Str("path", m.path).
+			Str("backend", backendName).
+			Str("new_profile", profileID).
+			Msg("backend not found for identity profile change")
 		return fmt.Errorf("backend %q not found", backendName)
 	}
 
+	log.Debug().
+		Str("path", m.path).
+		Str("backend", backendName).
+		Str("previous_profile", previousProfile).
+		Str("new_profile", profileID).
+		Msg("persisting backend identity profile change")
+
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("path", m.path).
+			Str("backend", backendName).
+			Str("previous_profile", previousProfile).
+			Str("new_profile", profileID).
+			Msg("failed to marshal config for backend identity profile change")
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 	m.markSelfWrite()
 	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		log.Error().
+			Err(err).
+			Str("path", m.path).
+			Str("backend", backendName).
+			Str("previous_profile", previousProfile).
+			Str("new_profile", profileID).
+			Msg("failed to write config for backend identity profile change")
 		return fmt.Errorf("writing config: %w", err)
 	}
-	return m.Reload()
+	log.Info().
+		Str("path", m.path).
+		Str("backend", backendName).
+		Str("previous_profile", previousProfile).
+		Str("new_profile", profileID).
+		Msg("wrote backend identity profile change to config")
+	if err := m.Reload(); err != nil {
+		log.Error().
+			Err(err).
+			Str("path", m.path).
+			Str("backend", backendName).
+			Str("previous_profile", previousProfile).
+			Str("new_profile", profileID).
+			Msg("failed to reload config after backend identity profile change")
+		return err
+	}
+	reloadedProfile := ""
+	if cfg := m.Get(); cfg != nil {
+		for _, b := range cfg.Backends {
+			if b.Name == backendName {
+				reloadedProfile = b.IdentityProfile
+				break
+			}
+		}
+	}
+	log.Info().
+		Str("path", m.path).
+		Str("backend", backendName).
+		Str("requested_profile", profileID).
+		Str("reloaded_profile", reloadedProfile).
+		Msg("reloaded config after backend identity profile change")
+	return nil
 }

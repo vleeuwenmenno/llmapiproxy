@@ -5109,12 +5109,12 @@
         });
 
         function setGlobalIdentityProfile(profileID) {
-            var form = new FormData();
-            form.append('profile', profileID);
+            var params = new URLSearchParams();
+            params.append('profile', profileID);
             fetch('/ui/identity-profile', {
                 method: 'POST',
-                headers: {'X-Requested-With': 'XMLHttpRequest'},
-                body: form
+                headers: {'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded'},
+                body: params.toString()
             }).then(function(resp) {
                 if (!resp.ok) return resp.text().then(function(t) { alert('Error: ' + t); });
                 window.location.href = window.location.href;
@@ -5131,12 +5131,12 @@
         }
 
         function setBackendIdentityProfile(backendName, profileID) {
-            var form = new FormData();
-            form.append('profile', profileID);
+            var params = new URLSearchParams();
+            params.append('profile', profileID);
             fetch('/ui/backends/' + encodeURIComponent(backendName) + '/identity-profile', {
                 method: 'POST',
-                headers: {'X-Requested-With': 'XMLHttpRequest'},
-                body: form
+                headers: {'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded'},
+                body: params.toString()
             }).then(function(resp) {
                 if (!resp.ok) return resp.text().then(function(t) { alert('Error: ' + t); });
                 window.location.href = window.location.href;
