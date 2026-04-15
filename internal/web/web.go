@@ -2032,22 +2032,32 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
-		"LegacyKeys":    keys, // server.api_keys entries (unnamed, for migration notice only)
-		"Backends":      backends,
-		"StatsCount":    u.collector.TotalCount(),
-		"Message":       msg,
-		"IsError":       strings.HasPrefix(msg, "Error"),
-		"DisableStats":  cfg.Server.DisableStats,
-		"ConfigText":    configText,
-		"Clients":       visibleClients,
-		"ClientsJSON":   template.JS(func() []byte { b, _ := json.Marshal(visibleClients); return b }()),
-		"ServerHost":    cfg.Server.Host,
-		"ServerPort":    cfg.Server.Port,
-		"ModelCacheTTL": cfg.Server.ModelCacheTTL.String(),
-		"RoutingJSON":   template.JS(func() []byte { b, _ := json.Marshal(cfg.Routing); return b }()),
-		"CircuitEnabled":  u.circuit != nil && u.circuit.Enabled(),
-		"CircuitThreshold": func() int { if u.circuit != nil { return u.circuit.GetConfig().Threshold }; return 3 }(),
-		"CircuitCooldown":  func() int { if u.circuit != nil { return u.circuit.GetConfig().Cooldown }; return 300 }(),
+		"LegacyKeys":     keys, // server.api_keys entries (unnamed, for migration notice only)
+		"Backends":       backends,
+		"StatsCount":     u.collector.TotalCount(),
+		"Message":        msg,
+		"IsError":        strings.HasPrefix(msg, "Error"),
+		"DisableStats":   cfg.Server.DisableStats,
+		"ConfigText":     configText,
+		"Clients":        visibleClients,
+		"ClientsJSON":    template.JS(func() []byte { b, _ := json.Marshal(visibleClients); return b }()),
+		"ServerHost":     cfg.Server.Host,
+		"ServerPort":     cfg.Server.Port,
+		"ModelCacheTTL":  cfg.Server.ModelCacheTTL.String(),
+		"RoutingJSON":    template.JS(func() []byte { b, _ := json.Marshal(cfg.Routing); return b }()),
+		"CircuitEnabled": u.circuit != nil && u.circuit.Enabled(),
+		"CircuitThreshold": func() int {
+			if u.circuit != nil {
+				return u.circuit.GetConfig().Threshold
+			}
+			return 3
+		}(),
+		"CircuitCooldown": func() int {
+			if u.circuit != nil {
+				return u.circuit.GetConfig().Cooldown
+			}
+			return 300
+		}(),
 	}
 	injectAuth(r, data)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

@@ -18,8 +18,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/menno/llmapiproxy/internal/backend"
-	"github.com/menno/llmapiproxy/internal/circuit"
 	"github.com/menno/llmapiproxy/internal/chat"
+	"github.com/menno/llmapiproxy/internal/circuit"
 	"github.com/menno/llmapiproxy/internal/config"
 	"github.com/menno/llmapiproxy/internal/logger"
 	"github.com/menno/llmapiproxy/internal/oauth"
@@ -380,9 +380,9 @@ func (a circuitMgrAdapter) State(backendName string) web.CircuitBreakerState {
 	return web.CircuitBreakerState(s)
 }
 
-func (a circuitMgrAdapter) Reset(backendName string)        { a.mgr.Reset(backendName) }
-func (a circuitMgrAdapter) ResetAll()                       { a.mgr.ResetAll() }
-func (a circuitMgrAdapter) Enabled() bool                   { return a.mgr.Enabled() }
+func (a circuitMgrAdapter) Reset(backendName string) { a.mgr.Reset(backendName) }
+func (a circuitMgrAdapter) ResetAll()                { a.mgr.ResetAll() }
+func (a circuitMgrAdapter) Enabled() bool            { return a.mgr.Enabled() }
 func (a circuitMgrAdapter) GetConfig() web.CircuitBreakerConfig {
 	c := a.mgr.GetConfig()
 	return web.CircuitBreakerConfig(c)

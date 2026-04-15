@@ -776,10 +776,10 @@ func (h *Handler) handleStaggeredRaceNonStream(ctx context.Context, w http.Respo
 			latency := time.Since(start).Milliseconds()
 			rec := stats.Record{
 				Timestamp:         start,
-				Backend:            rr.be.Name(),
-				Model:              originalModel,
-				LatencyMs:          latency,
-				StatusCode:         http.StatusOK,
+				Backend:           rr.be.Name(),
+				Model:             originalModel,
+				LatencyMs:         latency,
+				StatusCode:        http.StatusOK,
 				Stream:            false,
 				Client:            clientName,
 				Strategy:          config.StrategyStaggeredRace,
