@@ -1,0 +1,70 @@
+{{define "circuit_card.html"}}
+{{if and .Enabled .Backends}}
+<div id="circuit-cards" style="margin-bottom: 2rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
+    <div class="section-title" style="margin:0">Backend Health</div>
+    <div style="display:flex;gap:0.5rem">
+      <button type="button"
+              hx-post="/ui/circuit/reset-all"
+              hx-confirm="Reset all circuit breakers?"
+              class="btn btn-sm"
+              style="font-size:0.75rem;padding:0.3rem 0.6rem;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);border-radius:5px;cursor:pointer">
+        Reset All
+      </button>
+      <button type="button"
+              hx-get="/ui/circuit/card"
+              hx-target="#circuit-cards"
+              hx-swap="outerHTML"
+              class="btn btn-sm"
+              style="font-size:0.75rem;padding:0.3rem 0.6rem;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);border-radius:5px;cursor:pointer">
+        ↻ Refresh
+      </button>
+    </div>
+  </div>
+  <div class="backend-grid">
+    {{range .Backends}}
+    <div class="backend-card" style="position:relative">
+      <div class="name" style="display:flex;align-items:center;gap:0.5rem">
+        {{if eq .State.State "closed"}}
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;flex-shrink:0"></span>
+        {{else if eq .State.State "open"}}
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--red);display:inline-block;flex-shrink:0;animation:pulse 2s infinite"></span>
+        {{else if eq .State.State "half-open"}}
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--amber);display:inline-block;flex-shrink:0"></span>
+        {{else}}
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--text-dim);display:inline-block;flex-shrink:0"></span>
+        {{end}}
+        <span>{{.Name}}</span>
+      </div>
+
+      {{if eq .State.State "closed"}}
+        <div class="row"><span style="color:var(--green)">Healthy</span><span style="color:var(--text-dim);font-size:0.75rem">{{if gt .State.Failures 0}}{{.State.Failures}}/{{.State.Threshold}} failures{{else}}0 failures{{end}}</span></div>
+      {{else if eq .State.State "open"}}
+        <div class="row"><span style="color:var(--red)">Rate Limited</span><span style="font-size:0.75rem;color:var(--red)">{{.State.Reason}}</span></div>
+        {{if not .State.RetryAfter.IsZero}}
+        <div class="row"><span style="color:var(--text-dim);font-size:0.75rem">Retry after</span><span style="font-size:0.75rem">{{.State.RetryAfter.Format "15:04:05"}}</span></div>
+        {{end}}
+        <div style="margin-top:0.5rem">
+          <button type="button"
+                  hx-post="/ui/circuit/reset/{{.Name}}"
+                  hx-target="#circuit-cards"
+                  hx-swap="outerHTML"
+                  style="width:100%;font-size:0.7rem;padding:0.3rem;background:var(--surface-2);border:1px solid var(--border);color:var(--accent);border-radius:4px;cursor:pointer">
+            Reset Breaker
+          </button>
+        </div>
+      {{else if eq .State.State "half-open"}}
+        <div class="row"><span style="color:var(--amber)">Probing</span><span style="font-size:0.75rem;color:var(--text-dim)">Testing recovery…</span></div>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+</div>
+<style>
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+</style>
+{{end}}
+{{end}}

@@ -82,6 +82,18 @@ type RoutingConfig struct {
 	// StaggerDelayMs is the default delay between backend launches for the staggered-race strategy.
 	// Defaults to 500ms when 0.
 	StaggerDelayMs int `yaml:"stagger_delay_ms,omitempty" json:"stagger_delay_ms,omitempty"`
+	// CircuitBreaker configures automatic backend suspension on consecutive 429s.
+	CircuitBreaker CircuitBreakerConfig `yaml:"circuit_breaker,omitempty" json:"circuit_breaker,omitempty"`
+}
+
+// CircuitBreakerConfig controls per-backend circuit breaker behavior.
+type CircuitBreakerConfig struct {
+	// Enabled toggles the circuit breaker system. Default: true.
+	Enabled *bool `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	// Threshold is the number of consecutive 429 responses before tripping. Default: 3.
+	Threshold int `yaml:"threshold,omitempty" json:"threshold,omitempty"`
+	// CooldownSec is the number of seconds to keep a tripped backend suspended. Default: 300 (5m).
+	CooldownSec int `yaml:"cooldown,omitempty" json:"cooldown,omitempty"`
 }
 
 type ServerConfig struct {

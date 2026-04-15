@@ -307,7 +307,7 @@ func TestCrossArea_MixedBackendRouting(t *testing.T) {
 	defer cfgCleanup()
 
 	collector := stats.NewCollector(1000)
-	handler := NewHandler(registry, collector, cfgMgr)
+	handler := NewHandler(registry, collector, cfgMgr, nil)
 
 	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test"})
 
@@ -491,7 +491,7 @@ func TestCrossArea_Regression_ExistingFunctionality(t *testing.T) {
 	defer cfgCleanup()
 
 	collector := stats.NewCollector(1000)
-	handler := NewHandler(registry, collector, cfgMgr)
+	handler := NewHandler(registry, collector, cfgMgr, nil)
 
 	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "test"})
 
@@ -652,7 +652,7 @@ func TestCrossArea_PlaygroundWithOAuthBackends(t *testing.T) {
 	defer cfgCleanup()
 
 	collector := stats.NewCollector(1000)
-	handler := NewHandler(registry, collector, cfgMgr)
+	handler := NewHandler(registry, collector, cfgMgr, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/models?mode=raw", nil)
 	rec := httptest.NewRecorder()
@@ -888,7 +888,7 @@ func TestCrossArea_StatsTrackingForOAuthBackends(t *testing.T) {
 	defer cfgCleanup()
 
 	collector := stats.NewCollector(1000)
-	handler := NewHandler(registry, collector, cfgMgr)
+	handler := NewHandler(registry, collector, cfgMgr, nil)
 
 	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "stats-client"})
 	for i := 0; i < 3; i++ {
@@ -1145,7 +1145,7 @@ func TestCrossArea_MultipleClientsWithOAuthBackends(t *testing.T) {
 	defer cfgCleanup()
 
 	collector := stats.NewCollector(1000)
-	handler := NewHandler(registry, collector, cfgMgr)
+	handler := NewHandler(registry, collector, cfgMgr, nil)
 
 	// Client A → Copilot.
 	ctxA := context.WithValue(context.Background(), clientContextKey{}, &clientA)
@@ -1373,7 +1373,7 @@ func TestCrossArea_ConcurrentRequests(t *testing.T) {
 	defer cfgCleanup()
 
 	collector := stats.NewCollector(1000)
-	handler := NewHandler(registry, collector, cfgMgr)
+	handler := NewHandler(registry, collector, cfgMgr, nil)
 
 	ctx := context.WithValue(context.Background(), clientContextKey{}, &config.ClientConfig{Name: "concurrent"})
 

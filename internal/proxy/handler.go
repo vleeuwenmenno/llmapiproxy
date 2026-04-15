@@ -20,17 +20,29 @@ import (
 	"github.com/menno/llmapiproxy/internal/stats"
 )
 
+// CircuitManager is the interface for the circuit breaker system.
+// Defined here to avoid circular imports between proxy and circuit packages.
+type CircuitManager interface {
+	Record429(backendName string, retryAfterHint time.Duration)
+	RecordSuccess(backendName string)
+	IsOpen(backendName string) bool
+	FilterEntries(names []string) []string
+	Enabled() bool
+}
+
 type Handler struct {
 	registry  *backend.Registry
 	collector *stats.Collector
 	cfgMgr    *config.Manager
+	circuit   CircuitManager
 }
 
-func NewHandler(registry *backend.Registry, collector *stats.Collector, cfgMgr *config.Manager) *Handler {
+func NewHandler(registry *backend.Registry, collector *stats.Collector, cfgMgr *config.Manager, circuit CircuitManager) *Handler {
 	return &Handler{
 		registry:  registry,
 		collector: collector,
 		cfgMgr:    cfgMgr,
+		circuit:   circuit,
 	}
 }
 
@@ -64,6 +76,9 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	// Filter out backends with tripped circuit breakers.
+	entries = h.filterCircuitEntries(entries)
 
 	cl := ClientFromContext(r.Context())
 	clientName := ""
@@ -156,6 +171,10 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 				lastBE = be
 				a.StatusCode = be.StatusCode
 				a.ResponseBody = be.Body
+				// Record 429 for circuit breaker.
+				if be.StatusCode == http.StatusTooManyRequests {
+					h.circuitRecord429(entry.Backend.Name(), be)
+				}
 				// 4xx errors (except 429 rate-limit and 404 not-found) are client errors — don't retry.
 				if be.StatusCode >= 400 && be.StatusCode < 500 && be.StatusCode != http.StatusTooManyRequests && be.StatusCode != http.StatusNotFound {
 					attempts = append(attempts, a)
@@ -171,6 +190,7 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 
 		latency := time.Since(start).Milliseconds()
 		triedCount++
+		h.circuitRecordSuccess(entry.Backend.Name())
 		rec := stats.Record{
 			Timestamp:         start,
 			Backend:           entry.Backend.Name(),
@@ -269,6 +289,10 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 				lastBE = be
 				a.StatusCode = be.StatusCode
 				a.ResponseBody = be.Body
+				// Record 429 for circuit breaker.
+				if be.StatusCode == http.StatusTooManyRequests {
+					h.circuitRecord429(entry.Backend.Name(), be)
+				}
 				// 4xx errors (except 429 rate-limit and 404 not-found) are client errors — don't retry.
 				if be.StatusCode >= 400 && be.StatusCode < 500 && be.StatusCode != http.StatusTooManyRequests && be.StatusCode != http.StatusNotFound {
 					attempts = append(attempts, a)
@@ -284,6 +308,7 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 		lastBackend = entry.Backend.Name()
 		triedCount++
 		winnerIdx = i
+		h.circuitRecordSuccess(entry.Backend.Name())
 		break
 	}
 
@@ -426,6 +451,7 @@ func (h *Handler) handleRaceNonStream(ctx context.Context, w http.ResponseWriter
 		if rr.err == nil {
 			// Winner — cancel all remaining, return response.
 			cancel()
+			h.circuitRecordSuccess(rr.be.Name())
 			latency := time.Since(start).Milliseconds()
 			rec := stats.Record{
 				Timestamp:         start,
@@ -472,6 +498,10 @@ func (h *Handler) handleRaceNonStream(ctx context.Context, w http.ResponseWriter
 			if rr.beErr != nil {
 				a.StatusCode = rr.beErr.StatusCode
 				a.ResponseBody = rr.beErr.Body
+				// Record 429 for circuit breaker.
+				if rr.beErr.StatusCode == http.StatusTooManyRequests {
+					h.circuitRecord429(rr.be.Name(), rr.beErr)
+				}
 			}
 			attempts = append(attempts, a)
 			attemptOrder++
@@ -581,6 +611,7 @@ func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, e
 		if attempt.err == nil && winner == nil {
 			// First successful stream — cancel all other backend contexts.
 			parentCancel()
+			h.circuitRecordSuccess(attempt.result.be.Name())
 			w := attempt.result
 			winner = &w
 			if received == len(entries) {
@@ -741,13 +772,14 @@ func (h *Handler) handleStaggeredRaceNonStream(ctx context.Context, w http.Respo
 		received++
 		if rr.err == nil {
 			cancel()
+			h.circuitRecordSuccess(rr.be.Name())
 			latency := time.Since(start).Milliseconds()
 			rec := stats.Record{
 				Timestamp:         start,
-				Backend:           rr.be.Name(),
-				Model:             originalModel,
-				LatencyMs:         latency,
-				StatusCode:        http.StatusOK,
+				Backend:            rr.be.Name(),
+				Model:              originalModel,
+				LatencyMs:          latency,
+				StatusCode:         http.StatusOK,
 				Stream:            false,
 				Client:            clientName,
 				Strategy:          config.StrategyStaggeredRace,
@@ -787,6 +819,9 @@ func (h *Handler) handleStaggeredRaceNonStream(ctx context.Context, w http.Respo
 			if rr.beErr != nil {
 				a.StatusCode = rr.beErr.StatusCode
 				a.ResponseBody = rr.beErr.Body
+				if rr.beErr.StatusCode == http.StatusTooManyRequests {
+					h.circuitRecord429(rr.be.Name(), rr.beErr)
+				}
 			}
 			attempts = append(attempts, a)
 			attemptOrder++
@@ -898,6 +933,7 @@ func (h *Handler) handleStaggeredRaceStream(ctx context.Context, w http.Response
 		received++
 		if attempt.err == nil && winner == nil {
 			parentCancel()
+			h.circuitRecordSuccess(attempt.result.be.Name())
 			res := attempt.result
 			winner = &res
 			if received == len(entries) {
@@ -1316,4 +1352,48 @@ func (h *Handler) handleResponsesStream(ctx context.Context, w http.ResponseWrit
 	if err := scanner.Err(); err != nil {
 		log.Printf("responses stream scan error: %v", err)
 	}
+}
+
+// filterCircuitEntries removes backends with tripped circuit breakers.
+// If all would be filtered, returns the original slice (never blocks everything).
+func (h *Handler) filterCircuitEntries(entries []backend.RouteEntry) []backend.RouteEntry {
+	if h.circuit == nil || !h.circuit.Enabled() {
+		return entries
+	}
+
+	var active []backend.RouteEntry
+	for _, e := range entries {
+		if !h.circuit.IsOpen(e.Backend.Name()) {
+			active = append(active, e)
+		}
+	}
+
+	if len(active) == 0 {
+		log.Warn().Msg("circuit: all backends tripped, ignoring breakers")
+		return entries
+	}
+
+	if len(active) < len(entries) {
+		skipped := len(entries) - len(active)
+		log.Debug().Int("skipped", skipped).Int("active", len(active)).Msg("circuit: filtered tripped backends")
+	}
+
+	return active
+}
+
+// circuitRecord429 records a 429 response and attempts to extract a Retry-After hint
+// from the backend error body.
+func (h *Handler) circuitRecord429(backendName string, be *backend.BackendError) {
+	if h.circuit == nil {
+		return
+	}
+	h.circuit.Record429(backendName, 0)
+}
+
+// circuitRecordSuccess records a successful response.
+func (h *Handler) circuitRecordSuccess(backendName string) {
+	if h.circuit == nil {
+		return
+	}
+	h.circuit.RecordSuccess(backendName)
 }

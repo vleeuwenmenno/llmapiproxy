@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/menno/llmapiproxy/internal/backend"
+	"github.com/menno/llmapiproxy/internal/circuit"
 	"github.com/menno/llmapiproxy/internal/chat"
 	"github.com/menno/llmapiproxy/internal/config"
 	"github.com/menno/llmapiproxy/internal/logger"
@@ -69,8 +70,22 @@ var serveCmd = &cobra.Command{
 		registry := backend.NewRegistry()
 		registry.LoadFromConfig(cfg)
 
+		// Circuit breaker for 429 rate-limit protection.
+		circuitMgr := circuit.NewManager(routingCircuitConfig(cfg))
+		for _, bc := range cfg.Backends {
+			if bc.Enabled == nil || *bc.Enabled {
+				circuitMgr.EnsureBackend(bc.Name)
+			}
+		}
+
 		cfgMgr.OnChange(func(newCfg *config.Config) {
 			registry.LoadFromConfig(newCfg)
+			circuitMgr.UpdateConfig(routingCircuitConfig(newCfg))
+			for _, bc := range newCfg.Backends {
+				if bc.Enabled == nil || *bc.Enabled {
+					circuitMgr.EnsureBackend(bc.Name)
+				}
+			}
 			log.Info().Int("backends", len(newCfg.Backends)).Msg("backends reloaded")
 		})
 
@@ -93,7 +108,7 @@ var serveCmd = &cobra.Command{
 			log.Info().Msg("stats logging disabled (disable_stats: true)")
 		}
 
-		proxyHandler := proxy.NewHandler(registry, collector, cfgMgr)
+		proxyHandler := proxy.NewHandler(registry, collector, cfgMgr, circuitMgr)
 
 		chatStore, err := chat.OpenChatStore(cfg.Server.ChatDBPath)
 		if err != nil {
@@ -127,7 +142,7 @@ var serveCmd = &cobra.Command{
 			log.Info().Msg("web UI authentication enabled")
 		}
 
-		ui := web.NewUI(cfgMgr, collector, registry, store, chatStore, userStore, sessionSecret)
+		ui := web.NewUI(cfgMgr, collector, registry, store, chatStore, userStore, sessionSecret, circuitMgrAdapter{mgr: circuitMgr})
 
 		r := chi.NewRouter()
 		r.Use(chiMiddleware.RealIP)
@@ -223,6 +238,13 @@ var serveCmd = &cobra.Command{
 			r.Get("/oauth/callback/{backend}", ui.OAuthCallback)
 			r.Post("/oauth/disconnect/{backend}", ui.OAuthDisconnect)
 			r.Post("/oauth/check-status/{backend}", ui.OAuthCheckStatus)
+
+			// Circuit breaker management
+			r.Get("/circuit/card", ui.CircuitCard)
+			r.Get("/circuit/states", ui.CircuitStates)
+			r.Post("/circuit/reset/{name}", ui.CircuitReset)
+			r.Post("/circuit/reset-all", ui.CircuitResetAll)
+			r.Post("/circuit/config", ui.CircuitConfigUpdate)
 		})
 
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -321,4 +343,50 @@ func init() {
 	serveCmd.Flags().String("config", "data/config.yaml", "Path to configuration file")
 	serveCmd.Flags().String("log-level", "info", "Log level: debug, info, warn, error")
 	serveCmd.Flags().Bool("log-json", false, "Output structured JSON logs")
+}
+
+// routingCircuitConfig converts the config YAML into a circuit.Config with defaults.
+func routingCircuitConfig(cfg *config.Config) circuit.Config {
+	cb := cfg.Routing.CircuitBreaker
+	c := circuit.DefaultConfig()
+	if cb.Enabled != nil {
+		c.Enabled = *cb.Enabled
+	}
+	if cb.Threshold > 0 {
+		c.Threshold = cb.Threshold
+	}
+	if cb.CooldownSec > 0 {
+		c.Cooldown = cb.CooldownSec
+	}
+	return c
+}
+
+// circuitMgrAdapter adapts circuit.Manager to the web.CircuitManager interface.
+type circuitMgrAdapter struct {
+	mgr *circuit.Manager
+}
+
+func (a circuitMgrAdapter) AllStates() []web.CircuitBreakerState {
+	states := a.mgr.AllStates()
+	out := make([]web.CircuitBreakerState, len(states))
+	for i, s := range states {
+		out[i] = web.CircuitBreakerState(s)
+	}
+	return out
+}
+
+func (a circuitMgrAdapter) State(backendName string) web.CircuitBreakerState {
+	s := a.mgr.State(backendName)
+	return web.CircuitBreakerState(s)
+}
+
+func (a circuitMgrAdapter) Reset(backendName string)        { a.mgr.Reset(backendName) }
+func (a circuitMgrAdapter) ResetAll()                       { a.mgr.ResetAll() }
+func (a circuitMgrAdapter) Enabled() bool                   { return a.mgr.Enabled() }
+func (a circuitMgrAdapter) GetConfig() web.CircuitBreakerConfig {
+	c := a.mgr.GetConfig()
+	return web.CircuitBreakerConfig(c)
+}
+func (a circuitMgrAdapter) UpdateConfig(enabled bool, threshold int, cooldownSec int) {
+	a.mgr.UpdateConfig(circuit.Config{Enabled: enabled, Threshold: threshold, Cooldown: cooldownSec})
 }

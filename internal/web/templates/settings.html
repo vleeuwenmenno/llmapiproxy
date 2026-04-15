@@ -891,6 +891,48 @@
         </div>
 
 
+        <!-- Circuit Breaker Section -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">Circuit Breaker</div>
+            </div>
+            <p class="section-desc">
+                Automatically suspends backends that return repeated 429 (rate limit) responses.
+                A tripped backend is temporarily removed from routing until the cooldown expires.
+                The half-open state allows one probe request to test recovery before fully re-enabling the backend.
+            </p>
+            <form method="POST" action="/ui/circuit/config">
+                <div style="display:flex;flex-direction:column;gap:1rem">
+                    <div style="display:flex;align-items:center;gap:0.75rem">
+                        <label style="font-weight:500;min-width:100px">Enabled</label>
+                        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+                            <input type="checkbox" name="circuit_enabled" {{if .CircuitEnabled}}checked{{end}}
+                                   style="accent-color:var(--accent);width:18px;height:18px">
+                            <span style="color:var(--text-dim);font-size:0.85rem">Skip rate-limited backends automatically</span>
+                        </label>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:0.75rem">
+                        <label style="font-weight:500;min-width:100px">Threshold</label>
+                        <input type="number" name="circuit_threshold" min="1" max="50"
+                               value="{{.CircuitThreshold}}"
+                               style="width:80px;background:var(--surface-2);border:1px solid var(--border);border-radius:5px;padding:0.4rem 0.5rem;color:var(--text);font-size:0.85rem">
+                        <span style="color:var(--text-dim);font-size:0.85rem">consecutive 429s to trip</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:0.75rem">
+                        <label style="font-weight:500;min-width:100px">Cooldown</label>
+                        <input type="number" name="circuit_cooldown" min="10" max="86400"
+                               value="{{.CircuitCooldown}}"
+                               style="width:80px;background:var(--surface-2);border:1px solid var(--border);border-radius:5px;padding:0.4rem 0.5rem;color:var(--text);font-size:0.85rem">
+                        <span style="color:var(--text-dim);font-size:0.85rem">seconds before probing recovery</span>
+                    </div>
+                    <button type="submit"
+                            style="align-self:flex-start;padding:0.5rem 1rem;background:var(--accent-dim);border:1px solid rgba(34,211,238,0.3);color:var(--accent);border-radius:6px;cursor:pointer;font-weight:500;font-size:0.85rem">
+                        Save Circuit Breaker Config
+                    </button>
+                </div>
+            </form>
+        </div>
+
         <!-- Anonymous API Keys Section -->
         <div class="section">
             <div class="section-header">

@@ -226,6 +226,36 @@ type modelOAuthCardData struct {
 	OAuth backend.OAuthStatus
 }
 
+// CircuitManager is the interface for the circuit breaker system.
+type CircuitManager interface {
+	AllStates() []CircuitBreakerState
+	State(backendName string) CircuitBreakerState
+	Reset(backendName string)
+	ResetAll()
+	UpdateConfig(enabled bool, threshold int, cooldownSec int)
+	Enabled() bool
+	GetConfig() CircuitBreakerConfig
+}
+
+// CircuitBreakerState is a snapshot of a breaker's state for UI display.
+type CircuitBreakerState struct {
+	Name       string    `json:"name"`
+	State      string    `json:"state"`
+	Failures   int       `json:"failures"`
+	Threshold  int       `json:"threshold"`
+	TrippedAt  time.Time `json:"tripped_at,omitempty"`
+	RetryAfter time.Time `json:"retry_after,omitempty"`
+	Cooldown   string    `json:"cooldown"`
+	Reason     string    `json:"reason,omitempty"`
+}
+
+// CircuitBreakerConfig holds circuit breaker configuration for the UI.
+type CircuitBreakerConfig struct {
+	Enabled   bool `json:"enabled"`
+	Threshold int  `json:"threshold"`
+	Cooldown  int  `json:"cooldown"`
+}
+
 type UI struct {
 	cfgMgr        *config.Manager
 	collector     *stats.Collector
@@ -234,9 +264,10 @@ type UI struct {
 	chatStore     *chat.ChatStore
 	userStore     *users.UserStore
 	sessionSecret []byte
+	circuit       CircuitManager
 }
 
-func NewUI(cfgMgr *config.Manager, collector *stats.Collector, registry *backend.Registry, store *stats.Store, chatStore *chat.ChatStore, userStore *users.UserStore, sessionSecret []byte) *UI {
+func NewUI(cfgMgr *config.Manager, collector *stats.Collector, registry *backend.Registry, store *stats.Store, chatStore *chat.ChatStore, userStore *users.UserStore, sessionSecret []byte, circuit CircuitManager) *UI {
 	return &UI{
 		cfgMgr:        cfgMgr,
 		collector:     collector,
@@ -245,6 +276,7 @@ func NewUI(cfgMgr *config.Manager, collector *stats.Collector, registry *backend
 		chatStore:     chatStore,
 		userStore:     userStore,
 		sessionSecret: sessionSecret,
+		circuit:       circuit,
 	}
 }
 
@@ -705,6 +737,7 @@ type BackendEntry struct {
 	StaticCount     int          // pre-computed count for statically-configured backends
 	DisabledModels  []string     // model IDs disabled on this backend
 	IdentityProfile string       // per-backend identity profile override (empty = use global)
+	CircuitOpen     bool         // true when circuit breaker is tripped (429 rate limit)
 }
 
 // ModelEntry holds display data for a single model in the UI.
@@ -757,6 +790,28 @@ func lastPathSegment(s string) string {
 		return s[i+1:]
 	}
 	return s
+}
+
+// circuitStatesByBackend returns a map of backend name → circuit breaker open state.
+// Only includes backends where the circuit is tripped (open or half-open).
+func (u *UI) circuitStatesByBackend(cfg *config.Config) map[string]bool {
+	if u.circuit == nil || !u.circuit.Enabled() {
+		return nil
+	}
+	states := make(map[string]bool)
+	for _, bc := range cfg.Backends {
+		if !bc.IsEnabled() {
+			continue
+		}
+		s := u.circuit.State(bc.Name)
+		if s.State == "open" {
+			states[bc.Name] = true
+		}
+	}
+	if len(states) == 0 {
+		return nil
+	}
+	return states
 }
 
 func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
@@ -818,6 +873,7 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 			StaticCount:     len(modelEntries),
 			DisabledModels:  bc.DisabledModels,
 			IdentityProfile: bc.IdentityProfile,
+			CircuitOpen:     u.circuit != nil && u.circuit.Enabled() && u.circuit.State(bc.Name).State == "open",
 		})
 	}
 
@@ -930,6 +986,7 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		"OAuthByBackend":        oauthByBackend,
 		"IdentityProfiles":      allIdentityProfiles,
 		"GlobalIdentityProfile": cfg.IdentityProfile,
+		"CircuitByBackend":      u.circuitStatesByBackend(cfg),
 	}
 	injectAuth(r, data)
 
@@ -1988,6 +2045,9 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 		"ServerPort":    cfg.Server.Port,
 		"ModelCacheTTL": cfg.Server.ModelCacheTTL.String(),
 		"RoutingJSON":   template.JS(func() []byte { b, _ := json.Marshal(cfg.Routing); return b }()),
+		"CircuitEnabled":  u.circuit != nil && u.circuit.Enabled(),
+		"CircuitThreshold": func() int { if u.circuit != nil { return u.circuit.GetConfig().Threshold }; return 3 }(),
+		"CircuitCooldown":  func() int { if u.circuit != nil { return u.circuit.GetConfig().Cooldown }; return 300 }(),
 	}
 	injectAuth(r, data)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -2998,4 +3058,171 @@ func (u *UI) SetBackendIdentityProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/ui/models?msg=Identity+profile+for+"+backendName+"+set+to+"+profileID, http.StatusSeeOther)
+}
+
+// ── Circuit Breaker Handlers ────────────────────────────
+
+// CircuitStates returns all circuit breaker states as JSON.
+func (u *UI) CircuitStates(w http.ResponseWriter, r *http.Request) {
+	if u.circuit == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]struct{}{})
+		return
+	}
+	states := u.circuit.AllStates()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(states)
+}
+
+// CircuitCard renders the circuit breaker health cards as an HTML fragment.
+func (u *UI) CircuitCard(w http.ResponseWriter, r *http.Request) {
+	if u.circuit == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		return
+	}
+
+	// Get all backend names from config.
+	cfg := u.cfgMgr.Get()
+	type backendCircuit struct {
+		Name  string
+		State CircuitBreakerState
+	}
+	var backends []backendCircuit
+	for _, bc := range cfg.Backends {
+		if bc.Enabled != nil && !*bc.Enabled {
+			continue
+		}
+		backends = append(backends, backendCircuit{
+			Name:  bc.Name,
+			State: u.circuit.State(bc.Name),
+		})
+	}
+
+	data := map[string]any{
+		"Backends": backends,
+		"Enabled":  u.circuit.Enabled(),
+	}
+	injectAuth(r, data)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.ExecuteTemplate(w, "circuit_card.html", data); err != nil {
+		log.Error().Err(err).Msg("template error")
+		http.Error(w, "template error", http.StatusInternalServerError)
+	}
+}
+
+// CircuitReset resets a specific backend's circuit breaker.
+func (u *UI) CircuitReset(w http.ResponseWriter, r *http.Request) {
+	if u.circuit == nil {
+		http.Error(w, "circuit breaker not available", http.StatusServiceUnavailable)
+		return
+	}
+	backendName := chi.URLParam(r, "name")
+	if backendName == "" {
+		http.Error(w, "backend name required", http.StatusBadRequest)
+		return
+	}
+	u.circuit.Reset(backendName)
+	log.Info().Str("backend", backendName).Msg("circuit breaker reset via UI")
+
+	// If a redirect param is provided, redirect (e.g. from models page dropdown).
+	if redir := r.URL.Query().Get("redirect"); redir != "" {
+		http.Redirect(w, r, redir+"?msg=Circuit+breaker+reset+for+"+backendName, http.StatusSeeOther)
+		return
+	}
+
+	// Default: return HTMX fragment for dashboard.
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	templates.ExecuteTemplate(w, "circuit_card.html", map[string]any{
+		"Backends": func() []struct {
+			Name  string
+			State CircuitBreakerState
+		} {
+			cfg := u.cfgMgr.Get()
+			var backends []struct {
+				Name  string
+				State CircuitBreakerState
+			}
+			for _, bc := range cfg.Backends {
+				if bc.Enabled != nil && !*bc.Enabled {
+					continue
+				}
+				backends = append(backends, struct {
+					Name  string
+					State CircuitBreakerState
+				}{Name: bc.Name, State: u.circuit.State(bc.Name)})
+			}
+			return backends
+		}(),
+		"Enabled": u.circuit.Enabled(),
+	})
+}
+
+// CircuitResetAll resets all circuit breakers.
+func (u *UI) CircuitResetAll(w http.ResponseWriter, r *http.Request) {
+	if u.circuit == nil {
+		http.Error(w, "circuit breaker not available", http.StatusServiceUnavailable)
+		return
+	}
+	u.circuit.ResetAll()
+	log.Info().Msg("all circuit breakers reset via UI")
+
+	// Redirect back to the referer or dashboard.
+	redirect := r.Header.Get("Referer")
+	if redirect == "" {
+		redirect = "/ui/"
+	}
+	http.Redirect(w, r, redirect, http.StatusSeeOther)
+}
+
+// CircuitConfigUpdate updates the circuit breaker configuration.
+func (u *UI) CircuitConfigUpdate(w http.ResponseWriter, r *http.Request) {
+	if u.circuit == nil {
+		http.Error(w, "circuit breaker not available", http.StatusServiceUnavailable)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	enabled := r.FormValue("circuit_enabled") == "on"
+	threshold := 3
+	if v := r.FormValue("circuit_threshold"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			threshold = n
+		}
+	}
+	cooldown := 300
+	if v := r.FormValue("circuit_cooldown"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cooldown = n
+		}
+	}
+
+	// Persist to config.
+	cfg := u.cfgMgr.Get()
+	cfg.Routing.CircuitBreaker = config.CircuitBreakerConfig{}
+	trueVal := true
+	if enabled {
+		cfg.Routing.CircuitBreaker.Enabled = &trueVal
+	} else {
+		falseVal := false
+		cfg.Routing.CircuitBreaker.Enabled = &falseVal
+	}
+	cfg.Routing.CircuitBreaker.Threshold = threshold
+	cfg.Routing.CircuitBreaker.CooldownSec = cooldown
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		http.Error(w, "failed to marshal config", http.StatusInternalServerError)
+		return
+	}
+	if err := u.cfgMgr.SaveRaw(data); err != nil {
+		http.Error(w, "failed to save config: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Info().Bool("enabled", enabled).Int("threshold", threshold).Int("cooldown", cooldown).Msg("circuit breaker config updated via UI")
+	http.Redirect(w, r, "/ui/settings?msg=Circuit+breaker+config+updated", http.StatusSeeOther)
 }

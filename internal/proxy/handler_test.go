@@ -166,7 +166,7 @@ func setupHandlerWithBackends(t *testing.T, backends map[string]backend.Backend,
 	}
 
 	collector := newTestCollector()
-	handler := NewHandler(registry, collector, cfgMgr)
+	handler := NewHandler(registry, collector, cfgMgr, nil)
 
 	return handler, collector, cfgCleanup
 }

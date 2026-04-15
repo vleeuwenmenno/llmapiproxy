@@ -278,3 +278,11 @@ clients:
 #       backends:
 #         - zen
 #         - go
+#
+#   # Circuit breaker: automatically suspend backends that return
+#   # consecutive 429 (rate limit) responses. Disabled backends are
+#   # temporarily removed from routing until the cooldown expires.
+#   # circuit_breaker:
+#   #   enabled: true         # Enable/disable circuit breaker (default: true).
+#   #   threshold: 3          # Consecutive 429s before tripping (default: 3).
+#   #   cooldown: 300         # Seconds to keep tripped backend suspended (default: 300 = 5min).
