@@ -2240,15 +2240,114 @@
             letter-spacing: 0.06em;
             color: var(--text-dim);
         }
-        .section-title-menu-warning {
-            margin: 0.25rem 0.35rem;
-            padding: 0.4rem 0.6rem;
-            background: rgba(251,191,36,0.08);
-            border: 1px solid rgba(251,191,36,0.2);
-            border-radius: 7px;
-            font-size: 0.7rem;
-            color: rgba(251,191,36,0.85);
-            line-height: 1.4;
+        /* ── Identity Spoofing Warning Banner ─────────────────── */
+        .identity-warning-banner {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.85rem 1.5rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            border-left: 3px solid var(--amber);
+            color: var(--text);
+            font-size: 0.82rem;
+            line-height: 1.55;
+            position: relative;
+            animation: bannerSlideIn 0.3s ease both;
+        }
+        .identity-warning-banner.dismissing {
+            animation: bannerSlideOut 0.25s ease forwards;
+        }
+        .identity-warning-banner .banner-icon {
+            flex-shrink: 0;
+            font-size: 1.15rem;
+            margin-top: 0.05rem;
+            color: var(--amber);
+            line-height: 1;
+        }
+        .identity-warning-banner .banner-content {
+            flex: 1;
+            min-width: 0;
+        }
+        .identity-warning-banner .banner-title {
+            font-weight: 600;
+            font-size: 0.82rem;
+            color: var(--amber);
+            margin-bottom: 0.3rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .identity-warning-banner .banner-title .profile-name {
+            background: rgba(251,191,36,0.12);
+            padding: 0.1rem 0.45rem;
+            border-radius: 4px;
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            font-weight: 500;
+            letter-spacing: 0.01em;
+        }
+        .identity-warning-banner .banner-body {
+            color: var(--text-dim);
+            font-size: 0.78rem;
+            line-height: 1.65;
+        }
+        .identity-warning-banner .banner-body strong {
+            color: var(--text);
+            font-weight: 500;
+        }
+        .identity-warning-banner .banner-body .risk-note {
+            display: inline-block;
+            margin-top: 0.35rem;
+            padding: 0.35rem 0.65rem;
+            background: rgba(248,113,113,0.06);
+            border: 1px solid rgba(248,113,113,0.15);
+            border-radius: 6px;
+            font-size: 0.74rem;
+            color: var(--red);
+            line-height: 1.5;
+        }
+        .identity-warning-banner .banner-body .safe-note {
+            display: inline-block;
+            margin-top: 0.25rem;
+            padding: 0.35rem 0.65rem;
+            background: rgba(52,211,153,0.06);
+            border: 1px solid rgba(52,211,153,0.15);
+            border-radius: 6px;
+            font-size: 0.74rem;
+            color: var(--green);
+            line-height: 1.5;
+        }
+        .identity-warning-banner .banner-dismiss {
+            flex-shrink: 0;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 0.3rem 0.55rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            line-height: 1;
+            transition: color 0.15s, background 0.15s, border-color 0.15s;
+            margin-top: 0.05rem;
+        }
+        .identity-warning-banner .banner-dismiss:hover {
+            color: var(--text);
+            background: rgba(251,191,36,0.1);
+            border-color: var(--amber);
+        }
+        @keyframes bannerSlideIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes bannerSlideOut {
+            from { opacity: 1; max-height: 200px; padding: 0.85rem 1.5rem; }
+            to   { opacity: 0; max-height: 0; padding: 0 1.5rem; overflow: hidden; border-bottom-width: 0; }
+        }
+        @media (max-width: 768px) {
+            .identity-warning-banner { padding: 0.65rem 1rem; gap: 0.5rem; }
+            .identity-warning-banner .banner-title { font-size: 0.78rem; }
+            .identity-warning-banner .banner-body { font-size: 0.74rem; }
         }
 
         /* ── Identity submenu inside backend dropdown ───── */
@@ -2399,6 +2498,21 @@
         </button>
     </nav>
 
+    {{if and $.GlobalIdentityProfile (ne $.GlobalIdentityProfile "none")}}
+    <div class="identity-warning-banner" id="identity-warning-banner" data-profile="{{$.GlobalIdentityProfile}}">
+        <span class="banner-icon">&#x26A0;&#xFE0F;</span>
+        <div class="banner-content">
+            <div class="banner-title">Identity Spoofing Active <span class="profile-name">{{$.GlobalIdentityProfile}}</span></div>
+            <div class="banner-body">
+                Identity profiles are <strong>experimental and best-effort</strong>. Providers may still detect proxy usage through behavioural signals beyond headers and User-Agent.
+                <div class="risk-note">&#x26A0; Spoofing <strong>free CLI tools</strong> (Codex CLI, Gemini CLI, Claude Code, etc.) may violate their Terms of Service and risk account suspension.</div>
+                <div class="safe-note">&#x2713; <strong>Paid API backends</strong> (OpenRouter, direct API keys) generally do not have this concern.</div>
+            </div>
+        </div>
+        <button class="banner-dismiss" onclick="dismissIdentityWarning()" title="Dismiss for this session" aria-label="Dismiss warning">Dismiss</button>
+    </div>
+    {{end}}
+
     <main>
         <h1>Available Models</h1>
         <p class="subtitle">All models accessible through this proxy. Use the prefixed ID (e.g. <code style="font-family:var(--mono);font-size:0.85em;background:var(--surface-2);padding:0.1rem 0.4rem;border-radius:3px">backend/model-id</code>) when calling the API.</p>
@@ -2470,11 +2584,7 @@
                         </button>
                         {{end}}
                     </div>
-                    {{if and $.GlobalIdentityProfile (ne $.GlobalIdentityProfile "none")}}
-                    <div class="section-title-menu-warning">
-                        &#x26A0; Identity spoofing is best-effort. Providers may still detect proxy usage.
-                    </div>
-                    {{end}}
+
                 </div>
             </div>
         </div>
@@ -5149,10 +5259,6 @@
             var trigger = container.querySelector('.section-title-trigger');
             if (trigger) trigger.classList.toggle('has-profile', showPill);
 
-            // Update warning visibility
-            var warning = container.querySelector('.section-title-menu-warning');
-            if (warning) warning.style.display = showPill ? '' : 'none';
-
             // Close menu
             container.classList.remove('open');
         }
@@ -5212,6 +5318,28 @@
             var isOpen = panel.classList.contains('open');
             panel.classList.toggle('open', !isOpen);
             trigger.classList.toggle('open', !isOpen);
+        }
+
+        // ── Identity warning banner dismiss ───────────────────────
+        (function() {
+            var banner = document.getElementById('identity-warning-banner');
+            if (!banner) return;
+            var profile = banner.getAttribute('data-profile') || '';
+            var key = 'identity-warning-dismissed-' + profile;
+            if (sessionStorage.getItem(key)) {
+                banner.style.display = 'none';
+            }
+        })();
+
+        function dismissIdentityWarning() {
+            var banner = document.getElementById('identity-warning-banner');
+            if (!banner) return;
+            var profile = banner.getAttribute('data-profile') || '';
+            banner.classList.add('dismissing');
+            sessionStorage.setItem('identity-warning-dismissed-' + profile, '1');
+            banner.addEventListener('animationend', function() {
+                banner.remove();
+            });
         }
     </script>
 </body>
