@@ -2464,7 +2464,7 @@
                     <div class="section-title-menu-header">&#x1F576; Global Identity Profile</div>
                     <div class="backend-submenu-panel open">
                         {{range $.IdentityProfiles}}
-                        <button type="button" class="backend-submenu-option{{if eq .ID $.GlobalIdentityProfile}} active{{end}}" onclick="setGlobalIdentityProfile('{{.ID}}')">
+                        <button type="button" class="backend-submenu-option{{if eq .ID $.GlobalIdentityProfile}} active{{end}}" data-profile-id="{{.ID}}" onclick="setGlobalIdentityProfile('{{.ID}}')">
                             <span class="submenu-check">{{if eq .ID $.GlobalIdentityProfile}}&#x2713;{{end}}</span>
                             <span>{{.DisplayName}}</span>
                         </button>
@@ -2534,12 +2534,12 @@
                                 </span>
                             </button>
                             <div class="backend-submenu-panel" id="identity-submenu-{{$backendName}}">
-                                <button type="button" class="backend-submenu-option{{if not $backendProfile}} active{{end}}" onclick="setBackendIdentityProfile('{{$backendName}}', '')">
+                                <button type="button" class="backend-submenu-option{{if not $backendProfile}} active{{end}}" data-profile-id="" onclick="setBackendIdentityProfile('{{$backendName}}', '')">
                                     <span class="submenu-check">{{if not $backendProfile}}&#x2713;{{end}}</span>
                                     <span>Use global default</span>
                                 </button>
                                 {{range $.IdentityProfiles}}
-                                <button type="button" class="backend-submenu-option{{if eq .ID $backendProfile}} active{{end}}" onclick="setBackendIdentityProfile('{{$backendName}}', '{{.ID}}')">
+                                <button type="button" class="backend-submenu-option{{if eq .ID $backendProfile}} active{{end}}" data-profile-id="{{.ID}}" onclick="setBackendIdentityProfile('{{$backendName}}', '{{.ID}}')">
                                     <span class="submenu-check">{{if eq .ID $backendProfile}}&#x2713;{{end}}</span>
                                     <span>{{.DisplayName}}</span>
                                 </button>
@@ -5117,8 +5117,44 @@
                 body: params.toString()
             }).then(function(resp) {
                 if (!resp.ok) return resp.text().then(function(t) { alert('Error: ' + t); });
-                window.location.href = window.location.href;
+                updateGlobalIdentityUI(profileID);
             });
+        }
+
+        function updateGlobalIdentityUI(profileID) {
+            var container = document.getElementById('global-identity-dropdown');
+            if (!container) return;
+
+            // Update active state on options
+            container.querySelectorAll('.backend-submenu-option').forEach(function(btn) {
+                var isActive = btn.getAttribute('data-profile-id') === profileID;
+                btn.classList.toggle('active', isActive);
+                var check = btn.querySelector('.submenu-check');
+                if (check) check.innerHTML = isActive ? '\u2713' : '';
+            });
+
+            // Update pill
+            var showPill = profileID && profileID !== 'none';
+            var pill = container.querySelector('.section-title-profile-pill');
+            if (pill) {
+                if (showPill) {
+                    pill.innerHTML = '\u{1F576} ' + escHtml(profileID);
+                    pill.style.display = '';
+                } else {
+                    pill.style.display = 'none';
+                }
+            }
+
+            // Update trigger has-profile class
+            var trigger = container.querySelector('.section-title-trigger');
+            if (trigger) trigger.classList.toggle('has-profile', showPill);
+
+            // Update warning visibility
+            var warning = container.querySelector('.section-title-menu-warning');
+            if (warning) warning.style.display = showPill ? '' : 'none';
+
+            // Close menu
+            container.classList.remove('open');
         }
 
         function toggleGlobalIdentityMenu(event) {
@@ -5139,8 +5175,32 @@
                 body: params.toString()
             }).then(function(resp) {
                 if (!resp.ok) return resp.text().then(function(t) { alert('Error: ' + t); });
-                window.location.href = window.location.href;
+                updateBackendIdentityUI(backendName, profileID);
             });
+        }
+
+        function updateBackendIdentityUI(backendName, profileID) {
+            var submenu = document.getElementById('identity-submenu-' + backendName);
+            if (!submenu) return;
+
+            // Update active state on options
+            submenu.querySelectorAll('.backend-submenu-option').forEach(function(btn) {
+                var btnProfile = btn.getAttribute('data-profile-id') || '';
+                var isActive = btnProfile === profileID;
+                btn.classList.toggle('active', isActive);
+                var check = btn.querySelector('.submenu-check');
+                if (check) check.innerHTML = isActive ? '\u2713' : '';
+            });
+
+            // Update the meta label in the trigger button
+            var dropdown = submenu.closest('.backend-dropdown-container');
+            if (dropdown) {
+                var meta = dropdown.querySelector('.backend-menu-submenu-trigger .backend-menu-meta');
+                if (meta) meta.textContent = profileID || 'global';
+            }
+
+            // Close the parent dropdown
+            closeBackendDropdown();
         }
 
         function toggleIdentitySubmenu(event, name) {
