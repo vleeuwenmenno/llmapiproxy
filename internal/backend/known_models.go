@@ -14,29 +14,34 @@ type knownModelInfo struct {
 	// SupportsSampling indicates that the model supports temperature/top_p parameters.
 	// Reasoning models (o-series, gpt-5.x) do not support these.
 	SupportsSampling bool
+	// SupportsCodexSampling indicates that the model supports temperature/top_p
+	// when routed through the Codex Responses API (chatgpt.com/backend-api/codex).
+	// The Codex API rejects temperature for most models, even when the standard
+	// OpenAI API accepts it. Only set to true for models verified to work.
+	SupportsCodexSampling bool
 }
 
 // knownModels maps lowercase model ID prefixes to their metadata.
 // Entries are matched by longest-prefix-first using prefixMatch.
 var knownModels = map[string]knownModelInfo{
 	// ── OpenAI ──────────────────────────────────────────────────
-	"gpt-4o-":        {DisplayName: "GPT-4o", ContextLength: 128000, MaxOutputTokens: 16384, Vision: true},
-	"gpt-4o":         {DisplayName: "GPT-4o", ContextLength: 128000, MaxOutputTokens: 16384, Vision: true},
-	"gpt-4-turbo":    {DisplayName: "GPT-4 Turbo", ContextLength: 128000, MaxOutputTokens: 4096},
-	"gpt-4-":         {DisplayName: "GPT-4", ContextLength: 128000, MaxOutputTokens: 4096},
-	"gpt-4":          {DisplayName: "GPT-4", ContextLength: 8192, MaxOutputTokens: 8192},
-	"gpt-4.1-mini-":  {DisplayName: "GPT-4.1 Mini", ContextLength: 1047576, MaxOutputTokens: 32768, Vision: true},
-	"gpt-4.1-nano-":  {DisplayName: "GPT-4.1 Nano", ContextLength: 1047576, MaxOutputTokens: 32768, Vision: true},
-	"gpt-4.1-":       {DisplayName: "GPT-4.1", ContextLength: 1047576, MaxOutputTokens: 32768, Vision: true},
-	"gpt-4.1-mini":   {DisplayName: "GPT-4.1 Mini", ContextLength: 1047576, MaxOutputTokens: 32768, Vision: true},
-	"gpt-4.1-nano":   {DisplayName: "GPT-4.1 Nano", ContextLength: 1047576, MaxOutputTokens: 32768, Vision: true},
-	"gpt-4.1":        {DisplayName: "GPT-4.1", ContextLength: 1047576, MaxOutputTokens: 32768, Vision: true},
+	"gpt-4o-":        {DisplayName: "GPT-4o", ContextLength: 128000, MaxOutputTokens: 16384, Vision: true, SupportsCodexSampling: true},
+	"gpt-4o":         {DisplayName: "GPT-4o", ContextLength: 128000, MaxOutputTokens: 16384, Vision: true, SupportsCodexSampling: true},
+	"gpt-4-turbo":    {DisplayName: "GPT-4 Turbo", ContextLength: 128000, MaxOutputTokens: 4096, SupportsCodexSampling: true},
+	"gpt-4-":         {DisplayName: "GPT-4", ContextLength: 128000, MaxOutputTokens: 4096, SupportsCodexSampling: true},
+	"gpt-4":          {DisplayName: "GPT-4", ContextLength: 8192, MaxOutputTokens: 8192, SupportsCodexSampling: true},
+	"gpt-4.1-mini-":  {DisplayName: "GPT-4.1 Mini", ContextLength: 1047576, MaxOutputTokens: 32768, Vision: true, SupportsCodexSampling: true},
+	"gpt-4.1-nano-":  {DisplayName: "GPT-4.1 Nano", ContextLength: 1047576, MaxOutputTokens: 32768, Vision: true, SupportsCodexSampling: true},
+	"gpt-4.1-":       {DisplayName: "GPT-4.1", ContextLength: 1047576, MaxOutputTokens: 32768, Vision: true, SupportsCodexSampling: true},
+	"gpt-4.1-mini":   {DisplayName: "GPT-4.1 Mini", ContextLength: 1047576, MaxOutputTokens: 32768, Vision: true, SupportsCodexSampling: true},
+	"gpt-4.1-nano":   {DisplayName: "GPT-4.1 Nano", ContextLength: 1047576, MaxOutputTokens: 32768, Vision: true, SupportsCodexSampling: true},
+	"gpt-4.1":        {DisplayName: "GPT-4.1", ContextLength: 1047576, MaxOutputTokens: 32768, Vision: true, SupportsCodexSampling: true},
 	"o3-":            {DisplayName: "o3", ContextLength: 200000, MaxOutputTokens: 100000, Vision: true, UseMaxCompletionTokens: true, SupportsSampling: true},
 	"o3":             {DisplayName: "o3", ContextLength: 200000, MaxOutputTokens: 100000, Vision: true, UseMaxCompletionTokens: true, SupportsSampling: true},
 	"o4-mini-":       {DisplayName: "o4 Mini", ContextLength: 200000, MaxOutputTokens: 100000, Vision: true, UseMaxCompletionTokens: true, SupportsSampling: true},
 	"o4-mini":        {DisplayName: "o4 Mini", ContextLength: 200000, MaxOutputTokens: 100000, Vision: true, UseMaxCompletionTokens: true, SupportsSampling: true},
-	"gpt-3.5-turbo-": {DisplayName: "GPT-3.5 Turbo", ContextLength: 16385, MaxOutputTokens: 4096},
-	"gpt-3.5-turbo":  {DisplayName: "GPT-3.5 Turbo", ContextLength: 16385, MaxOutputTokens: 4096},
+	"gpt-3.5-turbo-": {DisplayName: "GPT-3.5 Turbo", ContextLength: 16385, MaxOutputTokens: 4096, SupportsCodexSampling: true},
+	"gpt-3.5-turbo":  {DisplayName: "GPT-3.5 Turbo", ContextLength: 16385, MaxOutputTokens: 4096, SupportsCodexSampling: true},
 	"chatgpt-4o-":    {DisplayName: "ChatGPT-4o", ContextLength: 128000, MaxOutputTokens: 16384, Vision: true},
 	"chatgpt-4o":     {DisplayName: "ChatGPT-4o", ContextLength: 128000, MaxOutputTokens: 16384, Vision: true},
 

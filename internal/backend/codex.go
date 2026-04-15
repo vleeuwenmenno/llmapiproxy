@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/menno/llmapiproxy/internal/config"
+	"github.com/menno/llmapiproxy/internal/identity"
 	"github.com/menno/llmapiproxy/internal/oauth"
 	"github.com/rs/zerolog/log"
 )
@@ -48,6 +49,10 @@ type CodexBackend struct {
 	tokenStore        *oauth.TokenStore
 	cfg               config.BackendConfig
 
+	// identityProfile, when non-nil and not "none", overrides User-Agent and
+	// injects additional headers to make requests look like a specific CLI tool.
+	identityProfile *identity.Profile
+
 	// disabledModels is a set of model IDs that should never be routed
 	// through this backend, even if they are available upstream.
 	disabledModels map[string]bool
@@ -66,7 +71,7 @@ type CodexBackend struct {
 // The deviceCodeHandler is optional and enables device code flow as an alternative
 // login method for headless/SSH environments.
 // cacheTTL controls how long the upstream model list is cached; 0 means no caching.
-func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHandler, tokenStore *oauth.TokenStore, deviceCodeHandler *oauth.CodexDeviceCodeHandler, cacheTTL time.Duration, cacheStore *ModelCacheStore) *CodexBackend {
+func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHandler, tokenStore *oauth.TokenStore, deviceCodeHandler *oauth.CodexDeviceCodeHandler, cacheTTL time.Duration, cacheStore *ModelCacheStore, profile *identity.Profile) *CodexBackend {
 	baseURL := strings.TrimRight(cfg.BaseURL, "/")
 	if baseURL == "" {
 		baseURL = codexDefaultBaseURL
@@ -89,6 +94,7 @@ func NewCodexBackend(cfg config.BackendConfig, oauthHandler *oauth.CodexOAuthHan
 		modelCacheTTL:     cacheTTL,
 		disabledModels:    dm,
 		cacheStore:        cacheStore,
+		identityProfile:   profile,
 	}
 }
 
@@ -458,20 +464,22 @@ func translateToCodexRequest(req *ChatCompletionRequest) (*codexRequest, error) 
 func codexSupportsSampling(modelID string, raw map[string]json.RawMessage) bool {
 	modelID = strings.ToLower(strings.TrimSpace(modelID))
 
-	// Check known_models.go for explicit SupportsSampling setting.
-	if info := LookupKnownModel(modelID); info != nil {
-		// GPT-5.1 is the one GPT-5 family exception that can support sampling when
-		// the caller explicitly disables reasoning.
-		if strings.HasPrefix(modelID, "gpt-5.1") {
-			return codexReasoningEffort(raw) == "none"
+	// The Codex Responses API (chatgpt.com/backend-api/codex) does NOT support
+	// temperature/top_p for most models, even when the OpenAI API does.
+	// Default to false — only allow sampling when explicitly known to be safe.
+
+	// Use the data-driven SupportsCodexSampling field from known_models.go.
+	info := LookupKnownModel(modelID)
+	if info != nil {
+		// Some reasoning models (GPT-5.x) support sampling when the caller
+		// explicitly disables reasoning via reasoning_effort="none".
+		if info.SupportsSampling && codexReasoningEffort(raw) == "none" {
+			return true
 		}
-		// Use explicit SupportsSampling flag if set.
-		if !info.SupportsSampling {
-			return false
-		}
+		return info.SupportsCodexSampling
 	}
 
-	return true
+	return false
 }
 
 func codexReasoningEffort(raw map[string]json.RawMessage) string {
@@ -1269,12 +1277,15 @@ func (b *CodexBackend) getAccessToken(ctx context.Context) (string, error) {
 func (b *CodexBackend) setHeaders(httpReq *http.Request, accessToken string) {
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
-	httpReq.Header.Set("User-Agent", "llmapiproxy/1.0")
 	httpReq.Header.Set("Accept", "application/json")
-	httpReq.Header.Set("X-Request-Id", uuid.New().String())
-	if b.cfg.Type == "codex" {
-		// The Codex models endpoint requires a client_version query parameter
-		// which is already set in codexModelsURL(). No additional header needed.
+
+	if b.identityProfile != nil && b.identityProfile.ID != identity.ProfileNoneID {
+		// Use the identity profile instead of the default Codex headers.
+		identity.ApplyProfile(httpReq, b.identityProfile, "")
+	} else {
+		// Default Codex headers.
+		httpReq.Header.Set("User-Agent", "llmapiproxy/1.0")
+		httpReq.Header.Set("X-Request-Id", uuid.New().String())
 	}
 }
 

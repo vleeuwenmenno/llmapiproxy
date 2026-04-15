@@ -110,7 +110,7 @@ func codexTestHelper(t *testing.T) (*CodexBackend, *httptest.Server, func()) {
 		Models:  []config.ModelConfig{{ID: "o4-mini"}, {ID: "gpt-5.2-codex"}},
 	}
 
-	b := NewCodexBackend(cfg, oauthHandler, ts, nil, 0, nil)
+	b := NewCodexBackend(cfg, oauthHandler, ts, nil, 0, nil, nil)
 
 	// Pre-set a valid access token.
 	ts.Save(&oauth.TokenData{
@@ -564,6 +564,64 @@ func TestCodexBackend_GPT51NoneReasoningPreservesSamplingParams(t *testing.T) {
 	}
 	if _, ok := receivedBody["top_p"]; !ok {
 		t.Error("top_p should be forwarded when gpt-5.1 reasoning effort is none")
+	}
+}
+
+// --- VAL-CODEX-003b: GPT-5.4 with reasoning_effort=none preserves sampling params ---
+
+func TestCodexBackend_GPT54NoneReasoningPreservesSamplingParams(t *testing.T) {
+	b, upstream, cleanup := codexTestHelper(t)
+	defer cleanup()
+
+	var receivedBody map[string]json.RawMessage
+	upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		json.Unmarshal(raw, &receivedBody)
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+
+		codexRespondWithJSON(w, r, map[string]any{
+			"id":         "resp-test-gpt54",
+			"object":     "response",
+			"created_at": time.Now().Unix(),
+			"status":     "completed",
+			"model":      "gpt-5.4-mini",
+			"output": []map[string]any{
+				{
+					"type":   "message",
+					"id":     "msg-test-gpt54",
+					"role":   "assistant",
+					"status": "completed",
+					"content": []map[string]any{
+						{"type": "output_text", "text": "Response"},
+					},
+				},
+			},
+			"usage": map[string]any{
+				"input_tokens":  10,
+				"output_tokens": 5,
+				"total_tokens":  15,
+			},
+		})
+	})
+
+	temp := 0.7
+	req := &ChatCompletionRequest{
+		Model:       "gpt-5.4-mini",
+		Messages:    []Message{{Role: "user", Content: json.RawMessage(`"test"`)}},
+		Temperature: &temp,
+		RawBody:     []byte(`{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"test"}],"temperature":0.7,"top_p":0.9,"reasoning":{"effort":"none"}}`),
+	}
+
+	_, err := b.ChatCompletion(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ChatCompletion: %v", err)
+	}
+
+	if _, ok := receivedBody["temperature"]; !ok {
+		t.Error("temperature should be forwarded when gpt-5.4-mini reasoning effort is none")
+	}
+	if _, ok := receivedBody["top_p"]; !ok {
+		t.Error("top_p should be forwarded when gpt-5.4-mini reasoning effort is none")
 	}
 }
 
@@ -1183,7 +1241,7 @@ func TestCodexBackend_ListModels_Default(t *testing.T) {
 		BaseURL: "https://chatgpt.com/backend-api/codex",
 		// No models configured and no reachable upstream — should return error.
 	}
-	b := NewCodexBackend(cfg, nil, ts, nil, 0, nil)
+	b := NewCodexBackend(cfg, nil, ts, nil, 0, nil, nil)
 
 	_, err = b.ListModels(context.Background())
 	if err == nil {
@@ -1219,7 +1277,7 @@ func TestCodexBackend_SupportsModel(t *testing.T) {
 			defer os.RemoveAll(dir)
 
 			ts, _ := oauth.NewTokenStore(filepath.Join(dir, "codex-token.json"))
-			b := NewCodexBackend(cfg, nil, ts, nil, 0, nil)
+			b := NewCodexBackend(cfg, nil, ts, nil, 0, nil, nil)
 
 			if got := b.SupportsModel(tt.check); got != tt.want {
 				t.Errorf("SupportsModel(%q) = %v, want %v", tt.check, got, tt.want)
@@ -1528,7 +1586,7 @@ func TestCodexBackend_NoTokens(t *testing.T) {
 		Type:    "codex",
 		BaseURL: "https://chatgpt.com/backend-api/codex",
 	}
-	b := NewCodexBackend(cfg, oauthHandler, ts, nil, 0, nil)
+	b := NewCodexBackend(cfg, oauthHandler, ts, nil, 0, nil, nil)
 
 	req := &ChatCompletionRequest{
 		Model:    "o4-mini",
@@ -2000,7 +2058,7 @@ func TestCodexBackend_CoexistenceWithOpenAI(t *testing.T) {
 		BaseURL: "https://chatgpt.com/backend-api/codex",
 		Models:  []config.ModelConfig{{ID: "o4-mini"}},
 	}
-	b := NewCodexBackend(cfg, nil, ts, nil, 0, nil)
+	b := NewCodexBackend(cfg, nil, ts, nil, 0, nil, nil)
 	r.Register("codex", b)
 
 	// Also register an OpenAI backend.
@@ -2011,7 +2069,7 @@ func TestCodexBackend_CoexistenceWithOpenAI(t *testing.T) {
 		APIKey:  "test-key",
 		Models:  []config.ModelConfig{{ID: "openai/gpt-4o"}},
 	}
-	r.Register("openrouter", NewOpenAI(openaiCfg, 0))
+	r.Register("openrouter", NewOpenAI(openaiCfg, 0, nil))
 
 	// Verify both backends exist.
 	if !r.Has("codex") {
@@ -2049,7 +2107,7 @@ func TestCodexBackend_PrefixRouting(t *testing.T) {
 		BaseURL: "https://chatgpt.com/backend-api/codex",
 		Models:  []config.ModelConfig{{ID: "o4-mini"}, {ID: "gpt-5.2-codex"}},
 	}
-	b := NewCodexBackend(cfg, nil, ts, nil, 0, nil)
+	b := NewCodexBackend(cfg, nil, ts, nil, 0, nil, nil)
 	r.Register("codex", b)
 
 	// Test codex/o4-mini.
@@ -2092,7 +2150,7 @@ func TestCodexBackend_PrefixRoutingNoCrossMatch(t *testing.T) {
 		BaseURL: "https://chatgpt.com/backend-api/codex",
 		Models:  []config.ModelConfig{{ID: "o4-mini"}},
 	}
-	b := NewCodexBackend(cfg, nil, ts, nil, 0, nil)
+	b := NewCodexBackend(cfg, nil, ts, nil, 0, nil, nil)
 	r.Register("codex", b)
 
 	// openrouter/... should NOT match codex.
@@ -2341,7 +2399,7 @@ func TestCodexBackend_Name(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	ts, _ := oauth.NewTokenStore(filepath.Join(dir, "codex-token.json"))
-	b := NewCodexBackend(cfg, nil, ts, nil, 0, nil)
+	b := NewCodexBackend(cfg, nil, ts, nil, 0, nil, nil)
 
 	if b.Name() != "my-codex" {
 		t.Errorf("Name() = %q, want %q", b.Name(), "my-codex")
@@ -2704,7 +2762,7 @@ func TestCodexBackend_DeviceCodeLogin(t *testing.T) {
 	}
 
 	oauthHandler := oauth.NewCodexOAuthHandler(ts, oauthCfg)
-	b := NewCodexBackend(cfg, oauthHandler, ts, deviceCodeHandler, 0, nil)
+	b := NewCodexBackend(cfg, oauthHandler, ts, deviceCodeHandler, 0, nil, nil)
 
 	// Verify device code flow is supported.
 	if !b.SupportsDeviceCodeFlow() {
@@ -2770,7 +2828,7 @@ func TestCodexBackend_DeviceCodeLogin_NoHandler(t *testing.T) {
 	}
 
 	// Create backend without device code handler (nil).
-	b := NewCodexBackend(cfg, nil, ts, nil, 0, nil)
+	b := NewCodexBackend(cfg, nil, ts, nil, 0, nil, nil)
 
 	if b.SupportsDeviceCodeFlow() {
 		t.Error("SupportsDeviceCodeFlow should return false when no handler")
@@ -2797,7 +2855,7 @@ func TestCodexBackend_DeviceCodeLogin_SupportsInterface(t *testing.T) {
 
 	cfg := config.BackendConfig{Name: "codex", Type: "codex"}
 	oauthHandler := oauth.NewCodexOAuthHandler(ts, nil)
-	b := NewCodexBackend(cfg, oauthHandler, ts, nil, 0, nil)
+	b := NewCodexBackend(cfg, oauthHandler, ts, nil, 0, nil, nil)
 
 	// CodexBackend should implement the OAuthDeviceCodeLoginHandler interface.
 	var _ OAuthDeviceCodeLoginHandler = b

@@ -57,7 +57,7 @@ func TestListModels_CacheHit(t *testing.T) {
 		Name:    "test",
 		BaseURL: ts.URL,
 		APIKey:  "test-key",
-	}, 5*time.Minute)
+	}, 5*time.Minute, nil)
 
 	models1, err := b.ListModels(context.Background())
 	if err != nil {
@@ -97,7 +97,7 @@ func TestListModels_CacheExpiry(t *testing.T) {
 		Name:    "test",
 		BaseURL: ts.URL,
 		APIKey:  "test-key",
-	}, 1*time.Nanosecond)
+	}, 1*time.Nanosecond, nil)
 
 	// First call populates cache.
 	_, err := b.ListModels(context.Background())
@@ -132,7 +132,7 @@ func TestListModels_StaleWhileError(t *testing.T) {
 		Name:    "test",
 		BaseURL: ts.URL,
 		APIKey:  "test-key",
-	}, 5*time.Minute)
+	}, 5*time.Minute, nil)
 
 	// First call populates cache.
 	models1, err := b.ListModels(context.Background())
@@ -175,7 +175,7 @@ func TestListModels_StaleWhileError_NoCache(t *testing.T) {
 		Name:    "test",
 		BaseURL: errTS.URL,
 		APIKey:  "test-key",
-	}, 5*time.Minute)
+	}, 5*time.Minute, nil)
 
 	_, err := b.ListModels(context.Background())
 	if err == nil {
@@ -195,7 +195,7 @@ func TestListModels_CacheDisabled(t *testing.T) {
 		Name:    "test",
 		BaseURL: ts.URL,
 		APIKey:  "test-key",
-	}, 0)
+	}, 0, nil)
 
 	_, err := b.ListModels(context.Background())
 	if err != nil {
@@ -223,7 +223,7 @@ func TestClearModelCache(t *testing.T) {
 		Name:    "test",
 		BaseURL: ts.URL,
 		APIKey:  "test-key",
-	}, 5*time.Minute)
+	}, 5*time.Minute, nil)
 
 	// First call populates cache.
 	_, err := b.ListModels(context.Background())
@@ -266,7 +266,7 @@ func TestClearModelCache_ThenUpstreamFails(t *testing.T) {
 		Name:    "test",
 		BaseURL: ts.URL,
 		APIKey:  "test-key",
-	}, 5*time.Minute)
+	}, 5*time.Minute, nil)
 
 	// Populate cache.
 	_, err := b.ListModels(context.Background())

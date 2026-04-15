@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/menno/llmapiproxy/internal/config"
+	"github.com/menno/llmapiproxy/internal/identity"
 )
 
 // OpenAIBackend is a generic passthrough backend for any OpenAI-compatible API.
@@ -24,6 +25,10 @@ type OpenAIBackend struct {
 	extraHeaders map[string]string
 	models       []config.ModelConfig
 	client       *http.Client
+
+	// identityProfile, when non-nil and not "none", overrides User-Agent and
+	// injects additional headers to make requests look like a specific CLI tool.
+	identityProfile *identity.Profile
 
 	// modelsURL overrides the URL for model discovery (/models endpoint).
 	// When empty, models are fetched from baseURL + "/models".
@@ -43,21 +48,22 @@ type OpenAIBackend struct {
 	cacheStore *ModelCacheStore
 }
 
-func NewOpenAI(cfg config.BackendConfig, cacheTTL time.Duration) *OpenAIBackend {
+func NewOpenAI(cfg config.BackendConfig, cacheTTL time.Duration, profile *identity.Profile) *OpenAIBackend {
 	dm := make(map[string]bool, len(cfg.DisabledModels))
 	for _, m := range cfg.DisabledModels {
 		dm[m] = true
 	}
 	return &OpenAIBackend{
-		name:           cfg.Name,
-		baseURL:        strings.TrimRight(cfg.BaseURL, "/"),
-		apiKey:         cfg.APIKey,
-		extraHeaders:   cfg.ExtraHeaders,
-		models:         cfg.Models,
-		client:         &http.Client{Timeout: 5 * time.Minute},
-		modelCacheTTL:  cacheTTL,
-		modelsURL:      strings.TrimRight(cfg.ModelsURL, "/"),
-		disabledModels: dm,
+		name:            cfg.Name,
+		baseURL:         strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:          cfg.APIKey,
+		extraHeaders:    cfg.ExtraHeaders,
+		models:          cfg.Models,
+		client:          &http.Client{Timeout: 5 * time.Minute},
+		modelCacheTTL:   cacheTTL,
+		modelsURL:       strings.TrimRight(cfg.ModelsURL, "/"),
+		disabledModels:  dm,
+		identityProfile: profile,
 	}
 }
 
@@ -528,6 +534,10 @@ func (b *OpenAIBackend) setHeaders(httpReq *http.Request, apiKeyOverride string)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+
+	// Apply identity profile (between defaults and extraHeaders).
+	identity.ApplyProfile(httpReq, b.identityProfile, "")
+
 	for k, v := range b.extraHeaders {
 		httpReq.Header.Set(k, v)
 	}

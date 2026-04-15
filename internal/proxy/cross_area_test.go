@@ -141,7 +141,7 @@ func copilotTestEnv(t *testing.T, opts ...func(*copilotTestOpts)) (*backend.Copi
 			BaseURL: copilotUpstream.URL,
 			Models:  o.models,
 		},
-		deviceCodeHandler, tokenStore,
+		deviceCodeHandler, tokenStore, nil, nil,
 	)
 
 	cleanup := func() {
@@ -195,7 +195,7 @@ func openaiTestEnv(t *testing.T) (backend.Backend, func()) {
 		BaseURL: upstream.URL,
 		APIKey:  "test-or-key",
 		Models:  []config.ModelConfig{{ID: "openai/gpt-4o"}, {ID: "anthropic/claude-sonnet-4"}},
-	}, 0)
+	}, 0, nil)
 
 	return b, upstream.Close
 }
@@ -587,7 +587,7 @@ func TestCrossArea_TokenPersistenceAcrossRestarts(t *testing.T) {
 	dch1 := oauth.NewDeviceCodeHandler(ts1, oauth.WithCopilotExchangerURL(githubAPI.URL))
 	b1 := backend.NewCopilotBackend(
 		config.BackendConfig{Name: "copilot", Type: "copilot", BaseURL: upstream.URL},
-		dch1, ts1,
+		dch1, ts1, nil, nil,
 	)
 
 	req := &backend.ChatCompletionRequest{
@@ -627,7 +627,7 @@ func TestCrossArea_TokenPersistenceAcrossRestarts(t *testing.T) {
 	dch2 := oauth.NewDeviceCodeHandler(ts2, oauth.WithCopilotExchangerURL(githubAPI.URL))
 	b2 := backend.NewCopilotBackend(
 		config.BackendConfig{Name: "copilot", Type: "copilot", BaseURL: upstream.URL},
-		dch2, ts2,
+		dch2, ts2, nil, nil,
 	)
 
 	resp2, err := b2.ChatCompletion(context.Background(), req)
@@ -703,7 +703,7 @@ func TestCrossArea_NoGitHubToken(t *testing.T) {
 	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts)
 	b := backend.NewCopilotBackend(
 		config.BackendConfig{Name: "copilot", Type: "copilot", BaseURL: upstream.URL},
-		deviceCodeHandler, ts,
+		deviceCodeHandler, ts, nil, nil,
 	)
 
 	req := &backend.ChatCompletionRequest{
@@ -794,7 +794,7 @@ func TestCrossArea_OAuthTokenExpiry_NoRefresh(t *testing.T) {
 			Name: "codex", Type: "codex", BaseURL: "https://chatgpt.com/backend-api/codex",
 			Models: []config.ModelConfig{{ID: "o4-mini"}},
 		},
-		oauthHandler, ts, nil, 0)
+		oauthHandler, ts, nil, 0, nil, nil)
 
 	status := b.OAuthStatus()
 	if status.Authenticated {
@@ -855,7 +855,7 @@ func TestCrossArea_SimultaneousOAuthFlows(t *testing.T) {
 			Name: "codex", Type: "codex", BaseURL: codexUpstream.URL,
 			Models: []config.ModelConfig{{ID: "o4-mini"}},
 		},
-		codexHandler, codexTS, nil, 0)
+		codexHandler, codexTS, nil, 0, nil, nil)
 
 	// Both report independent OAuth statuses.
 	if copilotB.OAuthStatus().BackendName != "copilot" {
@@ -1096,7 +1096,7 @@ func TestCrossArea_OAuthStreaming(t *testing.T) {
 	dch := oauth.NewDeviceCodeHandler(ts)
 	b := backend.NewCopilotBackend(
 		config.BackendConfig{Name: "copilot", Type: "copilot", BaseURL: sseUpstream.URL},
-		dch, ts,
+		dch, ts, nil, nil,
 	)
 
 	req := &backend.ChatCompletionRequest{
@@ -1218,7 +1218,7 @@ func TestCrossArea_HealthCheckReflectsOAuthStatus(t *testing.T) {
 
 	expiredB := backend.NewCopilotBackend(
 		config.BackendConfig{Name: "expired-copilot", Type: "copilot", BaseURL: "https://api.githubcopilot.com"},
-		oauth.NewDeviceCodeHandler(expiredTS), expiredTS,
+		oauth.NewDeviceCodeHandler(expiredTS), expiredTS, nil, nil,
 	)
 
 	expiredStatus := expiredB.OAuthStatus()

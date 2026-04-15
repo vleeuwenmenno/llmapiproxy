@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -285,6 +286,114 @@ backends:
 	}
 	if bc.OAuth.TokenURL != "https://auth.openai.com/oauth/token" {
 		t.Errorf("TokenURL = %q, want %q", bc.OAuth.TokenURL, "https://auth.openai.com/oauth/token")
+	}
+}
+
+func TestManager_SetGlobalIdentityProfile_PersistsAndReloads(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	initial := `server:
+  api_keys: ["test-key"]
+identity_profile: opencode
+backends:
+  - name: openrouter
+    type: openai
+    base_url: https://example.com/v1
+    api_key: test-backend-key
+`
+	if err := os.WriteFile(path, []byte(initial), 0600); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	mgr, err := NewManager(path)
+	if err != nil {
+		t.Fatalf("NewManager error: %v", err)
+	}
+
+	if err := mgr.SetGlobalIdentityProfile("claude-code"); err != nil {
+		t.Fatalf("SetGlobalIdentityProfile error: %v", err)
+	}
+
+	got := mgr.Get().IdentityProfile
+	if got != "claude-code" {
+		t.Fatalf("IdentityProfile = %q, want %q", got, "claude-code")
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "identity_profile: claude-code") {
+		t.Fatalf("config file missing persisted global identity_profile:\n%s", text)
+	}
+
+	if err := mgr.SetGlobalIdentityProfile("none"); err != nil {
+		t.Fatalf("SetGlobalIdentityProfile(none) error: %v", err)
+	}
+	if mgr.Get().IdentityProfile != "none" {
+		t.Fatalf("IdentityProfile after setting none = %q, want %q", mgr.Get().IdentityProfile, "none")
+	}
+}
+
+func TestManager_SetBackendIdentityProfile_PersistsAndReloads(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	initial := `server:
+  api_keys: ["test-key"]
+identity_profile: opencode
+backends:
+  - name: openrouter
+    type: openai
+    base_url: https://example.com/v1
+    api_key: test-backend-key
+    disabled_models:
+      - foo
+  - name: codex
+    type: codex
+    base_url: https://example.com/codex
+    api_key: ""
+`
+	if err := os.WriteFile(path, []byte(initial), 0600); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	mgr, err := NewManager(path)
+	if err != nil {
+		t.Fatalf("NewManager error: %v", err)
+	}
+
+	if err := mgr.SetBackendIdentityProfile("openrouter", "claude-code"); err != nil {
+		t.Fatalf("SetBackendIdentityProfile error: %v", err)
+	}
+
+	var openrouter *BackendConfig
+	for i := range mgr.Get().Backends {
+		if mgr.Get().Backends[i].Name == "openrouter" {
+			openrouter = &mgr.Get().Backends[i]
+			break
+		}
+	}
+	if openrouter == nil {
+		t.Fatal("openrouter backend not found after reload")
+	}
+	if openrouter.IdentityProfile != "claude-code" {
+		t.Fatalf("backend IdentityProfile = %q, want %q", openrouter.IdentityProfile, "claude-code")
+	}
+	if len(openrouter.DisabledModels) != 1 || openrouter.DisabledModels[0] != "foo" {
+		t.Fatalf("disabled_models not preserved after rewrite: %#v", openrouter.DisabledModels)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "identity_profile: claude-code") {
+		t.Fatalf("config file missing persisted backend identity_profile:\n%s", text)
+	}
+	if !strings.Contains(text, "disabled_models:") {
+		t.Fatalf("config file dropped disabled_models during rewrite:\n%s", text)
 	}
 }
 

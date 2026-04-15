@@ -281,6 +281,13 @@
             height: 1px;
             background: var(--border);
         }
+        .section-title-line {
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+        /* suppress ::after when an explicit .section-title-line is present */
+        .section-title:has(.section-title-line)::after { display: none; }
 
         /* ── Backend cards ────────────────────────────────────── */
         .backend-grid {
@@ -2173,6 +2180,178 @@
             .overlap-chip { padding: 0.35rem 0.6rem; }
             .pill { padding: 0.25rem 0.4rem; font-size: 0.7rem; }
         }
+
+        /* ── Section title actions (tri-dot menu) ────────────── */
+        .section-title-actions {
+            position: relative;
+            flex-shrink: 0;
+        }
+        .section-title-trigger {
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text-dim);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .section-title-trigger:hover,
+        .section-title-actions.open .section-title-trigger {
+            color: var(--accent);
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+        .section-title-trigger.has-profile {
+            color: rgba(251,191,36,0.9);
+        }
+        .section-title-trigger.has-profile:hover,
+        .section-title-actions.open .section-title-trigger.has-profile {
+            color: rgba(251,191,36,1);
+            border-color: rgba(251,191,36,0.4);
+            background: rgba(251,191,36,0.08);
+        }
+        .section-title-menu {
+            position: absolute;
+            top: calc(100% + 0.4rem);
+            right: 0;
+            min-width: 240px;
+            padding: 0.35rem;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: color-mix(in srgb, var(--surface) 92%, black 8%);
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+            display: none;
+            z-index: 35;
+        }
+        .section-title-actions.open .section-title-menu {
+            display: block;
+            animation: fadeIn 0.14s ease both;
+        }
+        .section-title-menu-header {
+            padding: 0.45rem 0.7rem 0.25rem;
+            font-size: 0.68rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-dim);
+        }
+        .section-title-menu-warning {
+            margin: 0.25rem 0.35rem;
+            padding: 0.4rem 0.6rem;
+            background: rgba(251,191,36,0.08);
+            border: 1px solid rgba(251,191,36,0.2);
+            border-radius: 7px;
+            font-size: 0.7rem;
+            color: rgba(251,191,36,0.85);
+            line-height: 1.4;
+        }
+
+        /* ── Identity submenu inside backend dropdown ───── */
+        .backend-menu-separator {
+            height: 1px;
+            background: var(--border);
+            margin: 0.25rem 0.35rem;
+        }
+        .backend-menu-submenu-trigger {
+            width: 100%;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text);
+            border-radius: 9px;
+            padding: 0.55rem 0.7rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            cursor: pointer;
+            font-family: var(--sans);
+            font-size: 0.8rem;
+            text-align: left;
+            transition: all 0.15s ease;
+        }
+        .backend-menu-submenu-trigger:hover {
+            color: var(--accent);
+            border-color: rgba(34, 211, 238, 0.22);
+            background: var(--accent-dim);
+        }
+        .backend-menu-submenu-trigger:hover .backend-menu-icon { color: inherit; }
+        .backend-menu-submenu-trigger .submenu-arrow {
+            font-size: 0.65rem;
+            transition: transform 0.15s ease;
+            color: var(--text-dim);
+        }
+        .backend-menu-submenu-trigger.open .submenu-arrow { transform: rotate(180deg); }
+        .backend-submenu-panel {
+            display: none;
+            padding: 0.25rem 0.35rem 0.35rem;
+        }
+        .backend-submenu-panel.open { display: block; }
+        .backend-submenu-option {
+            width: 100%;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text-dim);
+            border-radius: 7px;
+            padding: 0.4rem 0.65rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            font-family: var(--sans);
+            font-size: 0.75rem;
+            text-align: left;
+            transition: all 0.15s ease;
+        }
+        .backend-submenu-option:hover {
+            color: var(--accent);
+            background: var(--accent-dim);
+        }
+        .backend-submenu-option.active {
+            color: var(--accent);
+            background: color-mix(in srgb, var(--accent-dim) 80%, transparent 20%);
+            border-color: rgba(34, 211, 238, 0.35);
+            font-weight: 600;
+        }
+        .backend-submenu-option .submenu-check {
+            width: 1rem;
+            text-align: center;
+            font-size: 0.7rem;
+            flex-shrink: 0;
+            color: var(--accent);
+        }
+        /* active profile pill shown next to the section-title trigger */
+        .section-title-profile-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.15rem 0.55rem 0.15rem 0.4rem;
+            border-radius: 20px;
+            border: 1px solid rgba(251,191,36,0.35);
+            background: rgba(251,191,36,0.07);
+            color: rgba(251,191,36,0.95);
+            font-size: 0.68rem;
+            font-family: var(--mono);
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .section-title-profile-pill:hover {
+            background: rgba(251,191,36,0.13);
+            border-color: rgba(251,191,36,0.55);
+        }
+        .backend-submenu-option .submenu-check {
+            width: 1rem;
+            text-align: center;
+            font-size: 0.7rem;
+            flex-shrink: 0;
+        }
     </style>
 </head>
 <body>
@@ -2273,7 +2452,32 @@
         <div style="padding:0.65rem 1rem;border-radius:6px;margin-bottom:1.5rem;font-size:0.875rem;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:var(--green)">{{.Message}}</div>
         {{end}}
 
-        <div class="section-title">Backends</div>
+        <div class="section-title">Backends<span class="section-title-line"></span>
+            <div class="section-title-actions" id="global-identity-dropdown">
+                {{if and $.GlobalIdentityProfile (ne $.GlobalIdentityProfile "none")}}
+                <button type="button" class="section-title-profile-pill" onclick="toggleGlobalIdentityMenu(event)" title="Global identity profile active">
+                    &#x1F576; {{$.GlobalIdentityProfile}}
+                </button>
+                {{end}}
+                <button type="button" class="section-title-trigger{{if and $.GlobalIdentityProfile (ne $.GlobalIdentityProfile "none")}} has-profile{{end}}" title="Identity profile" onclick="toggleGlobalIdentityMenu(event)">&#x22EE;</button>
+                <div class="section-title-menu">
+                    <div class="section-title-menu-header">&#x1F576; Global Identity Profile</div>
+                    <div class="backend-submenu-panel open">
+                        {{range $.IdentityProfiles}}
+                        <button type="button" class="backend-submenu-option{{if eq .ID $.GlobalIdentityProfile}} active{{end}}" onclick="setGlobalIdentityProfile('{{.ID}}')">
+                            <span class="submenu-check">{{if eq .ID $.GlobalIdentityProfile}}&#x2713;{{end}}</span>
+                            <span>{{.DisplayName}}</span>
+                        </button>
+                        {{end}}
+                    </div>
+                    {{if and $.GlobalIdentityProfile (ne $.GlobalIdentityProfile "none")}}
+                    <div class="section-title-menu-warning">
+                        &#x26A0; Identity spoofing is best-effort. Providers may still detect proxy usage.
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
         <div class="backend-grid">
         {{range .Backends}}
         {{$oauth := index $.OAuthByBackend .Name}}
@@ -2319,6 +2523,28 @@
                                     <span class="backend-menu-meta">danger</span>
                                 </button>
                             </form>
+                            <div class="backend-menu-separator"></div>
+                            {{$backendProfile := .IdentityProfile}}
+                            {{$backendName := .Name}}
+                            <button type="button" class="backend-menu-submenu-trigger" onclick="toggleIdentitySubmenu(event, '{{$backendName}}')">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x1F576;</span><span>Identity profile</span></span>
+                                <span style="display:flex;align-items:center;gap:0.4rem">
+                                    <span class="backend-menu-meta">{{if $backendProfile}}{{$backendProfile}}{{else}}global{{end}}</span>
+                                    <span class="submenu-arrow">&#x25BE;</span>
+                                </span>
+                            </button>
+                            <div class="backend-submenu-panel" id="identity-submenu-{{$backendName}}">
+                                <button type="button" class="backend-submenu-option{{if not $backendProfile}} active{{end}}" onclick="setBackendIdentityProfile('{{$backendName}}', '')">
+                                    <span class="submenu-check">{{if not $backendProfile}}&#x2713;{{end}}</span>
+                                    <span>Use global default</span>
+                                </button>
+                                {{range $.IdentityProfiles}}
+                                <button type="button" class="backend-submenu-option{{if eq .ID $backendProfile}} active{{end}}" onclick="setBackendIdentityProfile('{{$backendName}}', '{{.ID}}')">
+                                    <span class="submenu-check">{{if eq .ID $backendProfile}}&#x2713;{{end}}</span>
+                                    <span>{{.DisplayName}}</span>
+                                </button>
+                                {{end}}
+                            </div>
                         </div>
                     </div>
                     </div>
@@ -3535,6 +3761,11 @@
         document.addEventListener('click', function(e) {
             if (openBackendDropdown && !e.target.closest('.backend-dropdown-container')) {
                 closeBackendDropdown();
+            }
+            // Close global identity menu on outside click
+            var globalMenu = document.getElementById('global-identity-dropdown');
+            if (globalMenu && globalMenu.classList.contains('open') && !e.target.closest('#global-identity-dropdown')) {
+                globalMenu.classList.remove('open');
             }
             // Close popover on outside click
             if (openPopover) {
@@ -4876,6 +5107,52 @@
                 loadBackendModels(card.dataset.backend);
             });
         });
+
+        function setGlobalIdentityProfile(profileID) {
+            var form = new FormData();
+            form.append('profile', profileID);
+            fetch('/ui/identity-profile', {
+                method: 'POST',
+                headers: {'X-Requested-With': 'XMLHttpRequest'},
+                body: form
+            }).then(function(resp) {
+                if (!resp.ok) return resp.text().then(function(t) { alert('Error: ' + t); });
+                window.location.href = window.location.href;
+            });
+        }
+
+        function toggleGlobalIdentityMenu(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            var container = document.getElementById('global-identity-dropdown');
+            if (!container) return;
+            var isOpen = container.classList.contains('open');
+            container.classList.toggle('open', !isOpen);
+        }
+
+        function setBackendIdentityProfile(backendName, profileID) {
+            var form = new FormData();
+            form.append('profile', profileID);
+            fetch('/ui/backends/' + encodeURIComponent(backendName) + '/identity-profile', {
+                method: 'POST',
+                headers: {'X-Requested-With': 'XMLHttpRequest'},
+                body: form
+            }).then(function(resp) {
+                if (!resp.ok) return resp.text().then(function(t) { alert('Error: ' + t); });
+                window.location.href = window.location.href;
+            });
+        }
+
+        function toggleIdentitySubmenu(event, name) {
+            event.preventDefault();
+            event.stopPropagation();
+            var panel = document.getElementById('identity-submenu-' + name);
+            var trigger = event.currentTarget;
+            if (!panel) return;
+            var isOpen = panel.classList.contains('open');
+            panel.classList.toggle('open', !isOpen);
+            trigger.classList.toggle('open', !isOpen);
+        }
     </script>
 </body>
 </html>

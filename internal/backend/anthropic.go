@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/menno/llmapiproxy/internal/config"
+	"github.com/menno/llmapiproxy/internal/identity"
 	"github.com/rs/zerolog/log"
 )
 
@@ -33,6 +34,10 @@ type AnthropicBackend struct {
 	models       []config.ModelConfig
 	client       *http.Client
 
+	// identityProfile, when non-nil and not "none", overrides User-Agent and
+	// injects additional headers to make requests look like a specific CLI tool.
+	identityProfile *identity.Profile
+
 	// disabledModels is a set of model IDs that should never be routed
 	// through this backend, even if they are available upstream.
 	disabledModels map[string]bool
@@ -46,20 +51,21 @@ type AnthropicBackend struct {
 	cacheStore *ModelCacheStore
 }
 
-func NewAnthropic(cfg config.BackendConfig, cacheTTL time.Duration) *AnthropicBackend {
+func NewAnthropic(cfg config.BackendConfig, cacheTTL time.Duration, profile *identity.Profile) *AnthropicBackend {
 	dm := make(map[string]bool, len(cfg.DisabledModels))
 	for _, m := range cfg.DisabledModels {
 		dm[m] = true
 	}
 	return &AnthropicBackend{
-		name:           cfg.Name,
-		baseURL:        strings.TrimRight(cfg.BaseURL, "/"),
-		apiKey:         cfg.APIKey,
-		extraHeaders:   cfg.ExtraHeaders,
-		models:         cfg.Models,
-		client:         &http.Client{Timeout: anthropicHTTPTimeout},
-		modelCacheTTL:  cacheTTL,
-		disabledModels: dm,
+		name:            cfg.Name,
+		baseURL:         strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:          cfg.APIKey,
+		extraHeaders:    cfg.ExtraHeaders,
+		models:          cfg.Models,
+		client:          &http.Client{Timeout: anthropicHTTPTimeout},
+		modelCacheTTL:   cacheTTL,
+		disabledModels:  dm,
+		identityProfile: profile,
 	}
 }
 
@@ -1111,6 +1117,10 @@ func (b *AnthropicBackend) setHeaders(httpReq *http.Request, apiKeyOverride stri
 	if httpReq.Header.Get("anthropic-version") == "" {
 		httpReq.Header.Set("anthropic-version", anthropicDefaultVersion)
 	}
+
+	// Apply identity profile (between defaults and extraHeaders).
+	identity.ApplyProfile(httpReq, b.identityProfile, "")
+
 	for k, v := range b.extraHeaders {
 		httpReq.Header.Set(k, v)
 	}

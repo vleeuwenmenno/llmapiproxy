@@ -20,10 +20,28 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig    `yaml:"server"`
+	Server ServerConfig `yaml:"server"`
+
+	// IdentityProfile sets the global default identity profile for outgoing
+	// requests. When empty or "none", no spoofing is applied. Each backend
+	// can override this with its own identity_profile setting.
+	IdentityProfile string `yaml:"identity_profile,omitempty"`
+
+	// CustomIdentityProfiles defines user-created identity profiles in addition
+	// to the built-in ones (codex-cli, gemini-cli, copilot-vscode, etc.).
+	CustomIdentityProfiles []CustomIdentityProfile `yaml:"custom_identity_profiles,omitempty"`
+
 	Backends []BackendConfig `yaml:"backends"`
 	Clients  []ClientConfig  `yaml:"clients,omitempty"`
 	Routing  RoutingConfig   `yaml:"routing,omitempty"`
+}
+
+// CustomIdentityProfile defines a user-created identity profile.
+type CustomIdentityProfile struct {
+	ID          string            `yaml:"id"`
+	DisplayName string            `yaml:"display_name"`
+	UserAgent   string            `yaml:"user_agent,omitempty"`
+	Headers     map[string]string `yaml:"headers,omitempty"`
 }
 
 type ClientConfig struct {
@@ -145,6 +163,11 @@ type BackendConfig struct {
 	// SupportsModel() and ListModels() so it won't appear in /v1/models or
 	// the web UI for this backend. Other backends are unaffected.
 	DisabledModels []string `yaml:"disabled_models,omitempty"`
+
+	// IdentityProfile overrides the global identity_profile for this backend.
+	// When empty, the global setting is used. Set to "none" to explicitly
+	// disable spoofing for this backend regardless of the global setting.
+	IdentityProfile string `yaml:"identity_profile,omitempty"`
 }
 
 // ModelIDs returns the list of model IDs as plain strings (backward compat).
@@ -287,15 +310,17 @@ func (sc *ServerConfig) MarshalYAML() (interface{}, error) {
 func (bc *BackendConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// Use a shadow type to avoid infinite recursion.
 	type raw struct {
-		Name         string            `yaml:"name"`
-		Type         string            `yaml:"type"`
-		BaseURL      string            `yaml:"base_url"`
-		APIKey       string            `yaml:"api_key"`
-		ExtraHeaders map[string]string `yaml:"extra_headers,omitempty"`
-		ModelsRaw    interface{}       `yaml:"models,omitempty"`
-		Enabled      *bool             `yaml:"enabled,omitempty"`
-		OAuth        *OAuthConfig      `yaml:"oauth,omitempty"`
-		ModelsURL    string            `yaml:"models_url,omitempty"`
+		Name            string            `yaml:"name"`
+		Type            string            `yaml:"type"`
+		BaseURL         string            `yaml:"base_url"`
+		APIKey          string            `yaml:"api_key"`
+		ExtraHeaders    map[string]string `yaml:"extra_headers,omitempty"`
+		ModelsRaw       interface{}       `yaml:"models,omitempty"`
+		Enabled         *bool             `yaml:"enabled,omitempty"`
+		OAuth           *OAuthConfig      `yaml:"oauth,omitempty"`
+		ModelsURL       string            `yaml:"models_url,omitempty"`
+		DisabledModels  []string          `yaml:"disabled_models,omitempty"`
+		IdentityProfile string            `yaml:"identity_profile,omitempty"`
 	}
 	var r raw
 	if err := unmarshal(&r); err != nil {
@@ -309,6 +334,8 @@ func (bc *BackendConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	bc.Enabled = r.Enabled
 	bc.OAuth = r.OAuth
 	bc.ModelsURL = r.ModelsURL
+	bc.DisabledModels = r.DisabledModels
+	bc.IdentityProfile = r.IdentityProfile
 
 	if r.ModelsRaw != nil {
 		models, err := parseModelsField(r.ModelsRaw)
@@ -318,6 +345,39 @@ func (bc *BackendConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 		bc.Models = models
 	}
 	return nil
+}
+
+// MarshalYAML implements custom YAML marshaling for BackendConfig
+// to preserve models in their object form and keep custom fields symmetric
+// with UnmarshalYAML.
+func (bc BackendConfig) MarshalYAML() (interface{}, error) {
+	type raw struct {
+		Name            string            `yaml:"name"`
+		Type            string            `yaml:"type"`
+		BaseURL         string            `yaml:"base_url"`
+		APIKey          string            `yaml:"api_key"`
+		ExtraHeaders    map[string]string `yaml:"extra_headers,omitempty"`
+		Models          []ModelConfig     `yaml:"models,omitempty"`
+		Enabled         *bool             `yaml:"enabled,omitempty"`
+		OAuth           *OAuthConfig      `yaml:"oauth,omitempty"`
+		ModelsURL       string            `yaml:"models_url,omitempty"`
+		DisabledModels  []string          `yaml:"disabled_models,omitempty"`
+		IdentityProfile string            `yaml:"identity_profile,omitempty"`
+	}
+
+	return raw{
+		Name:            bc.Name,
+		Type:            bc.Type,
+		BaseURL:         bc.BaseURL,
+		APIKey:          bc.APIKey,
+		ExtraHeaders:    bc.ExtraHeaders,
+		Models:          bc.Models,
+		Enabled:         bc.Enabled,
+		OAuth:           bc.OAuth,
+		ModelsURL:       bc.ModelsURL,
+		DisabledModels:  bc.DisabledModels,
+		IdentityProfile: bc.IdentityProfile,
+	}, nil
 }
 
 // parseModelsField handles both string and object entries in the models list.
@@ -1002,6 +1062,55 @@ func (m *Manager) UpdateServerAddr(host string, port int) error {
 	m.current.Server.Listen = "" // clear legacy field — host/port take precedence
 	cfg := m.current
 	m.mu.Unlock()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+// SetGlobalIdentityProfile sets the global identity_profile, persists the file,
+// and reloads configuration.
+func (m *Manager) SetGlobalIdentityProfile(profileID string) error {
+	m.mu.Lock()
+	m.current.IdentityProfile = profileID
+	cfg := m.current
+	m.mu.Unlock()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+// SetBackendIdentityProfile sets the identity_profile for a specific backend,
+// persists the file, and reloads configuration.
+func (m *Manager) SetBackendIdentityProfile(backendName, profileID string) error {
+	m.mu.Lock()
+	found := false
+	for i, b := range m.current.Backends {
+		if b.Name == backendName {
+			m.current.Backends[i].IdentityProfile = profileID
+			found = true
+			break
+		}
+	}
+	cfg := m.current
+	m.mu.Unlock()
+
+	if !found {
+		return fmt.Errorf("backend %q not found", backendName)
+	}
 
 	data, err := yaml.Marshal(cfg)
 	if err != nil {

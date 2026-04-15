@@ -550,7 +550,7 @@ func TestCopilotProxy_PerClientBackendKeyOverrides(t *testing.T) {
 		Type:    "openai",
 		BaseURL: upstream.URL,
 		APIKey:  "default-api-key",
-	}, 0)
+	}, 0, nil)
 
 	// Client config with backend key override.
 	clientWithOverride := config.ClientConfig{
@@ -658,7 +658,7 @@ func TestCopilotProxy_BackendKeyOverrideIgnoredForCopilot(t *testing.T) {
 			Type:    "copilot",
 			BaseURL: copilotUpstream.URL,
 		},
-		deviceCodeHandler, tokenStore,
+		deviceCodeHandler, tokenStore, nil, nil,
 	)
 
 	// Client with backend_keys override for copilot (should be ignored).

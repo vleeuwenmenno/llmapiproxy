@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/menno/llmapiproxy/internal/config"
+	"github.com/menno/llmapiproxy/internal/identity"
 	"github.com/menno/llmapiproxy/internal/oauth"
 )
 
@@ -82,7 +83,7 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 			existingTS = r.tokenStores[bc.Name]
 		}
 
-		b, ts, err := r.createBackend(bc, existingTS, cacheTTL)
+		b, ts, err := r.createBackend(bc, existingTS, cacheTTL, cfg)
 		if err != nil {
 			log.Warn().Str("backend", bc.Name).Err(err).Msg("skipping backend")
 			continue
@@ -135,26 +136,42 @@ func (r *Registry) warmModelCaches(cacheTTL time.Duration) {
 // createBackend instantiates the appropriate backend based on the config type.
 // If existingTS is non-nil, it is reused instead of creating a new token store.
 // Returns the backend and (for OAuth backends) the token store used.
-func (r *Registry) createBackend(bc config.BackendConfig, existingTS *oauth.TokenStore, cacheTTL time.Duration) (Backend, *oauth.TokenStore, error) {
+func (r *Registry) createBackend(bc config.BackendConfig, existingTS *oauth.TokenStore, cacheTTL time.Duration, cfg *config.Config) (Backend, *oauth.TokenStore, error) {
+	// Resolve identity profile: backend-specific > global > none.
+	profileID := bc.IdentityProfile
+	if profileID == "" {
+		profileID = cfg.IdentityProfile
+	}
+	var customProfiles []identity.Profile
+	for _, cp := range cfg.CustomIdentityProfiles {
+		customProfiles = append(customProfiles, identity.Profile{
+			ID:          cp.ID,
+			DisplayName: cp.DisplayName,
+			UserAgent:   cp.UserAgent,
+			Headers:     cp.Headers,
+		})
+	}
+	profile := identity.Resolve(profileID, customProfiles)
+
 	switch bc.Type {
 	case "copilot":
-		b, ts, err := r.createCopilotBackend(bc, existingTS)
+		b, ts, err := r.createCopilotBackend(bc, existingTS, profile)
 		if err != nil {
 			return nil, nil, err
 		}
 		return b, ts, nil
 	case "codex":
-		b, ts, err := r.createCodexBackend(bc, existingTS, cacheTTL)
+		b, ts, err := r.createCodexBackend(bc, existingTS, cacheTTL, profile)
 		if err != nil {
 			return nil, nil, err
 		}
 		return b, ts, nil
 	case "anthropic":
-		b := NewAnthropic(bc, cacheTTL)
+		b := NewAnthropic(bc, cacheTTL, profile)
 		b.SetModelCacheStore(r.modelCacheStore)
 		return b, nil, nil
 	case "openai", "":
-		b := NewOpenAI(bc, cacheTTL)
+		b := NewOpenAI(bc, cacheTTL, profile)
 		b.SetModelCacheStore(r.modelCacheStore)
 		return b, nil, nil
 	default:
@@ -176,7 +193,7 @@ func tokenStorePath(bc config.BackendConfig) string {
 
 // createCopilotBackend creates a CopilotBackend with device code flow support,
 // reusing the existing token store if provided.
-func (r *Registry) createCopilotBackend(bc config.BackendConfig, existingTS *oauth.TokenStore) (*CopilotBackend, *oauth.TokenStore, error) {
+func (r *Registry) createCopilotBackend(bc config.BackendConfig, existingTS *oauth.TokenStore, profile *identity.Profile) (*CopilotBackend, *oauth.TokenStore, error) {
 	tokenPath := tokenStorePath(bc)
 
 	ts := existingTS
@@ -197,14 +214,14 @@ func (r *Registry) createCopilotBackend(bc config.BackendConfig, existingTS *oau
 	}
 	deviceCodeHandler := oauth.NewDeviceCodeHandler(ts, deviceCodeOpts...)
 
-	return NewCopilotBackend(bc, deviceCodeHandler, ts, r.modelCacheStore), ts, nil
+	return NewCopilotBackend(bc, deviceCodeHandler, ts, r.modelCacheStore, profile), ts, nil
 }
 
 // createCodexBackend creates a CodexBackend, reusing the existing token store
 // if provided. The OAuth redirect URI is derived from the server's listen
 // address and the backend name. A device code handler is also created to
 // support device code flow as an alternative login method.
-func (r *Registry) createCodexBackend(bc config.BackendConfig, existingTS *oauth.TokenStore, cacheTTL time.Duration) (*CodexBackend, *oauth.TokenStore, error) {
+func (r *Registry) createCodexBackend(bc config.BackendConfig, existingTS *oauth.TokenStore, cacheTTL time.Duration, profile *identity.Profile) (*CodexBackend, *oauth.TokenStore, error) {
 	tokenPath := tokenStorePath(bc)
 
 	ts := existingTS
@@ -247,7 +264,7 @@ func (r *Registry) createCodexBackend(bc config.BackendConfig, existingTS *oauth
 	// Create a device code handler for headless/SSH login support.
 	deviceCodeHandler := oauth.NewCodexDeviceCodeHandler(ts, oauthCfg)
 
-	return NewCodexBackend(bc, oauthHandler, ts, deviceCodeHandler, cacheTTL, r.modelCacheStore), ts, nil
+	return NewCodexBackend(bc, oauthHandler, ts, deviceCodeHandler, cacheTTL, r.modelCacheStore, profile), ts, nil
 }
 
 // HandleCodexLoopbackCallback routes a loopback OAuth callback to the Codex

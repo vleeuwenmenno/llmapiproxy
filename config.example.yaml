@@ -67,6 +67,28 @@ server:
   # Set to "0s" to disable caching (every ListModels call hits upstream).
   # model_cache_ttl: "5m"
 
+# ── Identity Spoofing ──────────────────────────────────────────────
+# Make the proxy's outgoing requests look like they came from a specific
+# CLI tool. This sets User-Agent and custom headers on upstream requests.
+#
+# Built-in profiles: none, codex-cli, gemini-cli, copilot-vscode, opencode, claude-code
+# Default: "none" (passthrough — no spoofing)
+#
+# WARNING: Identity spoofing is best-effort. It mimics CLI tool request
+# signatures but cannot guarantee compatibility. Providers may still
+# detect proxy usage and restrict your access.
+
+# Global identity profile (applies to all backends unless overridden).
+identity_profile: "opencode"
+
+# Custom identity profiles (in addition to the built-in ones).
+# custom_identity_profiles:
+#   - id: "my-tool"
+#     display_name: "My Custom Tool"
+#     user_agent: "my-tool/1.0 ({{.OS}}; {{.Arch}})"
+#     headers:
+#       X-Custom-Header: "my-value"
+
 backends:
   # ── OpenRouter ─────────────────────────────────────────────
   # Fully OpenAI-compatible. Supports hundreds of models.
@@ -76,6 +98,9 @@ backends:
     type: openai
     base_url: https://openrouter.ai/api/v1
     api_key: "sk-or-v1-your-openrouter-key"
+    # Per-backend identity profile override (optional).
+    # Overrides the global identity_profile for this backend only.
+    # identity_profile: "opencode"
     extra_headers:
       HTTP-Referer: "https://your-app.example.com"
       X-OpenRouter-Title: "LLM API Proxy"

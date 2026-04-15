@@ -20,6 +20,7 @@ import (
 	"github.com/menno/llmapiproxy/internal/backend"
 	"github.com/menno/llmapiproxy/internal/chat"
 	"github.com/menno/llmapiproxy/internal/config"
+	"github.com/menno/llmapiproxy/internal/identity"
 	"github.com/menno/llmapiproxy/internal/stats"
 	"github.com/menno/llmapiproxy/internal/users"
 	"gopkg.in/yaml.v3"
@@ -693,16 +694,17 @@ func renderConfigMessage(w http.ResponseWriter, configText string, message strin
 
 // BackendEntry holds display info for the models page.
 type BackendEntry struct {
-	Name           string
-	Type           string // "openai", "anthropic", "copilot", "codex"
-	BaseURL        string
-	APIKey         string       // masked API key for pre-filling the switch-type modal
-	Models         []ModelEntry // enriched model metadata (nil for dynamic backends)
-	IsDynamic      bool         // true when no explicit model list (accepts all)
-	IconURL        string       // path to SVG icon, empty if unknown
-	Enabled        bool         // false when backend is explicitly disabled
-	StaticCount    int          // pre-computed count for statically-configured backends
-	DisabledModels []string     // model IDs disabled on this backend
+	Name            string
+	Type            string // "openai", "anthropic", "copilot", "codex"
+	BaseURL         string
+	APIKey          string       // masked API key for pre-filling the switch-type modal
+	Models          []ModelEntry // enriched model metadata (nil for dynamic backends)
+	IsDynamic       bool         // true when no explicit model list (accepts all)
+	IconURL         string       // path to SVG icon, empty if unknown
+	Enabled         bool         // false when backend is explicitly disabled
+	StaticCount     int          // pre-computed count for statically-configured backends
+	DisabledModels  []string     // model IDs disabled on this backend
+	IdentityProfile string       // per-backend identity profile override (empty = use global)
 }
 
 // ModelEntry holds display data for a single model in the UI.
@@ -805,16 +807,17 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		}
 
 		entries = append(entries, BackendEntry{
-			Name:           bc.Name,
-			Type:           bc.Type,
-			BaseURL:        bc.BaseURL,
-			APIKey:         maskKey(bc.APIKey),
-			Models:         modelEntries, // nil for dynamic; IDs-only for static
-			IsDynamic:      isDynamic,
-			IconURL:        iconForBackend(bc.Name),
-			Enabled:        bc.IsEnabled(),
-			StaticCount:    len(modelEntries),
-			DisabledModels: bc.DisabledModels,
+			Name:            bc.Name,
+			Type:            bc.Type,
+			BaseURL:         bc.BaseURL,
+			APIKey:          maskKey(bc.APIKey),
+			Models:          modelEntries, // nil for dynamic; IDs-only for static
+			IsDynamic:       isDynamic,
+			IconURL:         iconForBackend(bc.Name),
+			Enabled:         bc.IsEnabled(),
+			StaticCount:     len(modelEntries),
+			DisabledModels:  bc.DisabledModels,
+			IdentityProfile: bc.IdentityProfile,
 		})
 	}
 
@@ -901,18 +904,32 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		oauthByBackend[oauthStatuses[i].BackendName] = &oauthStatuses[i]
 	}
 
+	// Build identity profile list for the models page selector.
+	var customProfiles []identity.Profile
+	for _, cp := range cfg.CustomIdentityProfiles {
+		customProfiles = append(customProfiles, identity.Profile{
+			ID:          cp.ID,
+			DisplayName: cp.DisplayName,
+			UserAgent:   cp.UserAgent,
+			Headers:     cp.Headers,
+		})
+	}
+	allIdentityProfiles := identity.AllProfiles(customProfiles)
+
 	data := map[string]any{
-		"Backends":           entries,
-		"Overlaps":           overlaps,
-		"DisplayAddr":        displayAddr,
-		"SampleModel":        sampleModel,
-		"Message":            r.URL.Query().Get("msg"),
-		"RoutingJSON":        template.JS(routingJSON),
-		"GlobalStrategy":     cfg.Routing.Strategy,
-		"DisabledModelsJSON": template.JS(disabledModelsJSON),
-		"ServerAPIKeys":      apiKeyEntries,
-		"CurlModels":         curlModels,
-		"OAuthByBackend":     oauthByBackend,
+		"Backends":              entries,
+		"Overlaps":              overlaps,
+		"DisplayAddr":           displayAddr,
+		"SampleModel":           sampleModel,
+		"Message":               r.URL.Query().Get("msg"),
+		"RoutingJSON":           template.JS(routingJSON),
+		"GlobalStrategy":        cfg.Routing.Strategy,
+		"DisabledModelsJSON":    template.JS(disabledModelsJSON),
+		"ServerAPIKeys":         apiKeyEntries,
+		"CurlModels":            curlModels,
+		"OAuthByBackend":        oauthByBackend,
+		"IdentityProfiles":      allIdentityProfiles,
+		"GlobalIdentityProfile": cfg.IdentityProfile,
 	}
 	injectAuth(r, data)
 
@@ -2846,4 +2863,72 @@ func (u *UI) RoutingBackendFallbacks(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(map[string]any{"items": items}); err != nil {
 		log.Error().Err(err).Msg("routing: fallbacks encode error")
 	}
+}
+
+// IdentityProfiles returns the list of available identity profiles as JSON.
+func (u *UI) IdentityProfiles(w http.ResponseWriter, r *http.Request) {
+	cfg := u.cfgMgr.Get()
+	var custom []identity.Profile
+	for _, cp := range cfg.CustomIdentityProfiles {
+		custom = append(custom, identity.Profile{
+			ID:          cp.ID,
+			DisplayName: cp.DisplayName,
+			UserAgent:   cp.UserAgent,
+			Headers:     cp.Headers,
+		})
+	}
+	all := identity.AllProfiles(custom)
+
+	type profileEntry struct {
+		ID          string `json:"id"`
+		DisplayName string `json:"display_name"`
+		Builtin     bool   `json:"builtin"`
+	}
+	out := make([]profileEntry, len(all))
+	for i, p := range all {
+		out[i] = profileEntry{ID: p.ID, DisplayName: p.DisplayName, Builtin: identity.IsBuiltin(p.ID)}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
+}
+
+// SetGlobalIdentityProfile sets the global identity profile.
+func (u *UI) SetGlobalIdentityProfile(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	profileID := r.FormValue("profile")
+	if err := u.cfgMgr.SetGlobalIdentityProfile(profileID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if isAJAX(r) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	http.Redirect(w, r, "/ui/models?msg=Global+identity+profile+set+to+"+profileID, http.StatusSeeOther)
+}
+
+// SetBackendIdentityProfile sets the identity profile for a specific backend.
+func (u *UI) SetBackendIdentityProfile(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "name")
+	if backendName == "" {
+		http.Error(w, "backend name required", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	profileID := r.FormValue("profile")
+	if err := u.cfgMgr.SetBackendIdentityProfile(backendName, profileID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if isAJAX(r) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	http.Redirect(w, r, "/ui/models?msg=Identity+profile+for+"+backendName+"+set+to+"+profileID, http.StatusSeeOther)
 }

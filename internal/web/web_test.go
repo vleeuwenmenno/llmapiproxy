@@ -1226,7 +1226,7 @@ func TestOAuthCheckStatus_TriggersTokenRefreshForCopilot(t *testing.T) {
 		BaseURL: "https://api.githubcopilot.com",
 		Models:  []config.ModelConfig{{ID: "gpt-4o"}},
 	}
-	mockBackend := backend.NewCopilotBackend(cfg, deviceCodeHandler, mockStore)
+	mockBackend := backend.NewCopilotBackend(cfg, deviceCodeHandler, mockStore, nil, nil)
 	ui.registry.RegisterBackend("copilot", mockBackend)
 
 	// Route through chi so URL params work

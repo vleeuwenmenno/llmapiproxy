@@ -57,7 +57,7 @@ func TestAnthropicBackend_ChatCompletion(t *testing.T) {
 		Type:    "anthropic",
 		BaseURL: srv.URL,
 		APIKey:  "test-key",
-	}, 0)
+	}, 0, nil)
 
 	maxTokens := 256
 	temp := 0.4
@@ -108,7 +108,7 @@ func TestAnthropicBackend_ChatCompletion_NestedTextBlock(t *testing.T) {
 		Type:    "anthropic",
 		BaseURL: srv.URL,
 		APIKey:  "test-key",
-	}, 0)
+	}, 0, nil)
 
 	resp, err := b.ChatCompletion(context.Background(), &ChatCompletionRequest{
 		Model:    "glm-4.7",
@@ -157,7 +157,7 @@ func TestAnthropicBackend_ChatCompletion_OpenAIFallback(t *testing.T) {
 		Type:    "anthropic",
 		BaseURL: srv.URL,
 		APIKey:  "test-key",
-	}, 0)
+	}, 0, nil)
 
 	resp, err := b.ChatCompletion(context.Background(), &ChatCompletionRequest{
 		Model:    "glm-4.7",
@@ -203,7 +203,7 @@ func TestAnthropicBackend_ListModels(t *testing.T) {
 		Type:    "anthropic",
 		BaseURL: srv.URL,
 		APIKey:  "test-key",
-	}, time.Minute)
+	}, time.Minute, nil)
 
 	models, err := b.ListModels(context.Background())
 	if err != nil {
@@ -244,7 +244,7 @@ func TestAnthropicBackend_ChatCompletion_BaseURLWithV1PreservesPath(t *testing.T
 		Type:    "anthropic",
 		BaseURL: srv.URL + "/v1",
 		APIKey:  "test-key",
-	}, 0)
+	}, 0, nil)
 
 	resp, err := b.ChatCompletion(context.Background(), &ChatCompletionRequest{
 		Model:    "claude-sonnet-4",
@@ -293,7 +293,7 @@ func TestAnthropicBackend_ChatCompletion_SkipsEmptyTextMessages(t *testing.T) {
 		Type:    "anthropic",
 		BaseURL: srv.URL,
 		APIKey:  "test-key",
-	}, 0)
+	}, 0, nil)
 
 	resp, err := b.ChatCompletion(context.Background(), &ChatCompletionRequest{
 		Model: "glm-4.7",
@@ -361,7 +361,7 @@ func TestAnthropicBackend_ChatCompletion_ToolCallsRequest(t *testing.T) {
 		Type:    "anthropic",
 		BaseURL: srv.URL,
 		APIKey:  "test-key",
-	}, 0)
+	}, 0, nil)
 
 	// Simulate a conversation with tool_calls and tool results.
 	rawBody := `{
@@ -485,7 +485,7 @@ func TestAnthropicBackend_ChatCompletion_ToolUseResponse(t *testing.T) {
 		Type:    "anthropic",
 		BaseURL: srv.URL,
 		APIKey:  "test-key",
-	}, 0)
+	}, 0, nil)
 
 	resp, err := b.ChatCompletion(context.Background(), &ChatCompletionRequest{
 		Model:    "claude-sonnet-4",
@@ -583,7 +583,7 @@ func TestAnthropicBackend_ChatCompletion_StreamToolUse(t *testing.T) {
 		Type:    "anthropic",
 		BaseURL: srv.URL,
 		APIKey:  "test-key",
-	}, 0)
+	}, 0, nil)
 
 	req := &ChatCompletionRequest{
 		Model:    "claude-sonnet-4",

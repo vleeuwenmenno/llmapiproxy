@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/menno/llmapiproxy/internal/config"
+	"github.com/menno/llmapiproxy/internal/identity"
 	"github.com/menno/llmapiproxy/internal/oauth"
 	"github.com/rs/zerolog/log"
 )
@@ -67,6 +68,10 @@ type CopilotBackend struct {
 	deviceCodeHandler *oauth.DeviceCodeHandler
 	tokenStore        *oauth.TokenStore
 
+	// identityProfile, when non-nil and not "none", overrides User-Agent and
+	// injects additional headers to make requests look like a specific CLI tool.
+	identityProfile *identity.Profile
+
 	// disabledModels is a set of model IDs that should never be routed
 	// through this backend, even if they are available upstream.
 	disabledModels map[string]bool
@@ -80,7 +85,7 @@ type CopilotBackend struct {
 
 // NewCopilotBackend creates a new CopilotBackend from the given configuration,
 // device code handler, and token store.
-func NewCopilotBackend(cfg config.BackendConfig, deviceCodeHandler *oauth.DeviceCodeHandler, tokenStore *oauth.TokenStore, cacheStore *ModelCacheStore) *CopilotBackend {
+func NewCopilotBackend(cfg config.BackendConfig, deviceCodeHandler *oauth.DeviceCodeHandler, tokenStore *oauth.TokenStore, cacheStore *ModelCacheStore, profile *identity.Profile) *CopilotBackend {
 	dm := make(map[string]bool, len(cfg.DisabledModels))
 	for _, m := range cfg.DisabledModels {
 		dm[m] = true
@@ -95,6 +100,7 @@ func NewCopilotBackend(cfg config.BackendConfig, deviceCodeHandler *oauth.Device
 		capCache:          make(map[string]copilotModelCap),
 		disabledModels:    dm,
 		cacheStore:        cacheStore,
+		identityProfile:   profile,
 	}
 }
 
@@ -466,15 +472,21 @@ func (b *CopilotBackend) forceExpireToken() {
 func (b *CopilotBackend) setHeaders(httpReq *http.Request, copilotToken string) {
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+copilotToken)
-	httpReq.Header.Set("Editor-Version", copilotEditorVersion)
-	httpReq.Header.Set("Editor-Plugin-Version", copilotEditorPluginVersion)
-	httpReq.Header.Set("Copilot-Integration-Id", copilotIntegrationID)
-	httpReq.Header.Set("User-Agent", copilotUserAgent)
 	httpReq.Header.Set("Accept", "application/json")
 
-	// Generate a unique request ID for tracing.
-	requestID := uuid.New().String()
-	httpReq.Header.Set("X-Request-Id", requestID)
+	if b.identityProfile != nil && b.identityProfile.ID != identity.ProfileNoneID {
+		// Use the identity profile's User-Agent and headers instead of
+		// the hardcoded Copilot spoofing headers.
+		identity.ApplyProfile(httpReq, b.identityProfile, "")
+	} else {
+		// Default Copilot headers.
+		httpReq.Header.Set("Editor-Version", copilotEditorVersion)
+		httpReq.Header.Set("Editor-Plugin-Version", copilotEditorPluginVersion)
+		httpReq.Header.Set("Copilot-Integration-Id", copilotIntegrationID)
+		httpReq.Header.Set("User-Agent", copilotUserAgent)
+		requestID := uuid.New().String()
+		httpReq.Header.Set("X-Request-Id", requestID)
+	}
 }
 
 // needsMaxCompletionTokensByID returns true if a model ID matches a known pattern
