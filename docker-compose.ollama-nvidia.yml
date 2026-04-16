@@ -1,0 +1,64 @@
+# Docker Compose example: LLM API Proxy + Ollama (NVIDIA GPU)
+#
+# Prerequisites:
+#   - NVIDIA GPU with drivers installed
+#   - NVIDIA Container Toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+#
+# Usage:
+#   1. Copy this file to docker-compose.yml
+#   2. Copy config.example.yaml to data/config.yaml and add:
+#      backends:
+#        - name: ollama
+#          type: ollama
+#          base_url: http://ollama:11434
+#          compat_mode: openai  # openai (default), anthropic, or native
+#   3. docker compose up -d
+#   4. Access proxy at http://localhost:8000
+#   5. Pull models via the web UI at http://localhost:8000/ui/models
+#      or via: docker compose exec ollama ollama pull llama3.2
+#
+# Verify GPU access:
+#   docker compose exec ollama nvidia-smi
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"    # Ollama API (optional, for direct access)
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  llmapiproxy:
+    image: ghcr.io/vleeuwenmenno/llmapiproxy:latest
+    # To build from source instead:
+    # build: .
+    ports:
+      - "8000:8000"      # API + web UI
+    volumes:
+      - ./data:/app/data  # Persist stats, tokens, caches, config
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  ollama-data:
+    driver: local

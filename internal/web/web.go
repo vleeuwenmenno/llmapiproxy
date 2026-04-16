@@ -737,7 +737,7 @@ func renderConfigMessage(w http.ResponseWriter, configText string, message strin
 // BackendEntry holds display info for the models page.
 type BackendEntry struct {
 	Name            string
-	Type            string // "openai", "anthropic", "copilot", "codex"
+	Type            string // "openai", "anthropic", "copilot", "codex", "ollama"
 	BaseURL         string
 	APIKey          string       // masked API key for pre-filling the switch-type modal
 	Models          []ModelEntry // enriched model metadata (nil for dynamic backends)
@@ -748,6 +748,7 @@ type BackendEntry struct {
 	DisabledModels  []string     // model IDs disabled on this backend
 	IdentityProfile string       // per-backend identity profile override (empty = use global)
 	CircuitOpen     bool         // true when circuit breaker is tripped (429 rate limit)
+	CompatMode      string       // ollama compat mode: "openai", "anthropic", "native"
 }
 
 // ModelEntry holds display data for a single model in the UI.
@@ -884,6 +885,7 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 			DisabledModels:  bc.DisabledModels,
 			IdentityProfile: bc.IdentityProfile,
 			CircuitOpen:     u.circuit != nil && u.circuit.Enabled() && u.circuit.State(bc.Name).State == "open",
+			CompatMode:      bc.CompatMode,
 		})
 	}
 
@@ -2410,10 +2412,11 @@ func (u *UI) AddBackendPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	bc := config.BackendConfig{
-		Name:    name,
-		Type:    bcType,
-		BaseURL: baseURL,
-		APIKey:  apiKey,
+		Name:       name,
+		Type:       bcType,
+		BaseURL:    baseURL,
+		APIKey:     apiKey,
+		CompatMode: r.FormValue("compat_mode"),
 	}
 
 	// Apply defaults for known backend types.
@@ -2441,6 +2444,13 @@ func (u *UI) AddBackendPage(w http.ResponseWriter, r *http.Request) {
 				AuthURL:  "https://auth.openai.com/oauth/authorize",
 				TokenURL: "https://auth.openai.com/oauth/token",
 			}
+		}
+	case "ollama":
+		if bc.BaseURL == "" {
+			bc.BaseURL = "http://localhost:11434"
+		}
+		if bc.CompatMode == "" {
+			bc.CompatMode = "openai"
 		}
 	case "openai", "":
 		bc.Type = "openai"
@@ -3245,4 +3255,262 @@ func (u *UI) CircuitConfigUpdate(w http.ResponseWriter, r *http.Request) {
 
 	log.Info().Bool("enabled", enabled).Int("threshold", threshold).Int("cooldown", cooldown).Msg("circuit breaker config updated via UI")
 	http.Redirect(w, r, "/ui/settings?msg=Circuit+breaker+config+updated", http.StatusSeeOther)
+}
+
+// ── Ollama Management ──────────────────────────────────────────
+
+// ollamaBackend resolves the backend by name and asserts it's an Ollama backend.
+// Returns nil if not found or not Ollama.
+func (u *UI) ollamaBackend(name string) *backend.OllamaBackend {
+	b := u.registry.Get(name)
+	if b == nil {
+		return nil
+	}
+	ob, ok := b.(*backend.OllamaBackend)
+	if !ok {
+		return nil
+	}
+	return ob
+}
+
+// OllamaPullModel starts pulling a model on an Ollama backend.
+// POST /ui/ollama/{backend}/pull
+func (u *UI) OllamaPullModel(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	ob := u.ollamaBackend(backendName)
+	if ob == nil {
+		http.Error(w, "not an ollama backend", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Model == "" {
+		http.Error(w, "model field required", http.StatusBadRequest)
+		return
+	}
+
+	mgr := backend.NewOllamaManager(ob)
+	ch, err := mgr.PullModel(r.Context(), req.Model)
+	if err != nil {
+		log.Error().Err(err).Str("backend", backendName).Str("model", req.Model).Msg("ollama pull failed to start")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Stream progress as NDJSON if AJAX, else consume silently.
+	if isAJAX(r) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.Header().Set("Transfer-Encoding", "chunked")
+		for progress := range ch {
+			data, _ := json.Marshal(progress)
+			w.Write(data)
+			w.Write([]byte("\n"))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			if progress.Done {
+				break
+			}
+		}
+		return
+	}
+
+	// Non-AJAX: consume in background, redirect.
+	go func() {
+		for range ch {
+		}
+	}()
+
+	redirect := r.URL.Query().Get("redirect")
+	if redirect == "" {
+		redirect = "/ui/models"
+	}
+	http.Redirect(w, r, redirect+"?msg=Pulling+"+req.Model+"+on+"+backendName, http.StatusSeeOther)
+}
+
+// OllamaCancelPull cancels an active model pull.
+// POST /ui/ollama/{backend}/cancel
+func (u *UI) OllamaCancelPull(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	ob := u.ollamaBackend(backendName)
+	if ob == nil {
+		http.Error(w, "not an ollama backend", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Model == "" {
+		http.Error(w, "model field required", http.StatusBadRequest)
+		return
+	}
+
+	cancelled := ob.CancelPullByModel(req.Model)
+	log.Info().Str("backend", backendName).Str("model", req.Model).Bool("cancelled", cancelled).Msg("ollama pull cancel requested")
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"ok": true, "cancelled": cancelled})
+}
+
+// OllamaPullStatus returns the status of active/recent pulls for a backend.
+// Reads directly from the long-lived backend instance so it survives page reloads.
+// GET /ui/ollama/{backend}/pulls
+func (u *UI) OllamaPullStatus(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	ob := u.ollamaBackend(backendName)
+	if ob == nil {
+		http.Error(w, "not an ollama backend", http.StatusBadRequest)
+		return
+	}
+
+	statuses := ob.ActivePulls()
+	if statuses == nil {
+		statuses = []backend.OllamaPullStatus{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(statuses)
+}
+
+// OllamaDeleteModel removes a model from an Ollama backend.
+// DELETE /ui/ollama/{backend}/models/{model}
+// Also accepts POST with JSON body {"model":"name"} for names with special chars.
+func (u *UI) OllamaDeleteModel(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	ob := u.ollamaBackend(backendName)
+	if ob == nil {
+		http.Error(w, "not an ollama backend", http.StatusBadRequest)
+		return
+	}
+
+	// Model name can come from URL param or JSON body (preferred for special chars).
+	modelName := chi.URLParam(r, "model")
+	if r.Method == http.MethodPost {
+		var req struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req.Model != "" {
+			modelName = req.Model
+		}
+	}
+	if modelName == "" {
+		http.Error(w, "model name required", http.StatusBadRequest)
+		return
+	}
+
+	mgr := backend.NewOllamaManager(ob)
+	if err := mgr.DeleteModel(r.Context(), modelName); err != nil {
+		log.Error().Err(err).Str("backend", backendName).Str("model", modelName).Msg("ollama delete failed")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Info().Str("backend", backendName).Str("model", modelName).Msg("ollama model deleted")
+	if isAJAX(r) || r.Method == http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		return
+	}
+	redirect := r.URL.Query().Get("redirect")
+	if redirect == "" {
+		redirect = "/ui/models"
+	}
+	http.Redirect(w, r, redirect+"?msg=Model+"+modelName+"+deleted+from+"+backendName, http.StatusSeeOther)
+}
+
+// OllamaShowModel returns detailed information about a model.
+// GET /ui/ollama/{backend}/models/{model}
+func (u *UI) OllamaShowModel(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	modelName := chi.URLParam(r, "model")
+	ob := u.ollamaBackend(backendName)
+	if ob == nil {
+		http.Error(w, "not an ollama backend", http.StatusBadRequest)
+		return
+	}
+
+	mgr := backend.NewOllamaManager(ob)
+	info, err := mgr.ShowModelDetails(r.Context(), modelName)
+	if err != nil {
+		log.Error().Err(err).Str("backend", backendName).Str("model", modelName).Msg("ollama show failed")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(info)
+}
+
+// OllamaListRunning returns models currently loaded in memory.
+// GET /ui/ollama/{backend}/ps
+func (u *UI) OllamaListRunning(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	ob := u.ollamaBackend(backendName)
+	if ob == nil {
+		http.Error(w, "not an ollama backend", http.StatusBadRequest)
+		return
+	}
+
+	mgr := backend.NewOllamaManager(ob)
+	models, err := mgr.ListRunningModels(r.Context())
+	if err != nil {
+		log.Error().Err(err).Str("backend", backendName).Msg("ollama ps failed")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(models)
+}
+
+// OllamaWhoami returns the signin status of an Ollama backend.
+// GET /ui/ollama/{backend}/account
+func (u *UI) OllamaWhoami(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	ob := u.ollamaBackend(backendName)
+	if ob == nil {
+		http.Error(w, "not an ollama backend", http.StatusBadRequest)
+		return
+	}
+
+	mgr := backend.NewOllamaManager(ob)
+	result, err := mgr.Whoami(r.Context())
+	if err != nil {
+		log.Error().Err(err).Str("backend", backendName).Msg("ollama whoami failed")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]any{
+		"signed_in":  result.Name != "",
+		"name":       result.Name,
+		"signin_url": result.SigninURL,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// OllamaSignout signs out from ollama.com via the local Ollama server.
+// POST /ui/ollama/{backend}/signout
+func (u *UI) OllamaSignout(w http.ResponseWriter, r *http.Request) {
+	backendName := chi.URLParam(r, "backend")
+	ob := u.ollamaBackend(backendName)
+	if ob == nil {
+		http.Error(w, "not an ollama backend", http.StatusBadRequest)
+		return
+	}
+
+	mgr := backend.NewOllamaManager(ob)
+	if err := mgr.Signout(r.Context()); err != nil {
+		log.Error().Err(err).Str("backend", backendName).Msg("ollama signout failed")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Info().Str("backend", backendName).Msg("ollama signed out")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }

@@ -789,6 +789,16 @@
             color: var(--amber);
             border: 1px solid rgba(251,191,36,0.3);
         }
+        .type-badge.type-ollama {
+            background: rgba(99,102,241,0.12);
+            color: #818cf8;
+            border: 1px solid rgba(99,102,241,0.3);
+        }
+        .type-badge.type-native {
+            background: rgba(244,114,182,0.12);
+            color: #f472b6;
+            border: 1px solid rgba(244,114,182,0.3);
+        }
 
         /* ── Spinner ─────────────────────────────────────────── */
         .model-loading {
@@ -2594,12 +2604,13 @@
         <div class="backend-grid">
         {{range .Backends}}
         {{$oauth := index $.OAuthByBackend .Name}}
-            <div class="backend-card{{if not .Enabled}} disabled{{end}}{{if .CircuitOpen}} circuit-open{{end}}{{if .IsDynamic}} collapsed{{end}}" data-backend="{{.Name}}"{{if not .Enabled}} data-disabled="true"{{end}}{{if and $oauth (not $oauth.Authenticated)}} data-oauth-unauthed="true"{{end}}>
+            <div class="backend-card{{if not .Enabled}} disabled{{end}}{{if .CircuitOpen}} circuit-open{{end}}{{if .IsDynamic}} collapsed{{end}}" data-backend="{{.Name}}" data-backend-type="{{.Type}}"{{if not .Enabled}} data-disabled="true"{{end}}{{if and $oauth (not $oauth.Authenticated)}} data-oauth-unauthed="true"{{end}}>
                 <div class="backend-header" onclick="toggleCard(event, '{{.Name}}')">
                     <div class="backend-name">
                         {{if .IconURL}}<img class="backend-icon{{if eq .Type "codex"}} backend-icon-color{{end}}" src="{{.IconURL}}" alt="{{.Name}}">{{else}}<div class="dot"></div>{{end}}
                         {{.Name}}
                         <span class="type-badge type-{{.Type}}">{{.Type}}</span>
+                        {{if and (eq .Type "ollama") .CompatMode}}<span class="type-badge type-{{.CompatMode}}" style="font-size:0.65rem">{{.CompatMode}}</span>{{end}}
                         {{if .CircuitOpen}}<span class="type-badge" style="background:rgba(248,113,113,0.15);color:var(--red);cursor:help" title="Rate-limited — circuit breaker tripped. Requests are being routed to other backends. Click the ⋮ menu to reset.">429 LIMITED</span>{{end}}
                         <span class="collapse-chevron">&#x25BE;</span>
                     </div>
@@ -2612,6 +2623,24 @@
                             <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); openSwitchTypeModal('{{.Name}}', '{{.Type}}', '{{.BaseURL}}', '{{.APIKey}}')">
                                 <span class="backend-menu-label"><span class="backend-menu-icon">&#x21C4;</span><span>Switch API format</span></span>
                                 <span class="backend-menu-meta">{{if eq .Type "openai"}}Anthropic{{else}}OpenAI{{end}}</span>
+                            </button>
+                            {{end}}
+                            {{if eq .Type "ollama"}}
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); openOllamaPullModal('{{.Name}}')">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x2B07;</span><span>Pull model</span></span>
+                                <span class="backend-menu-meta">download</span>
+                            </button>
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); openOllamaRunningModal('{{.Name}}')">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x25B6;</span><span>Running models</span></span>
+                                <span class="backend-menu-meta">loaded in memory</span>
+                            </button>
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); openOllamaAccountModal('{{.Name}}')">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x1F464;</span><span>Account</span></span>
+                                <span class="backend-menu-meta">ollama.com</span>
+                            </button>
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); openSwitchTypeModal('{{.Name}}', '{{.Type}}', '{{.BaseURL}}', '{{.APIKey}}')">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x21C4;</span><span>Switch compat mode</span></span>
+                                <span class="backend-menu-meta">openai/anthropic/native</span>
                             </button>
                             {{end}}
                             {{if and .IsDynamic .Enabled}}
@@ -2682,14 +2711,17 @@
                             {{if .Enabled}}<div class="model-loading"><div class="spinner"></div><span>Loading models&#x2026;</span></div>{{else}}<div class="model-scroll-empty">Enable this backend to load models.</div>{{end}}
                             {{end}}
                         </div>
+                        {{if eq .Type "ollama"}}<div id="ollama-pulls-active-{{.Name}}" style="display:none"></div>{{end}}
                     </div>
                     <div class="model-scroll" id="models-scroll-{{.Name}}">
                     {{if and (not (and $oauth (not $oauth.Authenticated) .Enabled)) (not .IsDynamic)}}
                     {{$backendName := .Name}}
+                    {{$backendType := .Type}}
                     {{range .Models}}
                     <div class="model-item{{if .Disabled}} model-disabled{{end}}">
                         <span class="model-id">{{.BareID}}</span>
                         <button class="model-disable-btn" onclick="toggleModelDisabled(this, '{{$backendName}}', '{{.BareID}}', {{.Disabled}})" title="{{if .Disabled}}Enable{{else}}Disable{{end}} this model on this backend">{{if .Disabled}}&#x25B6;{{else}}&#x23FB;{{end}}</button>
+                        {{if eq $backendType "ollama"}}<button class="copy-btn" style="color:var(--red);margin-right:2px" onclick="ollamaDeleteModel('{{$backendName}}', '{{.BareID}}', this)" title="Delete this model from Ollama">delete</button>{{end}}
                         <button class="copy-btn" onclick="copyText(this, '{{.FullID}}')" title="Copy full ID: {{.FullID}}">copy</button>
                     </div>
                     {{end}}
@@ -2869,6 +2901,96 @@
         </div>
     </div>
 
+    <!-- ── Ollama Pull Model Modal ──────────────────────────────── -->
+    <div class="modal-overlay" id="modal-ollama-pull" onclick="closeOnBackdrop(event, 'modal-ollama-pull')">
+        <div class="modal" style="max-width:480px">
+            <div class="modal-header">
+                <h2>&#x2B07; Pull Model</h2>
+                <button class="modal-close" onclick="closeModal('modal-ollama-pull')">&#x2715;</button>
+            </div>
+            <div class="modal-body" style="padding:1.25rem">
+                <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1rem">Download a model from the Ollama registry to <strong id="ollama-pull-backend-name"></strong>.</p>
+                <div style="margin-bottom:1rem">
+                    <input type="text" id="ollama-pull-model-input" placeholder="e.g. llama3.2, mistral, codellama:7b" style="width:100%;padding:0.5rem 0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:0.85rem" autocomplete="off" spellcheck="false">
+                </div>
+                <div id="ollama-pull-progress" style="display:none">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem">
+                        <span id="ollama-pull-status" style="font-size:0.8rem;color:var(--text-dim)"></span>
+                        <span id="ollama-pull-pct" style="font-size:0.8rem;font-weight:600;color:var(--text)"></span>
+                    </div>
+                    <div style="width:100%;height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden">
+                        <div id="ollama-pull-bar" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width 0.3s"></div>
+                    </div>
+                </div>
+                <div id="ollama-pull-error" style="display:none;margin-top:0.75rem;padding:0.6rem 0.8rem;border-radius:6px;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.2);color:var(--red);font-size:0.8rem"></div>
+                <div id="ollama-pull-success" style="display:none;margin-top:0.75rem;padding:0.6rem 0.8rem;border-radius:6px;background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.2);color:var(--green);font-size:0.8rem">Model pulled successfully! Refreshing models&hellip;</div>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid var(--border);padding:0.75rem 1.25rem">
+                <button class="btn btn-secondary" id="ollama-pull-cancel-btn" onclick="closeModal('modal-ollama-pull')">Cancel</button>
+                <button class="btn btn-danger" id="ollama-pull-stop-btn" style="display:none" onclick="cancelActiveOllamaPull()">Cancel Download</button>
+                <button class="btn btn-primary" id="ollama-pull-start-btn" onclick="startOllamaPull()">Pull Model</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Ollama Running Models Modal ────────────────────────────── -->
+    <div class="modal-overlay" id="modal-ollama-running" onclick="closeOnBackdrop(event, 'modal-ollama-running')">
+        <div class="modal" style="max-width:560px">
+            <div class="modal-header">
+                <h2>&#x25B6; Running Models</h2>
+                <button class="modal-close" onclick="closeModal('modal-ollama-running')">&#x2715;</button>
+            </div>
+            <div class="modal-body" style="padding:1.25rem">
+                <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1rem">Models currently loaded in memory on <strong id="ollama-running-backend-name"></strong>.</p>
+                <div id="ollama-running-list" style="max-height:320px;overflow-y:auto">
+                    <div class="model-loading"><div class="spinner"></div><span>Loading&hellip;</span></div>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid var(--border);padding:0.75rem 1.25rem">
+                <button class="btn btn-secondary" onclick="closeModal('modal-ollama-running')">Close</button>
+                <button class="btn btn-secondary" onclick="loadOllamaRunningModels()">Refresh</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Ollama Account Modal ──────────────────────────────────────── -->
+    <div class="modal-overlay" id="modal-ollama-account" onclick="closeOnBackdrop(event, 'modal-ollama-account')">
+        <div class="modal" style="max-width:480px">
+            <div class="modal-header">
+                <h2>&#x1F464; Account &mdash; <span id="ollama-account-backend-name" style="color:var(--text-dim);font-weight:400"></span></h2>
+                <button class="modal-close" onclick="closeModal('modal-ollama-account')">&#x2715;</button>
+            </div>
+            <div class="modal-body" style="padding:1.25rem">
+                <div id="ollama-account-content">
+                    <div class="model-loading"><div class="spinner"></div><span>Loading&hellip;</span></div>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid var(--border);padding:0.75rem 1.25rem">
+                <button class="btn btn-secondary" onclick="closeModal('modal-ollama-account')">Close</button>
+                <button class="btn btn-secondary" onclick="loadOllamaAccount()">Refresh</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Ollama Delete Model Confirmation Modal ────────────────── -->
+    <div class="modal-overlay" id="modal-ollama-delete" onclick="closeOnBackdrop(event, 'modal-ollama-delete')">
+        <div class="modal" style="max-width:440px">
+            <div class="modal-header">
+                <h2 style="color:var(--red)">Delete Model</h2>
+                <button class="modal-close" onclick="closeModal('modal-ollama-delete')">&#x2715;</button>
+            </div>
+            <div class="modal-body" style="padding:1.25rem">
+                <p style="font-size:0.95rem;color:var(--text);margin-bottom:0.75rem">Delete <strong id="ollama-delete-model-name"></strong> from Ollama?</p>
+                <p style="font-size:0.8rem;color:var(--text-dim)">This removes the model files from disk. The model will need to be pulled again to use it.</p>
+                <div id="ollama-delete-error" style="display:none;margin-top:0.75rem;padding:0.6rem 0.8rem;border-radius:6px;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.2);color:var(--red);font-size:0.8rem"></div>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid var(--border);padding:0.75rem 1.25rem">
+                <button class="btn btn-secondary" onclick="closeModal('modal-ollama-delete')">Cancel</button>
+                <button class="btn btn-danger" onclick="confirmOllamaDelete()">Delete Model</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ── Add Backend Modal ──────────────────────────────────────── -->
     <div class="modal-overlay" id="modal-add-backend" onclick="closeOnBackdrop(event, 'modal-add-backend')">
         <div class="modal">
@@ -2900,6 +3022,11 @@
                             <div class="wizard-icon">&#x1F916;</div>
                             <div class="wizard-label">OpenAI Codex</div>
                             <div class="wizard-desc">Uses OAuth PKCE browser flow. No API key needed.</div>
+                        </div>
+                        <div class="wizard-type-card" data-type="ollama" onclick="selectBackendType('ollama')">
+                            <div class="wizard-icon">&#x1F433;</div>
+                            <div class="wizard-label">Ollama</div>
+                            <div class="wizard-desc">Self-hosted models with pull/delete management. Supports OpenAI, Anthropic, and native modes.</div>
                         </div>
                     </div>
                 </div>
@@ -2936,6 +3063,27 @@
                                 <input type="text" name="name" id="wizard-codex-name" value="codex" autocomplete="off" spellcheck="false">
                             </div>
                             <input type="hidden" name="base_url" value="https://chatgpt.com/backend-api/codex">
+                            <input type="hidden" name="api_key" value="">
+                        </div>
+                        <div id="wizard-fields-ollama" style="display:none">
+                            <div class="wizard-form-group">
+                                <label for="wizard-ollama-name">Backend Name</label>
+                                <input type="text" name="name" id="wizard-ollama-name" value="ollama" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="wizard-form-group">
+                                <label for="wizard-ollama-base-url">Base URL</label>
+                                <input type="text" name="base_url" id="wizard-ollama-base-url" value="http://localhost:11434" autocomplete="off" spellcheck="false">
+                                <span style="font-size:0.7rem;color:var(--text-dim)">Default: http://localhost:11434 &mdash; use <code>http://ollama:11434</code> when running via Docker Compose.</span>
+                            </div>
+                            <div class="wizard-form-group">
+                                <label for="wizard-ollama-compat-mode">Compat Mode</label>
+                                <select name="compat_mode" id="wizard-ollama-compat-mode" style="width:100%;padding:0.5rem 0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--sans);font-size:0.85rem">
+                                    <option value="openai" selected>OpenAI (/v1/chat/completions)</option>
+                                    <option value="anthropic">Anthropic (/v1/messages)</option>
+                                    <option value="native">Native (/api/chat)</option>
+                                </select>
+                                <span style="font-size:0.7rem;color:var(--text-dim)">OpenAI mode recommended for compatibility. Native mode uses Ollama's own API format.</span>
+                            </div>
                             <input type="hidden" name="api_key" value="">
                         </div>
                         <div id="wizard-form-error" class="wizard-error-msg" style="display:none"></div>
@@ -3379,30 +3527,88 @@
 
         // ── Switch Backend Type Modal ─────────────────────────────
         function openSwitchTypeModal(name, currentType, baseURL, maskedKey) {
-            var targetType = currentType === 'openai' ? 'anthropic' : 'openai';
+            var isOllama = currentType === 'ollama';
+            var modes = isOllama
+                ? ['openai', 'anthropic', 'native']
+                : [currentType === 'openai' ? 'anthropic' : 'openai'];
+
+            var form = document.getElementById('switch-type-form');
             document.getElementById('switch-type-name').value = name;
-            document.getElementById('switch-type-target').value = targetType;
-            document.getElementById('switch-type-title').textContent = 'Switch ' + name + ' to ' + targetType;
             document.getElementById('switch-type-base-url').value = baseURL;
             document.getElementById('switch-type-api-key').value = '';
-            document.getElementById('switch-type-api-key').placeholder = maskedKey ? 'Current: ' + maskedKey : 'Leave empty to keep current key';
 
-            // Update type badges
-            var currentBadge = document.getElementById('switch-type-current-badge');
-            var targetBadge = document.getElementById('switch-type-target-badge');
-            currentBadge.textContent = currentType;
-            currentBadge.className = 'type-badge type-' + currentType;
-            targetBadge.textContent = targetType;
-            targetBadge.className = 'type-badge type-' + targetType;
+            if (isOllama) {
+                // For Ollama, show a mode selector instead of binary toggle.
+                var container = document.getElementById('switch-type-mode-selector');
+                if (!container) {
+                    container = document.createElement('div');
+                    container.id = 'switch-type-mode-selector';
+                    container.style.cssText = 'margin-bottom:1rem';
+                    var label = document.createElement('label');
+                    label.style.cssText = 'display:block;font-size:0.8rem;font-weight:600;margin-bottom:0.5rem;color:var(--text-dim)';
+                    label.textContent = 'Compatibility Mode';
+                    container.appendChild(label);
+                    var btnGroup = document.createElement('div');
+                    btnGroup.style.cssText = 'display:flex;gap:0.5rem';
+                    modes.forEach(function(mode) {
+                        var btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'type-badge type-' + mode;
+                        btn.textContent = mode;
+                        btn.dataset.mode = mode;
+                        btn.style.cssText = 'cursor:pointer;padding:0.4rem 0.8rem;transition:opacity 0.15s';
+                        btn.onclick = function() {
+                            document.getElementById('switch-type-target').value = this.dataset.mode;
+                            btnGroup.querySelectorAll('.type-badge').forEach(function(b) { b.style.opacity = '0.4'; });
+                            this.style.opacity = '1';
+                            document.getElementById('switch-type-title').textContent = 'Switch ' + name + ' to ' + this.dataset.mode + ' mode';
+                        };
+                        btnGroup.appendChild(btn);
+                    });
+                    container.appendChild(btnGroup);
+                    // Insert before base URL field.
+                    var baseUrlField = document.getElementById('switch-type-base-url').parentElement;
+                    baseUrlField.parentElement.insertBefore(container, baseUrlField);
+                } else {
+                    container.style.display = 'block';
+                }
+                // Default select first non-current mode.
+                document.getElementById('switch-type-target').value = modes[0];
+                document.getElementById('switch-type-title').textContent = 'Switch ' + name + ' compat mode';
 
-            // Show format warning
-            var warning = document.getElementById('switch-type-warning');
-            if (targetType === 'anthropic') {
-                warning.innerHTML = 'Switching to Anthropic format means the proxy will send requests using the Anthropic Messages API (<code>/v1/messages</code>) instead of OpenAI Chat Completions (<code>/v1/chat/completions</code>). Make sure your provider supports the Anthropic API format.';
+                // Update badges
+                var currentBadge = document.getElementById('switch-type-current-badge');
+                var targetBadge = document.getElementById('switch-type-target-badge');
+                if (currentBadge) { currentBadge.textContent = 'ollama'; currentBadge.className = 'type-badge type-ollama'; currentBadge.style.display = 'none'; }
+                if (targetBadge) { targetBadge.style.display = 'none'; }
+
+                var warning = document.getElementById('switch-type-warning');
+                warning.innerHTML = 'Switching compat mode changes which API format the proxy uses to communicate with Ollama. <code>openai</code> uses <code>/v1/chat/completions</code>, <code>anthropic</code> uses <code>/v1/messages</code>, <code>native</code> uses <code>/api/chat</code>.';
+                warning.style.display = 'block';
             } else {
-                warning.innerHTML = 'Switching to OpenAI format means the proxy will send requests using the OpenAI Chat Completions API (<code>/v1/chat/completions</code>) instead of the Anthropic Messages API (<code>/v1/messages</code>). Make sure your provider supports the OpenAI API format.';
+                // Hide ollama mode selector if present.
+                var modeSelector = document.getElementById('switch-type-mode-selector');
+                if (modeSelector) modeSelector.style.display = 'none';
+
+                var targetType = currentType === 'openai' ? 'anthropic' : 'openai';
+                document.getElementById('switch-type-target').value = targetType;
+                document.getElementById('switch-type-title').textContent = 'Switch ' + name + ' to ' + targetType;
+                document.getElementById('switch-type-api-key').placeholder = maskedKey ? 'Current: ' + maskedKey : 'Leave empty to keep current key';
+
+                var currentBadge = document.getElementById('switch-type-current-badge');
+                var targetBadge = document.getElementById('switch-type-target-badge');
+                if (currentBadge) { currentBadge.textContent = currentType; currentBadge.className = 'type-badge type-' + currentType; currentBadge.style.display = ''; }
+                if (targetBadge) { targetBadge.textContent = targetType; targetBadge.className = 'type-badge type-' + targetType; targetBadge.style.display = ''; }
+
+                var warning = document.getElementById('switch-type-warning');
+                if (targetType === 'anthropic') {
+                    warning.innerHTML = 'Switching to Anthropic format means the proxy will send requests using the Anthropic Messages API (<code>/v1/messages</code>) instead of OpenAI Chat Completions (<code>/v1/chat/completions</code>). Make sure your provider supports the Anthropic API format.';
+                } else {
+                    warning.innerHTML = 'Switching to OpenAI format means the proxy will send requests using the OpenAI Chat Completions API (<code>/v1/chat/completions</code>) instead of the Anthropic Messages API (<code>/v1/messages</code>). Make sure your provider supports the OpenAI API format.';
+                }
+                warning.style.display = 'block';
             }
-            warning.style.display = 'block';
+            document.getElementById('switch-type-api-key').placeholder = maskedKey ? 'Current: ' + maskedKey : 'Leave empty to keep current key';
 
             openModal('modal-switch-type');
         }
@@ -3437,6 +3643,380 @@
             if (ferr) { ferr.style.display = 'none'; ferr.textContent = ''; }
         }
 
+        // ── Ollama Management ──────────────────────────────────────
+
+        var ollamaPullBackend = '';
+        var ollamaPullActiveModel = ''; // track current model for cancel
+        var ollamaPullPollers = {}; // backendName → intervalID
+
+        function ollamaStartPullPolling(backendName) {
+            if (ollamaPullPollers[backendName]) return;
+            ollamaPullPollers[backendName] = setInterval(function() {
+                ollamaFetchPullStatus(backendName);
+            }, 2000);
+            ollamaFetchPullStatus(backendName);
+        }
+
+        function ollamaStopPullPolling(backendName) {
+            if (!ollamaPullPollers[backendName]) return;
+            clearInterval(ollamaPullPollers[backendName]);
+            delete ollamaPullPollers[backendName];
+        }
+
+        function ollamaFetchPullStatus(backendName) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', '/ui/ollama/' + encodeURIComponent(backendName) + '/pulls', true);
+            xhr.onload = function() {
+                if (xhr.status !== 200) return;
+                var pulls;
+                try { pulls = JSON.parse(xhr.responseText); } catch(e) { return; }
+                var container = document.getElementById('ollama-pulls-active-' + backendName);
+                if (!container) return;
+                if (!pulls || pulls.length === 0) {
+                    container.style.display = 'none';
+                    container.innerHTML = '';
+                    ollamaStopPullPolling(backendName);
+                    return;
+                }
+                container.style.display = 'block';
+                var html = '';
+                var activeCount = 0;
+                pulls.forEach(function(pull) {
+                    var p = pull.progress || {};
+                    var done = p.done && !p.error;
+                    var hasErr = !!p.error;
+                    // Skip completed (non-error) pulls — they'll trigger a page refresh.
+                    if (done) return;
+                    activeCount++;
+                    var pct = p.percentage || 0;
+                    if (pct === 0 && p.total > 0 && p.completed > 0) {
+                        pct = Math.round(p.completed / p.total * 100);
+                    }
+                    var status = p.status || 'downloading';
+                    html += '<div style="padding:0.4rem 0.75rem;margin-bottom:0.3rem;border-radius:6px;background:var(--surface-2);border:1px solid var(--border)">';
+                    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem">';
+                    html += '<span style="font-family:var(--mono);font-size:0.8rem;font-weight:500">' + escHtml(pull.model_name) + '</span>';
+                    if (hasErr) {
+                        html += '<span style="font-size:0.75rem;color:var(--red);font-weight:600">error</span>';
+                    } else {
+                        html += '<span style="font-size:0.75rem;color:var(--text-dim)">' + escHtml(status) + ' ' + pct + '%</span>';
+                    }
+                    html += '</div>';
+                    html += '<div style="width:100%;height:4px;background:var(--border);border-radius:2px;overflow:hidden">';
+                    html += '<div style="height:100%;width:' + pct + '%;background:' + (hasErr ? 'var(--red)' : 'var(--accent)') + ';border-radius:2px;transition:width 0.5s"></div>';
+                    html += '</div>';
+                    html += '<div style="margin-top:0.3rem;text-align:right"><button onclick="cancelCardPull(\'' + escHtml(backendName) + '\', \'' + escHtml(pull.model_name).replace(/'/g, "\\'") + '\')" style="font-size:0.7rem;color:var(--red);background:none;border:none;cursor:pointer;padding:0.2rem 0.4rem">\u2715 Cancel</button></div>';
+                    html += '</div>';
+                    if (hasErr) {
+                        html += '<div style="font-size:0.7rem;color:var(--red);margin-top:0.25rem">' + escHtml(p.error) + '</div>';
+                    }
+                    html += '</div>';
+                });
+                if (pulls.length > 0 && activeCount === 0 && !pulls.some(function(pull) { var p = pull.progress || {}; return p.error; })) {
+                    // All pulls completed successfully — hide and refresh (only if we had pulls to begin with).
+                    container.style.display = 'none';
+                    container.innerHTML = '';
+                    ollamaStopPullPolling(backendName);
+                    setTimeout(function() { location.reload(); }, 500);
+                } else if (pulls.length === 0) {
+                    // No pulls at all — just stop polling silently.
+                    container.style.display = 'none';
+                    container.innerHTML = '';
+                    ollamaStopPullPolling(backendName);
+                } else {
+                    container.innerHTML = html;
+                }
+            };
+            xhr.send();
+        }
+
+        function openOllamaPullModal(backendName) {
+            ollamaPullBackend = backendName;
+            ollamaPullActiveModel = '';
+            document.getElementById('ollama-pull-backend-name').textContent = backendName;
+            document.getElementById('ollama-pull-model-input').value = '';
+            document.getElementById('ollama-pull-progress').style.display = 'none';
+            document.getElementById('ollama-pull-error').style.display = 'none';
+            document.getElementById('ollama-pull-success').style.display = 'none';
+            document.getElementById('ollama-pull-bar').style.width = '0%';
+            document.getElementById('ollama-pull-start-btn').disabled = false;
+            document.getElementById('ollama-pull-start-btn').textContent = 'Pull Model';
+            document.getElementById('ollama-pull-start-btn').style.display = '';
+            document.getElementById('ollama-pull-cancel-btn').textContent = 'Cancel';
+            document.getElementById('ollama-pull-stop-btn').style.display = 'none';
+            openModal('modal-ollama-pull');
+            setTimeout(function() { document.getElementById('ollama-pull-model-input').focus(); }, 100);
+        }
+
+        function cancelActiveOllamaPull() {
+            if (!ollamaPullBackend || !ollamaPullActiveModel) return;
+            var btn = document.getElementById('ollama-pull-stop-btn');
+            btn.textContent = 'Cancelling\u2026';
+            btn.disabled = true;
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/ui/ollama/' + encodeURIComponent(ollamaPullBackend) + '/cancel', true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            xhr.onload = function() {
+                ollamaPullActiveModel = '';
+                closeModal('modal-ollama-pull');
+            };
+            xhr.onerror = function() {
+                btn.textContent = 'Cancel Download';
+                btn.disabled = false;
+            };
+            xhr.send(JSON.stringify({model: ollamaPullActiveModel}));
+        }
+
+        function cancelCardPull(backendName, modelName) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/ui/ollama/' + encodeURIComponent(backendName) + '/cancel', true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            xhr.onload = function() {
+                ollamaFetchPullStatus(backendName);
+            };
+            xhr.send(JSON.stringify({model: modelName}));
+        }
+
+        function startOllamaPull() {
+            var model = document.getElementById('ollama-pull-model-input').value.trim();
+            if (!model) return;
+            if (!ollamaPullBackend) return;
+
+            document.getElementById('ollama-pull-start-btn').disabled = true;
+            ollamaPullActiveModel = model;
+            document.getElementById('ollama-pull-stop-btn').style.display = '';
+            document.getElementById('ollama-pull-start-btn').style.display = 'none';
+            document.getElementById('ollama-pull-progress').style.display = 'block';
+            document.getElementById('ollama-pull-error').style.display = 'none';
+            document.getElementById('ollama-pull-success').style.display = 'none';
+            document.getElementById('ollama-pull-bar').style.width = '0%';
+            document.getElementById('ollama-pull-status').textContent = 'Starting pull\u2026';
+            document.getElementById('ollama-pull-pct').textContent = '';
+
+            // Start polling backend card for progress (visible after closing modal)
+            ollamaStartPullPolling(ollamaPullBackend);
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/ui/ollama/' + encodeURIComponent(ollamaPullBackend) + '/pull', true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            var lastLineIdx = 0;
+
+            xhr.onprogress = function() {
+                var newText = xhr.responseText.substring(lastLineIdx);
+                lastLineIdx = xhr.responseText.length;
+                var lines = newText.split('\n').filter(function(l) { return l.trim(); });
+                lines.forEach(function(line) {
+                    try {
+                        var p = JSON.parse(line);
+                        document.getElementById('ollama-pull-status').textContent = p.status || '';
+                        if (p.total > 0 && p.completed > 0) {
+                            var pct = Math.round(p.completed / p.total * 100);
+                            document.getElementById('ollama-pull-bar').style.width = pct + '%';
+                            document.getElementById('ollama-pull-pct').textContent = pct + '%';
+                        }
+                        if (p.error) {
+                            document.getElementById('ollama-pull-error').textContent = p.error;
+                            document.getElementById('ollama-pull-error').style.display = 'block';
+                            document.getElementById('ollama-pull-start-btn').disabled = false;
+                            document.getElementById('ollama-pull-start-btn').style.display = '';
+                            document.getElementById('ollama-pull-stop-btn').style.display = 'none';
+                            document.getElementById('ollama-pull-start-btn').textContent = 'Retry';
+                        }
+                        if (p.done && !p.error) {
+                            document.getElementById('ollama-pull-bar').style.width = '100%';
+                            document.getElementById('ollama-pull-pct').textContent = '100%';
+                            document.getElementById('ollama-pull-success').style.display = 'block';
+                            document.getElementById('ollama-pull-cancel-btn').textContent = 'Close';
+                            document.getElementById('ollama-pull-start-btn').textContent = 'Done';
+                            document.getElementById('ollama-pull-stop-btn').style.display = 'none';
+                            setTimeout(function() { location.reload(); }, 1500);
+                        }
+                    } catch(e) {}
+                });
+            };
+
+            xhr.onerror = function() {
+                document.getElementById('ollama-pull-error').textContent = 'Network error';
+                document.getElementById('ollama-pull-error').style.display = 'block';
+                document.getElementById('ollama-pull-start-btn').disabled = false;
+                document.getElementById('ollama-pull-start-btn').style.display = '';
+                document.getElementById('ollama-pull-stop-btn').style.display = 'none';
+            };
+
+            xhr.send(JSON.stringify({model: model}));
+        }
+
+        var ollamaDeleteTarget = null;
+
+        function ollamaDeleteModel(backendName, modelName, btn) {
+            ollamaDeleteTarget = {backend: backendName, model: modelName, btn: btn};
+            document.getElementById('ollama-delete-model-name').textContent = modelName;
+            openModal('modal-ollama-delete');
+        }
+
+        function confirmOllamaDelete() {
+            if (!ollamaDeleteTarget) return;
+            var t = ollamaDeleteTarget;
+            ollamaDeleteTarget = null;
+            closeModal('modal-ollama-delete');
+            t.btn.textContent = '\u2026';
+            t.btn.disabled = true;
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/ui/ollama/' + encodeURIComponent(t.backend) + '/models/delete', true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    location.reload();
+                } else {
+                    var msg = 'Failed to delete model';
+                    try { var j = JSON.parse(xhr.responseText); if (j.error) msg = j.error; } catch(e) { msg = xhr.responseText; }
+                    ollamaShowDeleteError(msg);
+                    t.btn.textContent = 'delete';
+                    t.btn.disabled = false;
+                }
+            };
+            xhr.onerror = function() {
+                ollamaShowDeleteError('Network error');
+                t.btn.textContent = 'delete';
+                t.btn.disabled = false;
+            };
+            xhr.send(JSON.stringify({model: t.model}));
+        }
+
+        function ollamaShowDeleteError(msg) {
+            var el = document.getElementById('ollama-delete-error');
+            el.textContent = msg;
+            el.style.display = 'block';
+            document.getElementById('ollama-delete-model-name').textContent = (ollamaDeleteTarget ? ollamaDeleteTarget.model : '');
+            openModal('modal-ollama-delete');
+        }
+
+        var ollamaRunningBackend = '';
+
+        function openOllamaRunningModal(backendName) {
+            ollamaRunningBackend = backendName;
+            document.getElementById('ollama-running-backend-name').textContent = backendName;
+            openModal('modal-ollama-running');
+            loadOllamaRunningModels();
+        }
+
+        function loadOllamaRunningModels() {
+            var list = document.getElementById('ollama-running-list');
+            list.innerHTML = '<div class="model-loading"><div class="spinner"></div><span>Loading\u2026</span></div>';
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', '/ui/ollama/' + encodeURIComponent(ollamaRunningBackend) + '/ps', true);
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    var models = JSON.parse(xhr.responseText);
+                    if (!models || models.length === 0) {
+                        list.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-dim);font-size:0.85rem">No models currently loaded in memory.</div>';
+                        return;
+                    }
+                    var html = '';
+                    models.forEach(function(m) {
+                        var size = m.size ? (m.size / 1e9).toFixed(1) + ' GB' : '';
+                        var vram = m.size_vram ? (m.size_vram / 1e9).toFixed(1) + ' GB VRAM' : '';
+                        var family = m.details && m.details.family ? m.details.family : '';
+                        var params = m.details && m.details.parameter_size ? m.details.parameter_size : '';
+                        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:0.6rem 0.75rem;border-radius:6px;background:var(--surface-2);margin-bottom:0.4rem">';
+                        html += '<div>';
+                        html += '<div style="font-family:var(--mono);font-size:0.85rem;font-weight:500">' + escHtml(m.name || m.model) + '</div>';
+                        if (family || params) html += '<div style="font-size:0.75rem;color:var(--text-dim);margin-top:0.15rem">' + escHtml(params + ' ' + family).trim() + '</div>';
+                        html += '</div>';
+                        html += '<div style="text-align:right;font-size:0.75rem;color:var(--text-dim)">';
+                        if (size) html += '<div>' + size + '</div>';
+                        if (vram) html += '<div style="color:var(--green)">' + vram + '</div>';
+                        html += '</div></div>';
+                    });
+                    list.innerHTML = html;
+                } else {
+                    list.innerHTML = '<div style="color:var(--red);padding:1rem;font-size:0.85rem">Failed to load: ' + escHtml(xhr.responseText) + '</div>';
+                }
+            };
+            xhr.onerror = function() {
+                list.innerHTML = '<div style="color:var(--red);padding:1rem;font-size:0.85rem">Network error</div>';
+            };
+            xhr.send();
+        }
+
+        // ── Ollama Account ──────────────────────────────────────
+
+        var ollamaAccountBackend = '';
+
+        function openOllamaAccountModal(backendName) {
+            ollamaAccountBackend = backendName;
+            document.getElementById('ollama-account-backend-name').textContent = backendName;
+            document.getElementById('ollama-account-content').innerHTML = '<div class="model-loading"><div class="spinner"></div><span>Loading\u2026</span></div>';
+            openModal('modal-ollama-account');
+            loadOllamaAccount();
+        }
+
+        function loadOllamaAccount() {
+            var content = document.getElementById('ollama-account-content');
+            content.innerHTML = '<div class="model-loading"><div class="spinner"></div><span>Loading\u2026</span></div>';
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', '/ui/ollama/' + encodeURIComponent(ollamaAccountBackend) + '/account', true);
+            xhr.onload = function() {
+                if (xhr.status !== 200) {
+                    content.innerHTML = '<div style="color:var(--red);padding:1rem;font-size:0.85rem">Failed to check account: ' + escHtml(xhr.responseText) + '</div>';
+                    return;
+                }
+                var data = JSON.parse(xhr.responseText);
+                var html = '';
+                if (data.signed_in) {
+                    html += '<div style="text-align:center;padding:1.5rem 0">';
+                    html += '<div style="font-size:2.5rem;margin-bottom:0.5rem">&#x1F464;</div>';
+                    html += '<div style="font-size:0.85rem;color:var(--text-dim);margin-bottom:0.25rem">Signed in as</div>';
+                    html += '<div style="font-size:1.1rem;font-weight:600;color:var(--text)">' + escHtml(data.name) + '</div>';
+                    html += '</div>';
+                    html += '<div style="margin-top:1rem;text-align:center">';
+                    html += '<button class="btn btn-danger" onclick="ollamaSignout()" id="ollama-signout-btn">Sign Out</button>';
+                    html += '</div>';
+                } else {
+                    html += '<div style="text-align:center;padding:1.5rem 0">';
+                    html += '<div style="font-size:2.5rem;margin-bottom:0.5rem">&#x1F512;</div>';
+                    html += '<div style="font-size:0.95rem;font-weight:500;color:var(--text);margin-bottom:0.5rem">Not signed in</div>';
+                    html += '<div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:1rem">Sign in to use cloud models from ollama.com</div>';
+                    if (data.signin_url) {
+                        html += '<a href="' + escHtml(data.signin_url) + '" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="display:inline-block;text-decoration:none">&#x1F517; Sign in with Ollama</a>';
+                        html += '<div style="font-size:0.7rem;color:var(--text-dim);margin-top:0.75rem">Opens ollama.com in a new tab. After signing in, click Refresh.</div>';
+                    }
+                    html += '</div>';
+                }
+                content.innerHTML = html;
+            };
+            xhr.onerror = function() {
+                content.innerHTML = '<div style="color:var(--red);padding:1rem;font-size:0.85rem">Network error</div>';
+            };
+            xhr.send();
+        }
+
+        function ollamaSignout() {
+            var btn = document.getElementById('ollama-signout-btn');
+            if (btn) { btn.textContent = 'Signing out\u2026'; btn.disabled = true; }
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/ui/ollama/' + encodeURIComponent(ollamaAccountBackend) + '/signout', true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            xhr.onload = function() {
+                loadOllamaAccount();
+            };
+            xhr.onerror = function() {
+                if (btn) { btn.textContent = 'Sign Out'; btn.disabled = false; }
+            };
+            xhr.send();
+        }
+
+        function escHtml(s) {
+            var d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
         function selectBackendType(type) {
             wizardType = type;
             document.querySelectorAll('.wizard-type-card').forEach(function(c) {
@@ -3448,14 +4028,15 @@
             var sets = {
                 openai: document.getElementById('wizard-fields-openai'),
                 copilot: document.getElementById('wizard-fields-copilot'),
-                codex: document.getElementById('wizard-fields-codex')
+                codex: document.getElementById('wizard-fields-codex'),
+                ollama: document.getElementById('wizard-fields-ollama')
             };
             Object.keys(sets).forEach(function(key) {
                 var el = sets[key];
                 if (!el) return;
                 var show = (key === type) || (type === 'anthropic' && key === 'openai');
                 el.style.display = show ? 'block' : 'none';
-                el.querySelectorAll('input').forEach(function(inp) {
+                el.querySelectorAll('input, select').forEach(function(inp) {
                     if (inp.id === 'wizard-type-input') return;
                     if (!show) { inp.setAttribute('disabled', 'disabled'); }
                     else { inp.removeAttribute('disabled'); }
@@ -3487,7 +4068,7 @@
                     return;
                 }
                 wizardAddedName = json.name;
-                if (json.type === 'openai' || json.type === 'anthropic') {
+                if (json.type === 'openai' || json.type === 'anthropic' || json.type === 'ollama') {
                     closeModal('modal-add-backend');
                     location.reload();
                 } else {
@@ -3922,6 +4503,7 @@
 
         // ── Lazy-load per-backend model lists ──────────────────────────
         var allBackendModels = {}; // backendName → model array (populated as each backend loads)
+        var allBackendTypes = {}; // backendName → type string (e.g. "ollama", "openai")
         var pendingLoads = 0;      // counts outstanding loadBackendModels calls
 
         function jsLastPathSegment(s) {
@@ -4943,12 +5525,17 @@
             var srcSym = { upstream: '\u2191', config: '\u2699', builtin: '\uD83D\uDCCB' };
             var displayId = m.BareID || m.FullID;
             var disableBtn = '';
+            var deleteBtn = '';
             var isDisabled = false;
+            var backendType = allBackendTypes[backendName] || '';
             if (backendName) {
                 var bareID = displayId;
                 // Check both the model data (from API) and the server-side config map
                 isDisabled = !!(m.Disabled || (allBackendDisabledModels[backendName] && allBackendDisabledModels[backendName][bareID]));
                 disableBtn = '<button class="model-disable-btn" onclick="toggleModelDisabled(this, \'' + escHtml(backendName).replace(/'/g, "\\'") + '\', \'' + escHtml(bareID).replace(/'/g, "\\'") + '\', ' + isDisabled + ')" title="' + (isDisabled ? 'Enable' : 'Disable') + ' this model on this backend">' + (isDisabled ? '\u25B6' : '\u23FB') + '</button>';
+                if (backendType === 'ollama') {
+                    deleteBtn = '<button class="copy-btn" style="color:var(--red);margin-right:2px" onclick="ollamaDeleteModel(\'' + escHtml(backendName).replace(/'/g, "\\'") + '\', \'' + escHtml(bareID).replace(/'/g, "\\'") + '\', this)" title="Delete this model from Ollama">delete</button>';
+                }
             }
             var cls = 'model-item';
             if (isDisabled) cls += ' model-disabled';
@@ -4959,6 +5546,7 @@
                 + (m.Capabilities || []).map(function(c) { return '<span class="cap-badge">' + escHtml(c) + '</span>'; }).join('')
                 + (m.DataSource ? '<span class="src-badge src-' + escHtml(m.DataSource) + '" title="Metadata source: ' + escHtml(m.DataSource) + '">' + (srcSym[m.DataSource] || '') + '</span>' : '')
                 + disableBtn
+                + deleteBtn
                 + '<button class="copy-btn" data-copy="' + escHtml(m.FullID) + '" title="Copy full ID: ' + escHtml(m.FullID) + '" onclick="copyText(this,this.dataset.copy)">copy</button>'
                 + '</div>';
         }
@@ -5220,10 +5808,21 @@
             var allCards = document.querySelectorAll('.backend-card[data-backend]');
             var cards = [];
             allCards.forEach(function(c) {
+                // Capture backend type for use in renderModelItem.
+                if (c.dataset.backend && c.dataset.backendType) {
+                    allBackendTypes[c.dataset.backend] = c.dataset.backendType;
+                }
                 // Skip disabled backends and OAuth backends that are not yet authenticated.
                 if (!c.dataset.disabled && !c.dataset.oauthUnauthed) cards.push(c);
             });
             pendingLoads = cards.length;
+            // For ollama backends, start polling for active pulls immediately
+            // so progress shows on page load (survives refresh).
+            allCards.forEach(function(c) {
+                if (c.dataset.backendType === 'ollama' && c.dataset.backend) {
+                    ollamaStartPullPolling(c.dataset.backend);
+                }
+            });
             if (pendingLoads === 0) { recomputeOverlaps(); buildZedConfig(); buildOpenCodeConfig(); buildDroidConfig(); buildCurlSelector(); return; }
             cards.forEach(function(card) {
                 loadBackendModels(card.dataset.backend);

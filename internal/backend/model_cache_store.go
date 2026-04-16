@@ -149,3 +149,15 @@ func (s *ModelCacheStore) Load(backendName string) ([]Model, time.Time, bool) {
 	log.Debug().Str("backend", backendName).Int("models", len(data.Models)).Msg("model cache loaded from disk")
 	return data.Models, data.ExpiresAt.Time, true
 }
+
+// Invalidate removes the disk cache for a backend, forcing a fresh fetch on next ListModels.
+func (s *ModelCacheStore) Invalidate(backendName string) {
+	mu := s.keyMu(backendName)
+	mu.Lock()
+	defer mu.Unlock()
+
+	path := s.filePath(backendName)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		log.Warn().Err(err).Str("backend", backendName).Msg("failed to remove model cache file")
+	}
+}

@@ -213,6 +213,25 @@ backends:
   #     token_url: "https://auth.openai.com/oauth/token"
   #   # api_key is NOT needed — authentication uses OAuth.
 
+  # ── Ollama (self-hosted models) ───────────────────────────
+  # Run models locally with Ollama. Supports three compatibility modes:
+  #   - openai (default): uses /v1/chat/completions — best compatibility
+  #   - anthropic: uses /v1/messages — Anthropic-compatible
+  #   - native: uses /api/chat — Ollama's own format
+  # Model management (pull, delete, show details) available via the web UI.
+  # Cloud models (e.g. "glm-4.7:cloud") can be listed under models.
+  # - name: ollama
+  #   type: ollama
+  #   base_url: http://localhost:11434
+  #   compat_mode: openai
+  #   # No API key needed for local Ollama.
+  #   # Optionally restrict to specific models:
+  #   # models:
+  #   #   - id: llama3.2
+  #   #     context_length: 131072
+  #   #   - id: qwen3-coder
+  #   #   - id: glm-4.7:cloud  # Ollama cloud model (no pull needed)
+
 # ── Clients ──────────────────────────────────────────────────
 # Named clients each get their own API key. The name shows up in
 # request analytics so you can see which app made which call.

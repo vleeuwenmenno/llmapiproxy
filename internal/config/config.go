@@ -180,6 +180,13 @@ type BackendConfig struct {
 	// When empty, the global setting is used. Set to "none" to explicitly
 	// disable spoofing for this backend regardless of the global setting.
 	IdentityProfile string `yaml:"identity_profile,omitempty"`
+
+	// CompatMode controls which API compatibility mode to use for backends
+	// that support multiple API formats (e.g. Ollama supports openai, anthropic,
+	// and native modes). When empty, defaults based on backend type:
+	//   - "ollama" → "openai"
+	// All other types ignore this field.
+	CompatMode string `yaml:"compat_mode,omitempty"`
 }
 
 // ModelIDs returns the list of model IDs as plain strings (backward compat).
@@ -331,6 +338,7 @@ func (bc *BackendConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 		ModelsURL       string            `yaml:"models_url,omitempty"`
 		DisabledModels  []string          `yaml:"disabled_models,omitempty"`
 		IdentityProfile string            `yaml:"identity_profile,omitempty"`
+		CompatMode      string            `yaml:"compat_mode,omitempty"`
 	}
 	var r raw
 	if err := unmarshal(&r); err != nil {
@@ -346,6 +354,7 @@ func (bc *BackendConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	bc.ModelsURL = r.ModelsURL
 	bc.DisabledModels = r.DisabledModels
 	bc.IdentityProfile = r.IdentityProfile
+	bc.CompatMode = r.CompatMode
 
 	if r.ModelsRaw != nil {
 		models, err := parseModelsField(r.ModelsRaw)
@@ -373,6 +382,7 @@ func (bc BackendConfig) MarshalYAML() (interface{}, error) {
 		ModelsURL       string            `yaml:"models_url,omitempty"`
 		DisabledModels  []string          `yaml:"disabled_models,omitempty"`
 		IdentityProfile string            `yaml:"identity_profile,omitempty"`
+		CompatMode      string            `yaml:"compat_mode,omitempty"`
 	}
 
 	return raw{
@@ -387,6 +397,7 @@ func (bc BackendConfig) MarshalYAML() (interface{}, error) {
 		ModelsURL:       bc.ModelsURL,
 		DisabledModels:  bc.DisabledModels,
 		IdentityProfile: bc.IdentityProfile,
+		CompatMode:      bc.CompatMode,
 	}, nil
 }
 
@@ -440,6 +451,17 @@ func (b *BackendConfig) IsOAuthBackend() bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// RequiresAPIKey returns true if the backend type requires a static API key.
+// OAuth backends and local backends (like Ollama) do not need one.
+func (b *BackendConfig) RequiresAPIKey() bool {
+	switch b.Type {
+	case "copilot", "codex", "ollama":
+		return false
+	default:
+		return true
 	}
 }
 
@@ -512,9 +534,8 @@ func (c *Config) Validate() error {
 		if b.Type == "" {
 			c.Backends[i].Type = "openai"
 		}
-		// OAuth backends (copilot, codex) do not require an api_key.
-		// They authenticate via local token discovery or OAuth flows.
-		if !c.Backends[i].IsOAuthBackend() && b.APIKey == "" {
+		// Some backends (OAuth, local) do not require an api_key.
+		if c.Backends[i].RequiresAPIKey() && b.APIKey == "" {
 			return fmt.Errorf("backends[%d].api_key: must not be empty for enabled backend", i)
 		}
 	}
@@ -751,28 +772,40 @@ func (m *Manager) UpdateAPIKeys(keys []string) error {
 }
 
 // SwitchBackendType changes a backend's type between "openai" and "anthropic",
-// updates its base URL and API key, persists the file, and reloads.
-// Only openai ↔ anthropic switching is supported.
+// or switches an ollama backend's compat_mode between "openai", "anthropic", and "native".
+// Updates base URL and API key, persists the file, and reloads.
 func (m *Manager) SwitchBackendType(name, newType, baseURL, apiKey string) error {
-	switch newType {
-	case "openai", "anthropic":
-		// ok
-	default:
-		return fmt.Errorf("unsupported target type %q; only openai and anthropic are allowed", newType)
-	}
-
 	m.mu.Lock()
 	found := false
 	for i, b := range m.current.Backends {
 		if b.Name == name {
-			switch b.Type {
-			case "openai", "anthropic":
-				// ok — allowed to switch
-			default:
-				m.mu.Unlock()
-				return fmt.Errorf("cannot switch backend %q of type %q; only openai and anthropic backends can be switched", name, b.Type)
+			if b.Type == "ollama" {
+				// For ollama backends, switch compat_mode instead of type.
+				switch newType {
+				case "openai", "anthropic", "native":
+					m.current.Backends[i].CompatMode = newType
+				default:
+					m.mu.Unlock()
+					return fmt.Errorf("unsupported ollama compat_mode %q; use openai, anthropic, or native", newType)
+				}
+			} else {
+				// For non-ollama backends, switch type between openai and anthropic.
+				switch newType {
+				case "openai", "anthropic":
+					// ok
+				default:
+					m.mu.Unlock()
+					return fmt.Errorf("unsupported target type %q; only openai and anthropic are allowed", newType)
+				}
+				switch b.Type {
+				case "openai", "anthropic":
+					// ok — allowed to switch
+				default:
+					m.mu.Unlock()
+					return fmt.Errorf("cannot switch backend %q of type %q; only openai and anthropic backends can be switched", name, b.Type)
+				}
+				m.current.Backends[i].Type = newType
 			}
-			m.current.Backends[i].Type = newType
 			if baseURL != "" {
 				m.current.Backends[i].BaseURL = baseURL
 			}
@@ -980,7 +1013,7 @@ func (m *Manager) UpdateModelCacheTTL(ttl time.Duration) error {
 func (m *Manager) AddBackend(bc BackendConfig) error {
 	// Validate type.
 	switch bc.Type {
-	case "openai", "anthropic", "copilot", "codex", "":
+	case "openai", "anthropic", "copilot", "codex", "ollama", "":
 		// ok
 	default:
 		return fmt.Errorf("unsupported backend type %q", bc.Type)

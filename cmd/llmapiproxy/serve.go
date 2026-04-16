@@ -245,6 +245,17 @@ var serveCmd = &cobra.Command{
 			r.Post("/circuit/reset/{name}", ui.CircuitReset)
 			r.Post("/circuit/reset-all", ui.CircuitResetAll)
 			r.Post("/circuit/config", ui.CircuitConfigUpdate)
+
+			// Ollama management
+			r.Post("/ollama/{backend}/pull", ui.OllamaPullModel)
+			r.Get("/ollama/{backend}/pulls", ui.OllamaPullStatus)
+			r.Post("/ollama/{backend}/cancel", ui.OllamaCancelPull)
+			r.Delete("/ollama/{backend}/models/{model}", ui.OllamaDeleteModel)
+			r.Post("/ollama/{backend}/models/delete", ui.OllamaDeleteModel)
+			r.Get("/ollama/{backend}/models/{model}", ui.OllamaShowModel)
+			r.Get("/ollama/{backend}/ps", ui.OllamaListRunning)
+			r.Get("/ollama/{backend}/account", ui.OllamaWhoami)
+			r.Post("/ollama/{backend}/signout", ui.OllamaSignout)
 		})
 
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {

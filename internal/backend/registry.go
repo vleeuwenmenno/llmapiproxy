@@ -170,6 +170,10 @@ func (r *Registry) createBackend(bc config.BackendConfig, existingTS *oauth.Toke
 		b := NewAnthropic(bc, cacheTTL, profile)
 		b.SetModelCacheStore(r.modelCacheStore)
 		return b, nil, nil
+	case "ollama":
+		b := NewOllama(bc, cacheTTL, profile)
+		b.SetModelCacheStore(r.modelCacheStore)
+		return b, nil, nil
 	case "openai", "":
 		b := NewOpenAI(bc, cacheTTL, profile)
 		b.SetModelCacheStore(r.modelCacheStore)
