@@ -29,11 +29,6 @@ server:
   api_keys:
     - "your-proxy-api-key-here"
 
-  # Admin key for the web UI. Automatically gets converted into a bcrypt hash on startup.
-  # If set, the web UI is protected by this key. Users must enter it to access the UI.
-  # If not set, the web UI is accessible without auth (bind to localhost!).
-  admin_key: "your-admin-key-here"
-
   # Enable username/password authentication for the web UI dashboard.
   # When enabled, all /ui/* routes require a valid session cookie.
   # The proxy API (/v1/*) is NOT affected — it continues using API key auth.

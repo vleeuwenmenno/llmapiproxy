@@ -215,7 +215,6 @@ func (sc *ServerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		Listen        string      `yaml:"listen,omitempty"`
 		Domain        string      `yaml:"domain,omitempty"`
 		APIKeys       []string    `yaml:"api_keys"`
-		AdminKey      string      `yaml:"admin_key"`
 		StatsPath     string      `yaml:"stats_path"`
 		DisableStats  bool        `yaml:"disable_stats"`
 		ChatDBPath    string      `yaml:"chat_db_path"`
@@ -281,7 +280,6 @@ func (sc *ServerConfig) MarshalYAML() (interface{}, error) {
 		Listen        string   `yaml:"listen,omitempty"`
 		Domain        string   `yaml:"domain,omitempty"`
 		APIKeys       []string `yaml:"api_keys"`
-		AdminKey      string   `yaml:"admin_key"`
 		StatsPath     string   `yaml:"stats_path"`
 		DisableStats  bool     `yaml:"disable_stats"`
 		ChatDBPath    string   `yaml:"chat_db_path"`

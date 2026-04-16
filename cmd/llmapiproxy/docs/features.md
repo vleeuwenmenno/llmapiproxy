@@ -141,8 +141,6 @@ Edit `config.yaml` directly from the web UI:
 3. Make changes with YAML validation
 4. Click Save — backends reload automatically
 
-If `admin_key` is set in config, it may be required for save operations (depending on setup).
-
 ## Model Metadata
 
 The proxy includes a database of 100+ models with metadata:
