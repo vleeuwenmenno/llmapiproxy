@@ -4866,7 +4866,7 @@
                                 name: 'LLM API Proxy',
                                 npm: '@ai-sdk/openai-compatible',
                                 options: {
-                                    apiKey: '${LLM_API_PROXY_API_KEY}',
+                                    apiKey: '{env:LLM_API_PROXY_API_KEY}',
                                     baseURL: endpointURL
                                 },
                                 models: models.reduce(function(acc, model) {
