@@ -421,19 +421,28 @@ func (s *Store) FilteredSummary(f StatsFilter) (Summary, error) {
 	                 COALESCE(SUM(cached_tokens),0),
 	                 COALESCE(SUM(reasoning_tokens),0),
 	                 COALESCE(SUM(CASE WHEN tps > 0 THEN tps * completion_tokens ELSE 0 END), 0),
-	                 COALESCE(SUM(CASE WHEN tps > 0 THEN completion_tokens ELSE 0 END), 0)
+	                 COALESCE(SUM(CASE WHEN tps > 0 THEN completion_tokens ELSE 0 END), 0),
+	                 COALESCE(AVG(CASE WHEN ttft_ms > 0 THEN ttft_ms END),0),
+	                 COALESCE(AVG(CASE WHEN generation_ms > 0 THEN generation_ms END),0)
 	          FROM requests ` + where
 	row := s.db.QueryRow(query, args...)
 	var sum Summary
 	var avgLat float64
 	var tpsWeightedSum float64
 	var tpsWeightCount int
-	if err := row.Scan(&sum.TotalRequests, &sum.TotalTokens, &sum.TotalErrors, &avgLat, &sum.TotalCached, &sum.TotalReasoning, &tpsWeightedSum, &tpsWeightCount); err != nil {
+	var avgTTFT, avgGen float64
+	if err := row.Scan(&sum.TotalRequests, &sum.TotalTokens, &sum.TotalErrors, &avgLat, &sum.TotalCached, &sum.TotalReasoning, &tpsWeightedSum, &tpsWeightCount, &avgTTFT, &avgGen); err != nil {
 		return empty, err
 	}
 	sum.AvgLatencyMs = int64(avgLat)
 	if tpsWeightCount > 0 {
 		sum.AvgTPS = tpsWeightedSum / float64(tpsWeightCount)
+	}
+	if avgTTFT > 0 {
+		sum.AvgTTFTMs = int64(avgTTFT)
+	}
+	if avgGen > 0 {
+		sum.AvgGenerationMs = int64(avgGen)
 	}
 	sum.ByBackend = make(map[string]int)
 	sum.ByModel = make(map[string]int)
@@ -519,6 +528,79 @@ func (s *Store) FilteredPercentiles(f StatsFilter) (Percentiles, error) {
 	return Percentiles{P50: pct(0.50), P90: pct(0.90), P99: pct(0.99)}, nil
 }
 
+// FilteredTTFTPercentiles computes P50/P90/P99 time-to-first-token for streaming requests matching f.
+func (s *Store) FilteredTTFTPercentiles(f StatsFilter) (Percentiles, error) {
+	if s == nil {
+		return Percentiles{}, nil
+	}
+	where, args := buildWhere(f)
+	// Append streaming-only filter.
+	streamFilter := "stream = 1 AND ttft_ms > 0"
+	if where == "" {
+		where = "WHERE " + streamFilter
+	} else {
+		where += " AND " + streamFilter
+	}
+	rows, err := s.db.Query(`SELECT ttft_ms FROM requests `+where+` ORDER BY ttft_ms`, args...)
+	if err != nil {
+		return Percentiles{}, err
+	}
+	defer rows.Close()
+	var vals []int64
+	for rows.Next() {
+		var v int64
+		if err := rows.Scan(&v); err != nil {
+			return Percentiles{}, err
+		}
+		vals = append(vals, v)
+	}
+	if err := rows.Err(); err != nil {
+		return Percentiles{}, err
+	}
+	n := len(vals)
+	if n == 0 {
+		return Percentiles{}, nil
+	}
+	pct := func(p float64) int64 { return vals[int(float64(n-1)*p)] }
+	return Percentiles{P50: pct(0.50), P90: pct(0.90), P99: pct(0.99)}, nil
+}
+
+// FilteredGenerationPercentiles computes P50/P90/P99 generation phase duration for streaming requests matching f.
+func (s *Store) FilteredGenerationPercentiles(f StatsFilter) (Percentiles, error) {
+	if s == nil {
+		return Percentiles{}, nil
+	}
+	where, args := buildWhere(f)
+	streamFilter := "stream = 1 AND generation_ms > 0"
+	if where == "" {
+		where = "WHERE " + streamFilter
+	} else {
+		where += " AND " + streamFilter
+	}
+	rows, err := s.db.Query(`SELECT generation_ms FROM requests `+where+` ORDER BY generation_ms`, args...)
+	if err != nil {
+		return Percentiles{}, err
+	}
+	defer rows.Close()
+	var vals []int64
+	for rows.Next() {
+		var v int64
+		if err := rows.Scan(&v); err != nil {
+			return Percentiles{}, err
+		}
+		vals = append(vals, v)
+	}
+	if err := rows.Err(); err != nil {
+		return Percentiles{}, err
+	}
+	n := len(vals)
+	if n == 0 {
+		return Percentiles{}, nil
+	}
+	pct := func(p float64) int64 { return vals[int(float64(n-1)*p)] }
+	return Percentiles{P50: pct(0.50), P90: pct(0.90), P99: pct(0.99)}, nil
+}
+
 // TimeSeries returns bucketed time series data for records matching f.
 // bucketSecs is the bucket width in seconds.
 func (s *Store) TimeSeries(f StatsFilter, bucketSecs int64) ([]TimePoint, error) {
@@ -537,7 +619,9 @@ func (s *Store) TimeSeries(f StatsFilter, bucketSecs int64) ([]TimePoint, error)
 		       COALESCE(SUM(CASE WHEN error!='' THEN 1 ELSE 0 END),0),
 		       COALESCE(AVG(latency_ms),0),
 		       COALESCE(SUM(CASE WHEN tps > 0 THEN tps * completion_tokens ELSE 0 END), 0),
-		       COALESCE(SUM(CASE WHEN tps > 0 THEN completion_tokens ELSE 0 END), 0)
+		       COALESCE(SUM(CASE WHEN tps > 0 THEN completion_tokens ELSE 0 END), 0),
+		       COALESCE(AVG(CASE WHEN ttft_ms > 0 THEN ttft_ms END),0),
+		       COALESCE(AVG(CASE WHEN generation_ms > 0 THEN generation_ms END),0)
 		FROM requests %s
 		GROUP BY (timestamp / %d)
 		ORDER BY (timestamp / %d)`,
@@ -553,13 +637,20 @@ func (s *Store) TimeSeries(f StatsFilter, bucketSecs int64) ([]TimePoint, error)
 		var pt TimePoint
 		var avgLat float64
 		var tpsWeightedSum, tpsWeightCount float64
-		if err := rows.Scan(&tsMs, &pt.Requests, &pt.Tokens, &pt.Errors, &avgLat, &tpsWeightedSum, &tpsWeightCount); err != nil {
+		var avgTTFT, avgGen float64
+		if err := rows.Scan(&tsMs, &pt.Requests, &pt.Tokens, &pt.Errors, &avgLat, &tpsWeightedSum, &tpsWeightCount, &avgTTFT, &avgGen); err != nil {
 			return nil, err
 		}
 		pt.BucketTime = time.UnixMilli(tsMs)
 		pt.AvgLatencyMs = int64(avgLat)
 		if tpsWeightCount > 0 {
 			pt.AvgTPS = tpsWeightedSum / tpsWeightCount
+		}
+		if avgTTFT > 0 {
+			pt.AvgTTFTMs = int64(avgTTFT)
+		}
+		if avgGen > 0 {
+			pt.AvgGenerationMs = int64(avgGen)
 		}
 		pts = append(pts, pt)
 	}
@@ -578,7 +669,9 @@ func (s *Store) RankBy(f StatsFilter, dim string, limit int) ([]RankRow, error) 
 		       COUNT(*),
 		       COALESCE(SUM(total_tokens),0),
 		       COALESCE(SUM(CASE WHEN error!='' THEN 1 ELSE 0 END),0),
-		       COALESCE(AVG(latency_ms),0)
+		       COALESCE(AVG(latency_ms),0),
+		       COALESCE(AVG(CASE WHEN ttft_ms > 0 THEN ttft_ms END),0),
+		       COALESCE(AVG(CASE WHEN generation_ms > 0 THEN generation_ms END),0)
 		FROM requests ` + where + `
 		GROUP BY ` + dim + `
 		ORDER BY COUNT(*) DESC
@@ -593,10 +686,17 @@ func (s *Store) RankBy(f StatsFilter, dim string, limit int) ([]RankRow, error) 
 	for rows.Next() {
 		var rr RankRow
 		var avgLat float64
-		if err := rows.Scan(&rr.Name, &rr.Requests, &rr.Tokens, &rr.Errors, &avgLat); err != nil {
+		var avgTTFT, avgGen float64
+		if err := rows.Scan(&rr.Name, &rr.Requests, &rr.Tokens, &rr.Errors, &avgLat, &avgTTFT, &avgGen); err != nil {
 			return nil, err
 		}
 		rr.AvgLatMs = int64(avgLat)
+		if avgTTFT > 0 {
+			rr.AvgTTFTMs = int64(avgTTFT)
+		}
+		if avgGen > 0 {
+			rr.AvgGenerationMs = int64(avgGen)
+		}
 		if rr.Requests > 0 {
 			rr.ErrPct = float64(rr.Errors) / float64(rr.Requests) * 100
 		}
@@ -641,6 +741,27 @@ func (s *Store) RankByWithPercentiles(f StatsFilter, dim string, limit int) ([]R
 			rows[i].P50 = pct(0.50)
 			rows[i].P90 = pct(0.90)
 			rows[i].P99 = pct(0.99)
+		}
+		// Collect sorted TTFT values for streaming requests in this dimension.
+		ttftRows, tErr := s.db.Query(
+			`SELECT ttft_ms FROM requests `+extra+` AND stream = 1 AND ttft_ms > 0 ORDER BY ttft_ms`, lArgs...)
+		if tErr == nil {
+			var ttfts []int64
+			for ttftRows.Next() {
+				var v int64
+				if ttftRows.Scan(&v) != nil {
+					break
+				}
+				ttfts = append(ttfts, v)
+			}
+			ttftRows.Close()
+			tn := len(ttfts)
+			if tn > 0 {
+				pct := func(p float64) int64 { return ttfts[int(float64(tn-1)*p)] }
+				rows[i].TTFTP50 = pct(0.50)
+				rows[i].TTFTP90 = pct(0.90)
+				rows[i].TTFTP99 = pct(0.99)
+			}
 		}
 	}
 	// Enrich backend dimension with attempt-level failure stats.

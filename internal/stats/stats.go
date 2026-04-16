@@ -59,12 +59,14 @@ type StatsFilter struct {
 
 // TimePoint is one time-bucket in a time-series query.
 type TimePoint struct {
-	BucketTime   time.Time `json:"t"`
-	Requests     int       `json:"req"`
-	Tokens       int       `json:"tok"`
-	Errors       int       `json:"err"`
-	AvgLatencyMs int64     `json:"lat"`
-	AvgTPS       float64   `json:"tps"`
+	BucketTime      time.Time `json:"t"`
+	Requests        int       `json:"req"`
+	Tokens          int       `json:"tok"`
+	Errors          int       `json:"err"`
+	AvgLatencyMs    int64     `json:"lat"`
+	AvgTPS          float64   `json:"tps"`
+	AvgTTFTMs       int64     `json:"ttft,omitempty"`       // Avg time-to-first-token (streaming requests only)
+	AvgGenerationMs int64     `json:"gen,omitempty"`       // Avg generation phase duration (streaming requests only)
 }
 
 // Percentiles holds latency distribution values.
@@ -85,6 +87,11 @@ type RankRow struct {
 	P50               int64   `json:"p50"`
 	P90               int64   `json:"p90"`
 	P99               int64   `json:"p99"`
+	AvgTTFTMs         int64   `json:"ttft,omitempty"`       // Avg TTFT for streaming requests
+	AvgGenerationMs   int64   `json:"gen,omitempty"`       // Avg generation phase for streaming requests
+	TTFTP50           int64   `json:"ttft_p50,omitempty"`
+	TTFTP90           int64   `json:"ttft_p90,omitempty"`
+	TTFTP99           int64   `json:"ttft_p99,omitempty"`
 	AttemptCount      int     `json:"attempt_count"`       // times tried across all routing
 	AttemptFailures   int     `json:"attempt_failures"`    // failed attempts
 	AttemptFailurePct float64 `json:"attempt_failure_pct"` // AttemptFailures / AttemptCount * 100
@@ -96,6 +103,8 @@ type Summary struct {
 	TotalTokens     int            `json:"total_tokens"`
 	TotalErrors     int            `json:"total_errors"`
 	AvgLatencyMs    int64          `json:"avg_latency_ms"`
+	AvgTTFTMs       int64          `json:"avg_ttft_ms,omitempty"`       // Avg time-to-first-token (streaming requests only)
+	AvgGenerationMs int64          `json:"avg_generation_ms,omitempty"` // Avg generation phase duration (streaming requests only)
 	AvgTPS          float64        `json:"avg_tps"`
 	TotalCached     int            `json:"total_cached"`
 	TotalReasoning  int            `json:"total_reasoning"`
@@ -349,6 +358,9 @@ func (c *Collector) Summarize(since time.Duration) Summary {
 	var totalLatency int64
 	var tpsSum float64
 	var tpsCount int
+	var ttftSum int64
+	var genSum int64
+	var streamCount int
 	for _, r := range c.records {
 		if !cutoff.IsZero() && r.Timestamp.Before(cutoff) {
 			continue
@@ -371,6 +383,11 @@ func (c *Collector) Summarize(since time.Duration) Summary {
 			tpsSum += r.TPS * float64(r.CompletionTokens)
 			tpsCount += r.CompletionTokens
 		}
+		if r.TTFTMs > 0 {
+			ttftSum += r.TTFTMs
+			genSum += r.GenerationMs
+			streamCount++
+		}
 	}
 
 	if s.TotalRequests > 0 {
@@ -378,6 +395,10 @@ func (c *Collector) Summarize(since time.Duration) Summary {
 	}
 	if tpsCount > 0 {
 		s.AvgTPS = tpsSum / float64(tpsCount)
+	}
+	if streamCount > 0 {
+		s.AvgTTFTMs = ttftSum / int64(streamCount)
+		s.AvgGenerationMs = genSum / int64(streamCount)
 	}
 	return s
 }

@@ -21,6 +21,20 @@
         <div class="sub">{{printf "%.1f" .AllTime.AvgTPS}} all time</div>
     </div>
     {{end}}
+    {{if .WindowStats.AvgTTFTMs}}
+    <div class="card">
+        <div class="label">Avg TTFT ({{.WindowLabel}})</div>
+        <div class="value" style="color:#f59e0b">{{formatDuration .WindowStats.AvgTTFTMs}}</div>
+        <div class="sub">{{formatDuration .AllTime.AvgTTFTMs}} all time</div>
+    </div>
+    {{end}}
+    {{if .WindowStats.AvgGenerationMs}}
+    <div class="card">
+        <div class="label">Avg Generation ({{.WindowLabel}})</div>
+        <div class="value" style="color:#34d399">{{formatDuration .WindowStats.AvgGenerationMs}}</div>
+        <div class="sub">{{formatDuration .AllTime.AvgGenerationMs}} all time</div>
+    </div>
+    {{end}}
     <div class="card">
         <div class="label">Errors ({{.WindowLabel}})</div>
         <div class="value {{if gt .WindowStats.TotalErrors 0}}red{{else}}green{{end}}">{{.WindowStats.TotalErrors}}</div>

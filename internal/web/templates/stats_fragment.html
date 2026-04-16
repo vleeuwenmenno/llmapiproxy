@@ -60,6 +60,7 @@
       <th>Model</th>
       <th>Tokens</th>
       <th>Latency</th>
+      <th>TTFT</th>
       <th>Stream</th>
       <th>Client</th>
     </tr>
@@ -76,6 +77,7 @@
       <td>{{.Model}}</td>
       <td>{{.TotalTokens}}</td>
       <td>{{formatDuration .LatencyMs}}</td>
+      <td>{{if .TTFTMs}}{{formatDuration .TTFTMs}}{{else}}&mdash;{{end}}</td>
       <td>{{if .Stream}}SSE{{else}}&mdash;{{end}}</td>
       <td>{{.Client}}</td>
     </tr>

@@ -105,6 +105,16 @@ func init() {
 		"mul": func(a, b int) int {
 			return a * b
 		},
+		"pctWidth": func(part, total int64) float64 {
+			if total <= 0 {
+				return 0
+			}
+			p := float64(part) / float64(total) * 100.0
+			if p < 1 && part > 0 {
+				p = 1 // minimum visible width
+			}
+			return p
+		},
 		"min": func(a, b int) int {
 			if a < b {
 				return a

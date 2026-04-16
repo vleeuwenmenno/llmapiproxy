@@ -6,9 +6,21 @@
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Model</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.Model}}</td></tr>
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Client</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{if .Client}}{{.Client}}{{else}}(anonymous){{end}}</td></tr>
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Status</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.StatusCode}}</td></tr>
-    <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Latency</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.LatencyMs}}ms</td></tr>
-    {{if .TTFTMs}}<tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">TTFT</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.TTFTMs}}ms</td></tr>{{end}}
-    {{if .GenerationMs}}<tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Generation</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.GenerationMs}}ms</td></tr>{{end}}
+    <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Latency</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{formatDuration .LatencyMs}}</td></tr>
+    {{if .TTFTMs}}<tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">TTFT</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{formatDuration .TTFTMs}}</td></tr>{{end}}
+    {{if .GenerationMs}}<tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Generation</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{formatDuration .GenerationMs}}</td></tr>{{end}}
+    {{if .TTFTMs}}
+    <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Breakdown</td><td style="padding:0.3rem 0.5rem">
+      <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.75rem">
+        <div style="flex:1;height:8px;border-radius:4px;overflow:hidden;background:var(--surface-2,#1a2332);display:flex">
+          <div style="width:{{printf "%.1f" (pctWidth .TTFTMs .LatencyMs)}}%;background:#f59e0b;min-width:2px" title="TTFT"></div>
+          <div style="flex:1;background:#34d399;min-width:2px" title="Generation"></div>
+        </div>
+        <span style="color:#f59e0b">TTFT {{formatDuration .TTFTMs}}</span>
+        <span style="color:#34d399">Gen {{formatDuration .GenerationMs}}</span>
+      </div>
+    </td></tr>
+    {{end}}
     {{if .TPS}}<tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">TPS</td><td style="font-family:monospace;padding:0.3rem 0.5rem;color:#06b6d4">{{printf "%.1f" .TPS}} tok/s</td></tr>{{end}}
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Tokens</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.TotalTokens}} (prompt: {{.PromptTokens}}, completion: {{.CompletionTokens}})</td></tr>
     {{if gt .CachedTokens 0}}<tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Cached Tokens</td><td style="font-family:monospace;padding:0.3rem 0.5rem;color:#fbbf24">⚡ {{.CachedTokens}}</td></tr>{{end}}
@@ -40,7 +52,7 @@
             <td style="padding:0.35rem 0.5rem;font-family:monospace;color:var(--text-dim,#64748b)">{{.AttemptOrder}}</td>
             <td style="padding:0.35rem 0.5rem;font-family:monospace;color:var(--red,#f87171)">✗ {{.Backend}}</td>
             <td style="padding:0.35rem 0.5rem;font-family:monospace;color:var(--red,#f87171)">{{if gt .StatusCode 0}}{{.StatusCode}}{{else}}—{{end}}</td>
-            <td style="padding:0.35rem 0.5rem;font-family:monospace;color:var(--text,#e2e8f0)">{{.LatencyMs}}ms</td>
+            <td style="padding:0.35rem 0.5rem;font-family:monospace;color:var(--text,#e2e8f0)">{{formatDuration .LatencyMs}}</td>
             <td style="padding:0.35rem 0.5rem;font-family:monospace;color:var(--red,#f87171);word-break:break-all;max-width:300px">{{.Error}}</td>
           </tr>
           {{if .ResponseBody}}
