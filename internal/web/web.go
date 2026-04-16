@@ -2353,6 +2353,32 @@ func (u *UI) ToggleDisabledModel(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// BulkToggleDisabledModels enables or disables all models on a backend in one call.
+func (u *UI) BulkToggleDisabledModels(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Backend  string   `json:"backend"`
+		Models   []string `json:"models"`
+		Disabled bool     `json:"disabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if payload.Backend == "" {
+		http.Error(w, "backend is required", http.StatusBadRequest)
+		return
+	}
+	var models []string
+	if payload.Disabled {
+		models = payload.Models
+	}
+	if err := u.cfgMgr.ReplaceDisabledModels(payload.Backend, models); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // SwitchBackendType changes a backend's type between openai and anthropic,
 // updating its base URL and API key. Only openai ↔ anthropic is supported.
 func (u *UI) SwitchBackendType(w http.ResponseWriter, r *http.Request) {

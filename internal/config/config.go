@@ -950,6 +950,36 @@ func (m *Manager) ToggleDisabledModel(backendName, modelID string, disabled bool
 	return m.Reload()
 }
 
+// ReplaceDisabledModels replaces the entire disabled_models list for a backend.
+// Pass an empty slice to enable all models. Persists the config file and reloads.
+func (m *Manager) ReplaceDisabledModels(backendName string, models []string) error {
+	m.mu.Lock()
+	found := false
+	for i, b := range m.current.Backends {
+		if b.Name == backendName {
+			m.current.Backends[i].DisabledModels = models
+			found = true
+			break
+		}
+	}
+	cfg := m.current
+	m.mu.Unlock()
+
+	if !found {
+		return fmt.Errorf("backend %q not found", backendName)
+	}
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
 // UpdateTitleModel sets the server.title_model field, persists the file, and reloads.
 func (m *Manager) UpdateTitleModel(titleModel string) error {
 	m.mu.Lock()

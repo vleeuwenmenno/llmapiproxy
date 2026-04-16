@@ -213,6 +213,7 @@ var serveCmd = &cobra.Command{
 			r.Post("/settings/backends/toggle", ui.ToggleBackend)
 			r.Post("/settings/backends/switch-type", ui.SwitchBackendType)
 			r.Post("/settings/backends/disabled-model", ui.ToggleDisabledModel)
+			r.Post("/settings/backends/bulk-disabled-model", ui.BulkToggleDisabledModels)
 			r.Post("/settings/backends/add", ui.AddBackendPage)
 			r.Post("/settings/backends/delete", ui.DeleteBackendPage)
 			r.Get("/json/identity-profiles", ui.IdentityProfiles)

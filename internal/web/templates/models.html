@@ -456,6 +456,7 @@
         .model-item:hover { background: var(--accent-dim); }
         .model-item.model-disabled { opacity: 0.45; }
         .model-item.model-disabled .model-id { text-decoration: line-through; }
+        .model-scroll.hide-disabled .model-disabled { display: none; }
 
         .model-disable-btn {
             background: none;
@@ -2649,6 +2650,20 @@
                                 <span class="backend-menu-meta">live</span>
                             </button>
                             {{end}}
+                            {{if .Enabled}}
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); bulkToggleModels('{{.Name}}', true)">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x23F9;</span><span>Disable all models</span></span>
+                                <span class="backend-menu-meta">bulk</span>
+                            </button>
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); bulkToggleModels('{{.Name}}', false)">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x25B6;</span><span>Enable all models</span></span>
+                                <span class="backend-menu-meta">bulk</span>
+                            </button>
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); toggleDisabledVisibility('{{.Name}}')">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x1F441;</span><span id="toggle-label-{{.Name}}">Hide disabled</span></span>
+                                <span class="backend-menu-meta">ui</span>
+                            </button>
+                            {{end}}
                             {{if .CircuitOpen}}
                             <form method="POST" action="/ui/circuit/reset/{{.Name}}?redirect=/ui/models" class="backend-dropdown-form">
                                 <button type="submit" class="backend-menu-item" onclick="closeBackendDropdown()" style="color:var(--amber)">
@@ -4265,6 +4280,75 @@
                 }
             }).catch(function(e) { alert('Error: ' + e); });
         }
+
+        function bulkToggleModels(backendName, disable) {
+            var models = allBackendModels[backendName] || [];
+            var modelIDs = models.map(function(m) { return m.BareID || m.FullID; });
+            var payload = { backend: backendName, models: disable ? modelIDs : [], disabled: disable };
+            fetch('/ui/settings/backends/bulk-disabled-model', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(function(r) {
+                if (!r.ok) { r.text().then(function(t) { alert('Error: ' + t); }); return; }
+                // Update client-side cache
+                allBackendDisabledModels[backendName] = {};
+                if (disable) {
+                    modelIDs.forEach(function(id) { allBackendDisabledModels[backendName][id] = true; });
+                }
+                // Update all model items in the scroll container
+                var scrollEl = document.getElementById('models-scroll-' + backendName);
+                if (scrollEl) {
+                    var items = scrollEl.querySelectorAll('.model-item');
+                    items.forEach(function(item) {
+                        var idSpan = item.querySelector('.model-id');
+                        if (!idSpan) return;
+                        var mid = idSpan.textContent.trim();
+                        var btn = item.querySelector('.model-disable-btn');
+                        if (disable) {
+                            item.classList.add('model-disabled');
+                            if (btn) { btn.textContent = '\u25B6'; btn.title = 'Enable this model on this backend'; btn.onclick = function() { toggleModelDisabled(btn, backendName, mid, true); }; }
+                        } else {
+                            item.classList.remove('model-disabled');
+                            if (btn) { btn.textContent = '\u23FB'; btn.title = 'Disable this model on this backend'; btn.onclick = function() { toggleModelDisabled(btn, backendName, mid, false); }; }
+                        }
+                    });
+                }
+                // Update count badge
+                var countEl = document.getElementById('count-' + backendName);
+                if (countEl && models.length > 0) {
+                    var disabledCount = disable ? models.length : 0;
+                    var text = models.length + ' model' + (models.length !== 1 ? 's' : '');
+                    if (disabledCount > 0) text += ' (' + disabledCount + ' disabled)';
+                    countEl.textContent = text;
+                }
+            }).catch(function(e) { alert('Error: ' + e); });
+        }
+
+        function toggleDisabledVisibility(backendName) {
+            var scrollEl = document.getElementById('models-scroll-' + backendName);
+            var labelEl = document.getElementById('toggle-label-' + backendName);
+            if (!scrollEl) return;
+            var hidden = scrollEl.classList.toggle('hide-disabled');
+            if (labelEl) labelEl.textContent = hidden ? 'Show disabled' : 'Hide disabled';
+            try { localStorage.setItem('hide-disabled-' + backendName, hidden ? '1' : '0'); } catch(e) {}
+        }
+
+        // Restore hide-disabled state from localStorage on page load
+        (function() {
+            document.querySelectorAll('.model-scroll').forEach(function(el) {
+                var id = el.id; // models-scroll-<name>
+                if (!id.startsWith('models-scroll-')) return;
+                var name = id.substring('models-scroll-'.length);
+                try {
+                    if (localStorage.getItem('hide-disabled-' + name) === '1') {
+                        el.classList.add('hide-disabled');
+                        var labelEl = document.getElementById('toggle-label-' + name);
+                        if (labelEl) labelEl.textContent = 'Show disabled';
+                    }
+                } catch(e) {}
+            });
+        })();
 
         function copyBlock(btn, id) {
             var text = document.getElementById(id).textContent;
