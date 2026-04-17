@@ -2671,6 +2671,7 @@
                 (allBackendModels[backendName] || []).forEach(function(m) {
                     var bareID = m && m.BareID;
                     if (!bareID) return;
+                    if (m.Disabled) return;
                     if (!seen[bareID]) {
                         seen[bareID] = {
                             bareID: bareID,
@@ -2858,7 +2859,7 @@
             allBackends.forEach(function(bName) {
                 var models = allBackendModels[bName] || [];
                 var unselectedCount = models.filter(function(m) {
-                    return m && m.BareID && !selectedSet.has(m.BareID);
+                    return m && m.BareID && !m.Disabled && !selectedSet.has(m.BareID);
                 }).length;
                 if (unselectedCount === 0) return;
                 if (q && bName.toLowerCase().indexOf(q) === -1) return;
@@ -3021,6 +3022,7 @@
             var added = 0;
             models.forEach(function(m) {
                 if (!m || !m.BareID) return;
+                if (m.Disabled) return;
                 if (state.selectedModels.indexOf(m.BareID) === -1) {
                     state.selectedModels.push(m.BareID);
                     added++;

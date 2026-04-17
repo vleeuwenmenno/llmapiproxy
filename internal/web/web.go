@@ -982,6 +982,9 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		for _, m := range bc.Models {
+			if bc.IsModelDisabled(m.ID) {
+				continue
+			}
 			curlModels = append(curlModels, bc.Name+"/"+m.ID)
 		}
 	}
