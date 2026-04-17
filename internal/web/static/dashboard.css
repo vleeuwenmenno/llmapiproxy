@@ -46,10 +46,10 @@ nav .links { display: flex; gap: 0.25rem; }
         .time-summary-icon { font-size: 0.85rem; }
         .panel-chevron { font-size: 0.65rem; color: var(--text-dim); transition: transform 0.2s; }
         .time-summary-btn.active .panel-chevron { transform: rotate(180deg); }
-        .time-panel { max-height: 0; overflow: hidden; transition: max-height 0.25s ease, padding 0.2s ease; border-top: 1px solid transparent; padding: 0 0.75rem; }
+        .time-panel { max-height: 0; overflow: hidden; transition: max-height 0.25s ease, padding 0.2s ease; border-top: 1px solid transparent; padding: 0 0.75rem; width: 100%; box-sizing: border-box; }
         .time-panel.open { max-height: 120px; padding: 0.6rem 0.75rem; border-top-color: var(--border); }
-        .time-range-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.45rem; }
-        .time-inputs { display: flex; align-items: center; gap: 0.4rem; flex: 1; flex-wrap: wrap; }
+        .time-range-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.45rem; justify-content: flex-end; }
+        .time-inputs { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end; }
         .time-refresh-row { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
         .time-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
         .time-arrow { color: var(--text-dim); font-size: 0.8rem; padding: 0 0.1rem; }
@@ -69,7 +69,7 @@ nav .links { display: flex; gap: 0.25rem; }
         .filter-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.78rem; cursor: pointer; font-family: var(--sans); transition: all 0.15s; }
         .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
         .auto-refresh-sel { background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.4rem; font-size: 0.72rem; font-family: var(--mono); cursor: pointer; }
-        .quick-presets { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+        .quick-presets { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; justify-content: flex-end; }
         .presets-label { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); margin-right: 0.1rem; white-space: nowrap; }
         .preset-pill { background: none; border: 1px solid var(--border); color: var(--text-dim); padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.72rem; font-weight: 600; cursor: pointer; font-family: var(--mono); transition: all 0.15s; white-space: nowrap; }
         .preset-pill:hover { color: var(--accent); border-color: var(--accent); }
