@@ -459,6 +459,28 @@ func translateToCodexRequest(req *ChatCompletionRequest) (*codexRequest, error) 
 				}
 			}
 		}
+
+		// Translate reasoning_effort / reasoning → Codex native {"reasoning": {"effort": "...", "summary": "auto"}}.
+		// The Codex Responses API does not accept the OpenAI-style "reasoning_effort" top-level field,
+		// but does accept a nested "reasoning" object matching the CLI's wire format.
+		if effort := codexReasoningEffort(raw); effort != "" {
+			var reasoningObj map[string]json.RawMessage
+			if effort == "none" {
+				// Explicit "none" tells the API to skip reasoning; omit summary.
+				reasoningObj = map[string]json.RawMessage{
+					"effort": json.RawMessage(`"none"`),
+				}
+			} else {
+				effortJSON, _ := json.Marshal(effort)
+				reasoningObj = map[string]json.RawMessage{
+					"effort":  effortJSON,
+					"summary": json.RawMessage(`"auto"`),
+				}
+				// Include encrypted reasoning content, matching Codex CLI behavior.
+				codexReq.Extra["include"], _ = json.Marshal([]string{"reasoning.encrypted_content"})
+			}
+			codexReq.Extra["reasoning"], _ = json.Marshal(reasoningObj)
+		}
 	}
 
 	return codexReq, nil

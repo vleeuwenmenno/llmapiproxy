@@ -625,6 +625,129 @@ func TestCodexBackend_GPT54NoneReasoningPreservesSamplingParams(t *testing.T) {
 	}
 }
 
+// TestCodexBackend_ReasoningEffortTranslation verifies that OpenAI-style reasoning_effort
+// is translated to Codex-native {"reasoning": {"effort": "...", "summary": "auto"}} and
+// that "reasoning.encrypted_content" is added to the include array.
+func TestCodexBackend_ReasoningEffortTranslation(t *testing.T) {
+	cases := []struct {
+		name           string
+		rawBody        string
+		wantEffort     string
+		wantSummary    string
+		wantInclude    bool
+	}{
+		{
+			name:        "reasoning_effort medium via top-level field",
+			rawBody:     `{"model":"o4-mini","messages":[{"role":"user","content":"hi"}],"reasoning_effort":"medium"}`,
+			wantEffort:  "medium",
+			wantSummary: "auto",
+			wantInclude: true,
+		},
+		{
+			name:        "reasoning_effort high via top-level field",
+			rawBody:     `{"model":"o4-mini","messages":[{"role":"user","content":"hi"}],"reasoning_effort":"high"}`,
+			wantEffort:  "high",
+			wantSummary: "auto",
+			wantInclude: true,
+		},
+		{
+			name:        "reasoning object native format",
+			rawBody:     `{"model":"o4-mini","messages":[{"role":"user","content":"hi"}],"reasoning":{"effort":"low"}}`,
+			wantEffort:  "low",
+			wantSummary: "auto",
+			wantInclude: true,
+		},
+		{
+			name:        "reasoning_effort none omits summary and include",
+			rawBody:     `{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"hi"}],"reasoning_effort":"none"}`,
+			wantEffort:  "none",
+			wantSummary: "",
+			wantInclude: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b, upstream, cleanup := codexTestHelper(t)
+			defer cleanup()
+
+			var receivedBody map[string]json.RawMessage
+			upstream.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				raw, _ := io.ReadAll(r.Body)
+				json.Unmarshal(raw, &receivedBody)
+				r.Body = io.NopCloser(bytes.NewReader(raw))
+				codexRespondWithJSON(w, r, map[string]any{
+					"id": "resp-reasoning", "object": "response",
+					"created_at": time.Now().Unix(), "status": "completed",
+					"model": "o4-mini",
+					"output": []map[string]any{{
+						"type": "message", "id": "msg-1", "role": "assistant",
+						"status": "completed",
+						"content": []map[string]any{{"type": "output_text", "text": "ok"}},
+					}},
+				})
+			})
+
+			req := &ChatCompletionRequest{
+				Model:    "o4-mini",
+				Messages: []Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+				RawBody:  []byte(tc.rawBody),
+			}
+			_, err := b.ChatCompletion(context.Background(), req)
+			if err != nil {
+				t.Fatalf("ChatCompletion: %v", err)
+			}
+
+			// Verify reasoning_effort is NOT forwarded as a top-level field.
+			if _, ok := receivedBody["reasoning_effort"]; ok {
+				t.Error("reasoning_effort should NOT be present as a top-level field in the Codex request")
+			}
+
+			// Verify the reasoning object was translated correctly.
+			reasoningRaw, ok := receivedBody["reasoning"]
+			if !ok {
+				t.Fatal("reasoning field missing from Codex request")
+			}
+			var reasoning map[string]json.RawMessage
+			if err := json.Unmarshal(reasoningRaw, &reasoning); err != nil {
+				t.Fatalf("reasoning field is not a JSON object: %v", err)
+			}
+			var effort string
+			json.Unmarshal(reasoning["effort"], &effort)
+			if effort != tc.wantEffort {
+				t.Errorf("reasoning.effort = %q, want %q", effort, tc.wantEffort)
+			}
+			var summary string
+			json.Unmarshal(reasoning["summary"], &summary)
+			if summary != tc.wantSummary {
+				t.Errorf("reasoning.summary = %q, want %q", summary, tc.wantSummary)
+			}
+
+			// Verify include field.
+			includeRaw, hasInclude := receivedBody["include"]
+			if tc.wantInclude && !hasInclude {
+				t.Error("include field missing, expected [\"reasoning.encrypted_content\"]")
+			}
+			if !tc.wantInclude && hasInclude {
+				t.Errorf("include field should be absent for effort=none, got %s", includeRaw)
+			}
+			if tc.wantInclude && hasInclude {
+				var includes []string
+				json.Unmarshal(includeRaw, &includes)
+				found := false
+				for _, inc := range includes {
+					if inc == "reasoning.encrypted_content" {
+						found = true
+					}
+				}
+				if !found {
+					t.Errorf("include does not contain \"reasoning.encrypted_content\": %v", includes)
+				}
+			}
+		})
+	}
+}
+
 // --- VAL-CODEX-004: Streaming produces valid SSE event stream ---
 
 func TestCodexBackend_ChatCompletionStream(t *testing.T) {
