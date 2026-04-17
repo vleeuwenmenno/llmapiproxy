@@ -830,13 +830,6 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 
 	// Build skeleton entries from config only — no network calls.
 	// Model metadata is loaded lazily per-card by the browser via BackendModels.
-	//
-	// modelBackends: canonical model ID → backend names (for overlap detection).
-	// backendModelIDs: canonical model ID → (backendName → actual model ID used).
-	// Normalisation: the canonical key is the last path segment of the config model ID,
-	// so "z-ai/glm-5.1" and "glm-5.1" both map to canonical key "glm-5.1".
-	modelBackends := make(map[string][]string)
-	backendModelIDs := make(map[string]map[string]string) // canonical → (backend → actual ID)
 	entries := make([]BackendEntry, 0, len(cfg.Backends))
 
 	for _, bc := range cfg.Backends {
@@ -861,14 +854,6 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 					BareID:   mc.ID,
 					Disabled: disabledSet[mc.ID],
 				})
-				if bc.IsEnabled() {
-					canonical := lastPathSegment(mc.ID)
-					modelBackends[canonical] = append(modelBackends[canonical], bc.Name)
-					if backendModelIDs[canonical] == nil {
-						backendModelIDs[canonical] = make(map[string]string)
-					}
-					backendModelIDs[canonical][bc.Name] = mc.ID
-				}
 			}
 		}
 
@@ -889,15 +874,53 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Compute overlaps from config only (no live fetch).
+	// Compute overlaps from the ModelIndex (live data, includes dynamic backends
+	// and applies canonicalization rules like Ollama tag stripping).
+	// Falls back to config-only detection if the index isn't ready yet.
 	var overlaps []OverlapEntry
-	for canonicalID, backends := range modelBackends {
-		if len(backends) >= 2 {
+	if idx := u.registry.ModelIndex(); idx != nil {
+		indexOverlaps := idx.Overlaps()
+		log.Debug().Int("count", len(indexOverlaps)).Dur("index_age", idx.Age()).Msg("models page: using ModelIndex overlaps")
+		for _, im := range indexOverlaps {
+			backendModels := make(map[string]string, len(im.Backends))
+			backendNames := make([]string, 0, len(im.Backends))
+			for _, ref := range im.Backends {
+				backendNames = append(backendNames, ref.BackendName)
+				backendModels[ref.BackendName] = ref.RawModelID
+			}
+			log.Debug().Str("model", im.CanonicalID).Strs("backends", backendNames).Msg("models page: overlap entry")
 			overlaps = append(overlaps, OverlapEntry{
-				ModelID:       canonicalID,
-				Backends:      backends,
-				BackendModels: backendModelIDs[canonicalID],
+				ModelID:       im.CanonicalID,
+				Backends:      backendNames,
+				BackendModels: backendModels,
 			})
+		}
+	} else {
+		log.Debug().Msg("models page: ModelIndex nil, using fallback overlap detection")
+		// Fallback: config-only overlap detection (before model caches are warmed).
+		modelBackends := make(map[string][]string)
+		backendModelIDs := make(map[string]map[string]string)
+		for _, bc := range cfg.Backends {
+			if !bc.IsEnabled() {
+				continue
+			}
+			for _, mc := range bc.Models {
+				canonical := lastPathSegment(mc.ID)
+				modelBackends[canonical] = append(modelBackends[canonical], bc.Name)
+				if backendModelIDs[canonical] == nil {
+					backendModelIDs[canonical] = make(map[string]string)
+				}
+				backendModelIDs[canonical][bc.Name] = mc.ID
+			}
+		}
+		for canonicalID, backends := range modelBackends {
+			if len(backends) >= 2 {
+				overlaps = append(overlaps, OverlapEntry{
+					ModelID:       canonicalID,
+					Backends:      backends,
+					BackendModels: backendModelIDs[canonicalID],
+				})
+			}
 		}
 	}
 	sort.Slice(overlaps, func(i, j int) bool { return overlaps[i].ModelID < overlaps[j].ModelID })
@@ -1149,6 +1172,10 @@ func (u *UI) RefreshBackendModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Rebuild the model index asynchronously so overlap detection and
+	// routing reflect the refreshed model list immediately.
+	go u.registry.RebuildIndex()
+
 	type modelResp struct {
 		ID              string   `json:"id"`
 		DisplayName     string   `json:"display_name,omitempty"`
@@ -1270,82 +1297,17 @@ func (u *UI) playgroundModelsRaw(w http.ResponseWriter, r *http.Request) {
 
 func (u *UI) playgroundModelsFlat(w http.ResponseWriter, r *http.Request) {
 	routing := u.cfgMgr.Get().Routing
+	allModels := u.registry.FlatModelList(r.Context(), routing)
 
-	type modelEntry struct {
-		model    backend.Model
-		backends []string
-	}
-	seen := make(map[string]*modelEntry)
-	var order []string
-
-	for _, b := range u.registry.All() {
-		list, err := b.ListModels(r.Context())
-		if err != nil {
-			log.Warn().Err(err).Str("backend", b.Name()).Msg("playground: error listing models")
-			continue
-		}
-		for _, m := range list {
-			baseID := strings.TrimPrefix(m.ID, b.Name()+"/")
-
-			if existing, ok := seen[baseID]; ok {
-				if m.ContextLength != nil && (existing.model.ContextLength == nil || *m.ContextLength > *existing.model.ContextLength) {
-					existing.model.ContextLength = m.ContextLength
-				}
-				if m.MaxOutputTokens != nil && (existing.model.MaxOutputTokens == nil || *m.MaxOutputTokens > *existing.model.MaxOutputTokens) {
-					existing.model.MaxOutputTokens = m.MaxOutputTokens
-				}
-				capSet := make(map[string]bool, len(existing.model.Capabilities))
-				for _, c := range existing.model.Capabilities {
-					capSet[c] = true
-				}
-				for _, c := range m.Capabilities {
-					if !capSet[c] {
-						existing.model.Capabilities = append(existing.model.Capabilities, c)
-					}
-				}
-				existing.backends = append(existing.backends, b.Name())
-			} else {
-				mCopy := m
-				mCopy.ID = baseID
-				if mCopy.OwnedBy == "" {
-					mCopy.OwnedBy = b.Name()
-				}
-				seen[baseID] = &modelEntry{
-					model:    mCopy,
-					backends: []string{b.Name()},
-				}
-				order = append(order, baseID)
-			}
-		}
-	}
-
-	strategy := routing.Strategy
-	if strategy == "" {
-		strategy = config.StrategyPriority
-	}
-
-	var models []playgroundModel
-	for _, id := range order {
-		entry := seen[id]
-		m := entry.model
-
-		routedBackends := entry.backends
-		entries, resolvedStrategy, _, err := u.registry.ResolveRoute(id, routing)
-		if err == nil && len(entries) > 0 {
-			routedBackends = make([]string, 0, len(entries))
-			for _, re := range entries {
-				routedBackends = append(routedBackends, re.Backend.Name())
-			}
-			strategy = resolvedStrategy
-		}
-
+	models := make([]playgroundModel, 0, len(allModels))
+	for _, m := range allModels {
 		models = append(models, playgroundModel{
 			ID:                m.ID,
 			ContextLength:     m.ContextLength,
 			MaxOutputTokens:   m.MaxOutputTokens,
 			DisplayName:       m.DisplayName,
-			AvailableBackends: routedBackends,
-			RoutingStrategy:   strategy,
+			AvailableBackends: m.AvailableBackends,
+			RoutingStrategy:   m.RoutingStrategy,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1477,82 +1439,17 @@ func (u *UI) chatModelsRaw(w http.ResponseWriter, r *http.Request) {
 
 func (u *UI) chatModelsFlat(w http.ResponseWriter, r *http.Request) {
 	routing := u.cfgMgr.Get().Routing
+	allModels := u.registry.FlatModelList(r.Context(), routing)
 
-	type modelEntry struct {
-		model    backend.Model
-		backends []string
-	}
-	seen := make(map[string]*modelEntry)
-	var order []string
-
-	for _, b := range u.registry.All() {
-		list, err := b.ListModels(r.Context())
-		if err != nil {
-			log.Warn().Err(err).Str("backend", b.Name()).Msg("chat: error listing models")
-			continue
-		}
-		for _, m := range list {
-			baseID := strings.TrimPrefix(m.ID, b.Name()+"/")
-
-			if existing, ok := seen[baseID]; ok {
-				if m.ContextLength != nil && (existing.model.ContextLength == nil || *m.ContextLength > *existing.model.ContextLength) {
-					existing.model.ContextLength = m.ContextLength
-				}
-				if m.MaxOutputTokens != nil && (existing.model.MaxOutputTokens == nil || *m.MaxOutputTokens > *existing.model.MaxOutputTokens) {
-					existing.model.MaxOutputTokens = m.MaxOutputTokens
-				}
-				capSet := make(map[string]bool, len(existing.model.Capabilities))
-				for _, c := range existing.model.Capabilities {
-					capSet[c] = true
-				}
-				for _, c := range m.Capabilities {
-					if !capSet[c] {
-						existing.model.Capabilities = append(existing.model.Capabilities, c)
-					}
-				}
-				existing.backends = append(existing.backends, b.Name())
-			} else {
-				mCopy := m
-				mCopy.ID = baseID
-				if mCopy.OwnedBy == "" {
-					mCopy.OwnedBy = b.Name()
-				}
-				seen[baseID] = &modelEntry{
-					model:    mCopy,
-					backends: []string{b.Name()},
-				}
-				order = append(order, baseID)
-			}
-		}
-	}
-
-	strategy := routing.Strategy
-	if strategy == "" {
-		strategy = config.StrategyPriority
-	}
-
-	var models []playgroundModel
-	for _, id := range order {
-		entry := seen[id]
-		m := entry.model
-
-		routedBackends := entry.backends
-		entries, resolvedStrategy, _, err := u.registry.ResolveRoute(id, routing)
-		if err == nil && len(entries) > 0 {
-			routedBackends = make([]string, 0, len(entries))
-			for _, re := range entries {
-				routedBackends = append(routedBackends, re.Backend.Name())
-			}
-			strategy = resolvedStrategy
-		}
-
+	models := make([]playgroundModel, 0, len(allModels))
+	for _, m := range allModels {
 		models = append(models, playgroundModel{
 			ID:                m.ID,
 			ContextLength:     m.ContextLength,
 			MaxOutputTokens:   m.MaxOutputTokens,
 			DisplayName:       m.DisplayName,
-			AvailableBackends: routedBackends,
-			RoutingStrategy:   strategy,
+			AvailableBackends: m.AvailableBackends,
+			RoutingStrategy:   m.RoutingStrategy,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
