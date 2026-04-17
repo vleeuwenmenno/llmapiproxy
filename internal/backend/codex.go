@@ -428,6 +428,7 @@ func translateToCodexRequest(req *ChatCompletionRequest) (*codexRequest, error) 
 			"max_completion_tokens": true, // not supported by Responses API
 			"reasoning_effort":      true, // not supported by Codex Responses API
 			"reasoning":             true, // not supported by Codex Responses API
+			"verbosity":             true, // not supported by Codex Responses API
 		}
 		for k, v := range raw {
 			if !strippedFields[k] {
