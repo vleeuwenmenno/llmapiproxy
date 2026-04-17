@@ -86,6 +86,16 @@ func (b *OllamaBackend) SetCompatMode(mode string) { b.compatMode = mode }
 
 func (b *OllamaBackend) Name() string { return b.name }
 
+// stripOllamaTag removes Ollama-specific tags like :cloud or :latest from a
+// model ID so canonical IDs like "glm-5.1" can match upstream raw IDs like
+// "glm-5.1:cloud".
+func stripOllamaTag(modelID string) string {
+	if i := strings.LastIndex(modelID, ":"); i > 0 {
+		return modelID[:i]
+	}
+	return modelID
+}
+
 func (b *OllamaBackend) SetModelCacheStore(store *ModelCacheStore) {
 	b.cacheStore = store
 }
@@ -94,20 +104,21 @@ func (b *OllamaBackend) SupportsModel(modelID string) bool {
 	if b.disabledModels[modelID] {
 		return false
 	}
+	canonicalID := stripOllamaTag(modelID)
 	if len(b.models) == 0 {
 		models := b.getCachedOrFetchModels()
 		if len(models) == 0 {
 			return false
 		}
 		for _, m := range models {
-			if m.ID == modelID {
+			if m.ID == modelID || stripOllamaTag(m.ID) == canonicalID {
 				return true
 			}
 		}
 		return false
 	}
 	for _, m := range b.models {
-		if m.ID == modelID {
+		if m.ID == modelID || stripOllamaTag(m.ID) == canonicalID {
 			return true
 		}
 		if strings.HasSuffix(m.ID, "/*") {
@@ -121,17 +132,18 @@ func (b *OllamaBackend) SupportsModel(modelID string) bool {
 }
 
 func (b *OllamaBackend) ResolveModelID(canonicalID string) string {
+	canonicalID = stripOllamaTag(canonicalID)
 	for _, m := range b.models {
-		if m.ID == canonicalID {
-			return canonicalID
+		if m.ID == canonicalID || stripOllamaTag(m.ID) == canonicalID {
+			return m.ID
 		}
 		if lastSegment(m.ID) == canonicalID {
 			return m.ID
 		}
 	}
 	for _, m := range b.getCachedOrFetchModels() {
-		if m.ID == canonicalID {
-			return canonicalID
+		if m.ID == canonicalID || stripOllamaTag(m.ID) == canonicalID {
+			return m.ID
 		}
 		if lastSegment(m.ID) == canonicalID {
 			return m.ID
