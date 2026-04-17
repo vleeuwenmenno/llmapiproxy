@@ -36,8 +36,8 @@ type RouteEntry struct {
 }
 
 type Message struct {
-	Role      string          `json:"role"`
-	Content   json.RawMessage `json:"content"`
+	Role      string          `json:"role,omitempty"`
+	Content   json.RawMessage `json:"content,omitempty"`
 	ToolCalls json.RawMessage `json:"tool_calls,omitempty"`
 }
 
