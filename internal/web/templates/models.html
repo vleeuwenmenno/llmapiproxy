@@ -380,7 +380,7 @@
         </p>
         <div class="connect-buttons">
             <button class="connect-btn" onclick="openModal('modal-zed')">
-                <img class="connect-icon" src="/ui/static/icons/zed-logo-white.svg" alt="Zed">
+                <img class="connect-icon mono" src="/ui/static/icons/zed-logo.svg" alt="Zed">
                 Zed Editor
             </button>
             <button class="connect-btn" onclick="openModal('modal-copilot-ext')">
@@ -577,27 +577,27 @@
                     <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1rem">Choose the type of backend to add:</p>
                     <div class="wizard-type-grid">
                         <div class="wizard-type-card" data-type="openai" onclick="selectBackendType('openai')">
-                            <div class="wizard-icon">&#x1F517;</div>
+                            <div class="wizard-icon"><img class="backend-icon" style="width:28px;height:28px" src="/ui/static/icons/openai.svg" alt="OpenAI"></div>
                             <div class="wizard-label">OpenAI Compatible</div>
                             <div class="wizard-desc">Any provider with an OpenAI-compatible API (OpenRouter, Z.ai, etc.)</div>
                         </div>
                         <div class="wizard-type-card" data-type="anthropic" onclick="selectBackendType('anthropic')">
-                            <div class="wizard-icon">&#x1F4AC;</div>
+                            <div class="wizard-icon"><img class="backend-icon" style="width:28px;height:28px" src="/ui/static/icons/claude.svg" alt="Anthropic"></div>
                             <div class="wizard-label">Anthropic Compatible</div>
                             <div class="wizard-desc">Any provider with Anthropic-style /v1/messages and /v1/models endpoints.</div>
                         </div>
                         <div class="wizard-type-card" data-type="copilot" onclick="selectBackendType('copilot')">
-                            <div class="wizard-icon">&#x1F4BB;</div>
+                            <div class="wizard-icon"><img class="backend-icon" style="width:28px;height:28px" src="/ui/static/icons/githubcopilot.svg" alt="GitHub Copilot"></div>
                             <div class="wizard-label">GitHub Copilot</div>
                             <div class="wizard-desc">Uses GitHub Device Code Flow for auth. No API key needed.</div>
                         </div>
                         <div class="wizard-type-card" data-type="codex" onclick="selectBackendType('codex')">
-                            <div class="wizard-icon">&#x1F916;</div>
+                            <div class="wizard-icon"><img class="backend-icon-color" style="width:28px;height:28px" src="/ui/static/icons/codex-color.svg" alt="Codex"></div>
                             <div class="wizard-label">OpenAI Codex</div>
                             <div class="wizard-desc">Uses OAuth PKCE browser flow. No API key needed.</div>
                         </div>
                         <div class="wizard-type-card" data-type="ollama" onclick="selectBackendType('ollama')">
-                            <div class="wizard-icon">&#x1F433;</div>
+                            <div class="wizard-icon"><img class="backend-icon" style="width:28px;height:28px" src="/ui/static/icons/ollama.svg" alt="Ollama"></div>
                             <div class="wizard-label">Ollama</div>
                             <div class="wizard-desc">Self-hosted models with pull/delete management. Supports OpenAI, Anthropic, and native modes.</div>
                         </div>
@@ -782,7 +782,7 @@
     <div class="modal-overlay" id="modal-zed" onclick="closeOnBackdrop(event, 'modal-zed')">
         <div class="modal">
             <div class="modal-header">
-                <h2><img src="/ui/static/icons/zed-logo-white.svg" style="width:18px;height:18px;vertical-align:middle;margin-right:0.4rem">Connect Zed Editor</h2>
+                <h2><img class="backend-icon" src="/ui/static/icons/zed-logo.svg" style="width:18px;height:18px;vertical-align:middle;margin-right:0.4rem">Connect Zed Editor</h2>
                 <button class="modal-close" onclick="closeModal('modal-zed')">&#x2715;</button>
             </div>
             <div class="modal-body">
@@ -954,7 +954,7 @@
     <div class="modal-overlay" id="modal-copilot-ext" onclick="closeOnBackdrop(event, 'modal-copilot-ext')">
         <div class="modal">
             <div class="modal-header">
-                <h2><img src="/ui/static/icons/vscode-alt.svg" style="width:18px;height:18px;vertical-align:middle;margin-right:0.4rem">VS Code Copilot Extension</h2>
+                <h2><img src="/ui/static/icons/vscode.svg" style="width:18px;height:18px;vertical-align:middle;margin-right:0.4rem">VS Code Copilot Extension</h2>
                 <button class="modal-close" onclick="closeModal('modal-copilot-ext')">&#x2715;</button>
             </div>
             <div class="modal-body">

@@ -769,15 +769,15 @@ func iconForBackend(name string) string {
 	case strings.Contains(n, "openrouter"):
 		return "/ui/static/icons/openrouter.svg"
 	case strings.Contains(n, "zai") || strings.Contains(n, "z.ai"):
-		return "/ui/static/icons/zai-white.svg"
+		return "/ui/static/icons/zai.svg"
 	case strings.Contains(n, "openai"):
-		return "/ui/static/icons/openai-white.svg"
+		return "/ui/static/icons/openai.svg"
 	case strings.Contains(n, "claude") || strings.Contains(n, "anthropic"):
-		return "/ui/static/icons/claude-white.svg"
+		return "/ui/static/icons/claude.svg"
 	case strings.Contains(n, "ollama"):
 		return "/ui/static/icons/ollama.svg"
 	case strings.Contains(n, "zen") || strings.Contains(n, "opencode"):
-		return "/ui/static/icons/openai-white.svg"
+		return "/ui/static/icons/openai.svg"
 	case strings.Contains(n, "codex"):
 		return "/ui/static/icons/codex-color.svg"
 	case strings.Contains(n, "copilot"):
