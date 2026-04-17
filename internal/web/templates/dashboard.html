@@ -48,46 +48,86 @@
 </nav>
 
 <main>
-    <!-- ── Filter Bar ── -->
+    <!-- ── Time Bar ── -->
     <div class="filter-bar" id="filterBar">
-        <div class="time-pills" id="timePills">
-            <button class="time-pill" data-w="5m">5m</button>
-            <button class="time-pill" data-w="15m">15m</button>
-            <button class="time-pill active" data-w="1h">1h</button>
-            <button class="time-pill" data-w="6h">6h</button>
-            <button class="time-pill" data-w="1d">1d</button>
-            <button class="time-pill" data-w="7d">7d</button>
-            <button class="time-pill" data-w="30d">30d</button>
-            <button class="time-pill" data-w="custom" id="customPill">Custom</button>
+        <!-- Always-visible control row -->
+        <div class="control-row">
+            <button class="filter-toggle-btn" id="filtersToggleBtn" onclick="toggleFilters()" title="Toggle filters">
+                ⚙ Filters <span class="filter-badge" id="filterBadge" style="display:none">0</span>
+            </button>
+            <div class="control-right">
+                <button class="time-summary-btn" id="timeSummaryBtn" onclick="toggleTimePanel()" title="Edit time range">
+                    <span class="time-summary-icon">⏱</span>
+                    <span id="timeSummaryText">Last 1h</span>
+                    <span class="panel-chevron" id="timePanelChevron">▾</span>
+                </button>
+                <div class="control-divider"></div>
+                <button class="filter-btn" onclick="fetchData()" title="Refresh now">&#8635; Refresh</button>
+            </div>
         </div>
-        <div class="custom-range" id="customRange">
-            <input type="datetime-local" id="fromInput" title="From">
-            <span style="color:var(--text-dim);font-size:0.75rem">→</span>
-            <input type="datetime-local" id="toInput" title="To">
-            <button class="filter-btn" onclick="applyCustomRange()">Apply</button>
+        <!-- Collapsible time panel -->
+        <div class="time-panel" id="timePanel">
+            <div class="time-range-row">
+                <div class="time-inputs">
+                    <span class="time-label">From</span>
+                    <input type="datetime-local" id="fromInput" class="time-input" title="Start time">
+                    <span class="time-arrow">→</span>
+                    <span class="time-label">To</span>
+                    <input type="datetime-local" id="toInput" class="time-input" title="End time">
+                    <button class="now-btn" id="nowBtn" onclick="toggleNow()" title="Lock end time to now">Now</button>
+                    <button class="apply-btn" onclick="applyTimeRange()">Apply</button>
+                </div>
+                <div class="time-refresh-row">
+                    <span class="time-label">Auto-refresh</span>
+                    <select class="auto-refresh-sel" id="autoRefresh" title="Auto-refresh">
+                        <option value="0">Off</option>
+                        <option value="5000">5s</option>
+                        <option value="15000" selected>15s</option>
+                        <option value="30000">30s</option>
+                        <option value="60000">1m</option>
+                    </select>
+                </div>
+            </div>
+            <div class="quick-presets" id="quickPresets">
+                <span class="presets-label">Quick:</span>
+                <button class="preset-pill" data-w="5m">Last 5m</button>
+                <button class="preset-pill" data-w="15m">Last 15m</button>
+                <button class="preset-pill active" data-w="1h">Last 1h</button>
+                <button class="preset-pill" data-w="6h">Last 6h</button>
+                <button class="preset-pill" data-w="1d">Last 24h</button>
+                <button class="preset-pill" data-w="7d">Last 7d</button>
+                <button class="preset-pill" data-w="30d">Last 30d</button>
+            </div>
         </div>
-        <div class="filter-sep"></div>
-        <select class="filter-select" id="filterBackend" title="Backend">
-            <option value="">All Backends</option>
-        </select>
-        <select class="filter-select" id="filterModel" title="Model">
-            <option value="">All Models</option>
-        </select>
-        <select class="filter-select" id="filterClient" title="Client">
-            <option value="">All Clients</option>
-        </select>
-        <label class="filter-toggle">
-            <input type="checkbox" id="filterErrors"> Errors only
-        </label>
-        <div class="filter-actions">
-            <select class="auto-refresh-sel" id="autoRefresh" title="Auto-refresh">
-                <option value="0">Auto: off</option>
-                <option value="5000">5s</option>
-                <option value="15000" selected>15s</option>
-                <option value="30000">30s</option>
-                <option value="60000">1m</option>
-            </select>
-            <button class="filter-btn" onclick="fetchData()" title="Refresh now">&#8635; Refresh</button>
+        <!-- Collapsible filters panel -->
+        <div class="filters-panel" id="filtersPanel">
+            <div class="filters-row">
+                <select class="filter-select" id="filterBackend" title="Backend">
+                    <option value="">All Backends</option>
+                </select>
+                <select class="filter-select" id="filterModel" title="Model">
+                    <option value="">All Models</option>
+                </select>
+                <select class="filter-select" id="filterClient" title="Client">
+                    <option value="">All Clients</option>
+                </select>
+                <div class="filter-sep"></div>
+                <label class="toggle-label">
+                    <span class="toggle-text">Hide errors</span>
+                    <span class="toggle-switch">
+                        <input type="checkbox" id="filterHideErrors">
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                    </span>
+                </label>
+                <label class="toggle-label">
+                    <span class="toggle-text">Errors only</span>
+                    <span class="toggle-switch">
+                        <input type="checkbox" id="filterErrors">
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                    </span>
+                </label>
+                <button class="clear-filters-btn" onclick="clearFilters()" title="Clear all filters">✕ Clear filters</button>
+            </div>
         </div>
     </div>
 
@@ -225,72 +265,220 @@ function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'
 function latClass(ms) { if (ms < 500) return 'lat-good'; if (ms < 2000) return 'lat-ok'; return 'lat-bad'; }
 
 // ── State ──────────────────────────────────────────────────
-var state = { window: localStorage.getItem('dash-window') || '1h', backend: '', model: '', client: '', errors: false, page: 0, customFrom: '', customTo: '' };
+var state = { window: localStorage.getItem('dash-window') || '1h', backend: '', model: '', client: '', errors: false, hideErrors: false, toNow: true, page: 0, customFrom: '', customTo: '' };
 var rankData = { models: [], backends: [], clients: [] };
 var sortState = { models: {col:'req',asc:false}, backends: {col:'req',asc:false}, clients: {col:'req',asc:false} };
 var activeRankTab = 'models';
 var autoTimer = null;
 var lastData = null;
 
+// ── Time helpers ───────────────────────────────────────────
+function parseWindowMs(w) {
+    var m = w ? w.match(/^(\d+)(m|h|d)$/) : null;
+    if (!m) return 3600000;
+    var n = parseInt(m[1]);
+    if (m[2] === 'm') return n * 60000;
+    if (m[2] === 'h') return n * 3600000;
+    return n * 86400000;
+}
+function isoToLocal(iso) {
+    var d = new Date(iso);
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
 // ── Filters ────────────────────────────────────────────────
 function initFilters() {
-    // Restore from URL params
     var p = new URLSearchParams(window.location.search);
     if (p.get('window')) state.window = p.get('window');
     if (p.get('backend')) state.backend = p.get('backend');
     if (p.get('model')) state.model = p.get('model');
     if (p.get('client')) state.client = p.get('client');
     if (p.get('errors') === '1') state.errors = true;
-    if (p.get('from')) state.customFrom = p.get('from');
-    if (p.get('to')) state.customTo = p.get('to');
-    if (state.customFrom && state.customTo) state.window = 'custom';
+    if (p.get('hideErrors') === '1') state.hideErrors = true;
+    if (p.get('from')) { state.customFrom = p.get('from'); state.window = 'custom'; }
+    if (p.get('to')) { state.customTo = p.get('to'); state.toNow = false; }
+    if (p.get('from') && !p.get('to')) state.toNow = true;
 
-    // Time pills
-    document.querySelectorAll('.time-pill').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            state.window = this.dataset.w;
-            state.page = 0;
-            if (state.window !== 'custom') { state.customFrom = ''; state.customTo = ''; }
-            updateFilterUI();
-            fetchData();
-        });
+    if (localStorage.getItem('dash-filters-open') === '1') {
+        document.getElementById('filtersPanel').classList.add('open');
+        document.getElementById('filtersToggleBtn').classList.add('active');
+    }
+    if (localStorage.getItem('dash-time-open') === '1') {
+        document.getElementById('timePanel').classList.add('open');
+        document.getElementById('timeSummaryBtn').classList.add('active');
+    }
+
+    document.getElementById('fromInput').addEventListener('change', function() {
+        if (!this.value) return;
+        state.customFrom = new Date(this.value).toISOString();
+        state.window = 'custom';
+        updateFilterUI();
+    });
+    document.getElementById('toInput').addEventListener('change', function() {
+        if (!this.value || state.toNow) return;
+        state.customTo = new Date(this.value).toISOString();
+        state.window = 'custom';
+        updateFilterUI();
     });
 
-    // Dropdowns
-    document.getElementById('filterBackend').addEventListener('change', function() { state.backend = this.value; state.page = 0; fetchData(); });
-    document.getElementById('filterModel').addEventListener('change', function() { state.model = this.value; state.page = 0; fetchData(); });
-    document.getElementById('filterClient').addEventListener('change', function() { state.client = this.value; state.page = 0; fetchData(); });
-    document.getElementById('filterErrors').addEventListener('change', function() { state.errors = this.checked; state.page = 0; fetchData(); });
+    document.querySelectorAll('.preset-pill').forEach(function(btn) {
+        btn.addEventListener('click', function() { setPreset(this.dataset.w); });
+    });
 
-    // Auto-refresh
+    document.getElementById('filterBackend').addEventListener('change', function() { state.backend = this.value; state.page = 0; updateFilterUI(); fetchData(); });
+    document.getElementById('filterModel').addEventListener('change', function() { state.model = this.value; state.page = 0; updateFilterUI(); fetchData(); });
+    document.getElementById('filterClient').addEventListener('change', function() { state.client = this.value; state.page = 0; updateFilterUI(); fetchData(); });
+
+    document.getElementById('filterErrors').addEventListener('change', function() {
+        state.errors = this.checked;
+        if (this.checked) { state.hideErrors = false; document.getElementById('filterHideErrors').checked = false; }
+        state.page = 0;
+        updateFilterUI();
+        fetchData();
+    });
+    document.getElementById('filterHideErrors').addEventListener('change', function() {
+        state.hideErrors = this.checked;
+        if (this.checked) { state.errors = false; document.getElementById('filterErrors').checked = false; }
+        updateFilterUI();
+        renderLogFromCache();
+    });
+
     document.getElementById('autoRefresh').addEventListener('change', function() { setupAutoRefresh(); });
 
     updateFilterUI();
 }
 
+function setPreset(w) {
+    state.window = w;
+    state.toNow = true;
+    state.customFrom = '';
+    state.customTo = '';
+    state.page = 0;
+    updateFilterUI();
+    fetchData();
+}
+
+function toggleNow() {
+    if (state.toNow) {
+        if (!state.customFrom && state.window !== 'custom') {
+            state.customFrom = new Date(Date.now() - parseWindowMs(state.window)).toISOString();
+        }
+        state.customTo = new Date().toISOString();
+        state.window = 'custom';
+        state.toNow = false;
+    } else {
+        state.toNow = true;
+        state.customTo = '';
+    }
+    updateFilterUI();
+}
+
+function applyTimeRange() {
+    var fromVal = document.getElementById('fromInput').value;
+    if (!fromVal) return;
+    state.customFrom = new Date(fromVal).toISOString();
+    state.window = 'custom';
+    if (!state.toNow) {
+        var toVal = document.getElementById('toInput').value;
+        if (!toVal) return;
+        state.customTo = new Date(toVal).toISOString();
+    } else {
+        state.customTo = '';
+    }
+    state.page = 0;
+    updateFilterUI();
+    fetchData();
+}
+
+function toggleTimePanel() {
+    var panel = document.getElementById('timePanel');
+    var btn = document.getElementById('timeSummaryBtn');
+    var isOpen = panel.classList.toggle('open');
+    btn.classList.toggle('active', isOpen);
+    localStorage.setItem('dash-time-open', isOpen ? '1' : '0');
+}
+
+function toggleFilters() {
+    var panel = document.getElementById('filtersPanel');
+    var btn = document.getElementById('filtersToggleBtn');
+    var isOpen = panel.classList.toggle('open');
+    btn.classList.toggle('active', isOpen);
+    localStorage.setItem('dash-filters-open', isOpen ? '1' : '0');
+}
+
+function clearFilters() {
+    state.backend = '';
+    state.model = '';
+    state.client = '';
+    state.errors = false;
+    state.hideErrors = false;
+    state.page = 0;
+    updateFilterUI();
+    fetchData();
+}
+
+function renderLogFromCache() {
+    if (lastData) renderLog(lastData.records);
+}
+
 function updateFilterUI() {
-    document.querySelectorAll('.time-pill').forEach(function(btn) { btn.classList.toggle('active', btn.dataset.w === state.window); });
-    var cr = document.getElementById('customRange');
-    if (state.window === 'custom') { cr.classList.add('visible'); } else { cr.classList.remove('visible'); }
+    var now = new Date();
+    var fromInput = document.getElementById('fromInput');
+    var toInput = document.getElementById('toInput');
+    var nowBtn = document.getElementById('nowBtn');
+
+    if (state.customFrom) {
+        fromInput.value = isoToLocal(state.customFrom);
+    } else if (state.window && state.window !== 'custom') {
+        fromInput.value = isoToLocal(new Date(now.getTime() - parseWindowMs(state.window)).toISOString());
+    }
+
+    if (state.toNow) {
+        toInput.value = isoToLocal(now.toISOString());
+        toInput.disabled = true;
+        nowBtn.classList.remove('inactive');
+    } else {
+        toInput.disabled = false;
+        if (state.customTo) toInput.value = isoToLocal(state.customTo);
+        nowBtn.classList.add('inactive');
+    }
+
+    document.querySelectorAll('.preset-pill').forEach(function(btn) {
+        btn.classList.toggle('active', state.toNow && !state.customFrom && btn.dataset.w === state.window);
+    });
+
+    var n = (state.backend ? 1 : 0) + (state.model ? 1 : 0) + (state.client ? 1 : 0) + (state.errors ? 1 : 0) + (state.hideErrors ? 1 : 0);
+    var badge = document.getElementById('filterBadge');
+    badge.textContent = n;
+    badge.style.display = n > 0 ? '' : 'none';
+
     document.getElementById('filterBackend').value = state.backend;
     document.getElementById('filterModel').value = state.model;
     document.getElementById('filterClient').value = state.client;
     document.getElementById('filterErrors').checked = state.errors;
-    if (state.customFrom) document.getElementById('fromInput').value = state.customFrom.replace('T', 'T').slice(0, 16);
-    if (state.customTo) document.getElementById('toInput').value = state.customTo.replace('T', 'T').slice(0, 16);
+    document.getElementById('filterHideErrors').checked = state.hideErrors;
+
     localStorage.setItem('dash-window', state.window);
+    localStorage.setItem('dash-to-now', state.toNow ? '1' : '0');
+    updateTimeSummary();
 }
 
-function applyCustomRange() {
-    var from = document.getElementById('fromInput').value;
-    var to = document.getElementById('toInput').value;
-    if (!from || !to) return;
-    state.customFrom = new Date(from).toISOString();
-    state.customTo = new Date(to).toISOString();
-    state.window = 'custom';
-    state.page = 0;
-    updateFilterUI();
-    fetchData();
+function updateTimeSummary() {
+    var el = document.getElementById('timeSummaryText');
+    if (!el) return;
+    if (state.toNow && !state.customFrom) {
+        var labels = { '5m': 'Last 5m', '15m': 'Last 15m', '1h': 'Last 1h', '6h': 'Last 6h', '1d': 'Last 24h', '7d': 'Last 7d', '30d': 'Last 30d' };
+        el.textContent = labels[state.window] || ('Last ' + state.window);
+    } else {
+        var fmtShort = function(iso) {
+            var d = new Date(iso);
+            return (d.getMonth()+1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
+        };
+        var from = state.customFrom ? fmtShort(state.customFrom) : '?';
+        var to = state.toNow ? 'Now' : (state.customTo ? fmtShort(state.customTo) : 'Now');
+        el.textContent = from + ' → ' + to;
+    }
 }
 
 function populateDropdowns(filters) {
@@ -308,11 +496,14 @@ function populateSelect(id, values, current, placeholder) {
 
 function buildURL() {
     var p = new URLSearchParams();
-    if (state.window === 'custom') {
+    if (state.toNow && !state.customFrom) {
+        p.set('window', state.window || '1h');
+    } else if (state.toNow && state.customFrom) {
+        p.set('from', state.customFrom);
+        p.set('to', new Date().toISOString());
+    } else {
         if (state.customFrom) p.set('from', state.customFrom);
         if (state.customTo) p.set('to', state.customTo);
-    } else {
-        p.set('window', state.window);
     }
     if (state.backend) p.set('backend', state.backend);
     if (state.model) p.set('model', state.model);
@@ -324,16 +515,19 @@ function buildURL() {
 
 function updateBrowserURL() {
     var p = new URLSearchParams();
-    if (state.window === 'custom') {
+    if (state.toNow && !state.customFrom) {
+        if (state.window && state.window !== '1h') p.set('window', state.window);
+    } else if (state.toNow && state.customFrom) {
+        p.set('from', state.customFrom);
+    } else {
         if (state.customFrom) p.set('from', state.customFrom);
         if (state.customTo) p.set('to', state.customTo);
-    } else if (state.window !== '1h') {
-        p.set('window', state.window);
     }
     if (state.backend) p.set('backend', state.backend);
     if (state.model) p.set('model', state.model);
     if (state.client) p.set('client', state.client);
     if (state.errors) p.set('errors', '1');
+    if (state.hideErrors) p.set('hideErrors', '1');
     if (state.page > 0) p.set('page', state.page);
     var qs = p.toString();
     history.replaceState(null, '', '/ui/' + (qs ? '?' + qs : ''));
@@ -341,10 +535,17 @@ function updateBrowserURL() {
 
 // ── Set filter from click ──────────────────────────────────
 function setFilter(dim, value) {
-    if (dim === 'backend') { state.backend = value; document.getElementById('filterBackend').value = value; }
-    if (dim === 'model') { state.model = value; document.getElementById('filterModel').value = value; }
-    if (dim === 'client') { state.client = value; document.getElementById('filterClient').value = value; }
+    if (dim === 'backend') state.backend = value;
+    if (dim === 'model') state.model = value;
+    if (dim === 'client') state.client = value;
     state.page = 0;
+    var panel = document.getElementById('filtersPanel');
+    if (!panel.classList.contains('open')) {
+        panel.classList.add('open');
+        document.getElementById('filtersToggleBtn').classList.add('active');
+        localStorage.setItem('dash-filters-open', '1');
+    }
+    updateFilterUI();
     fetchData();
 }
 
@@ -678,7 +879,8 @@ function stratBadge(s) {
 }
 
 function renderLog(rec) {
-    var items = (rec && rec.items) || [];
+    var allItems = (rec && rec.items) || [];
+    var items = state.hideErrors ? allItems.filter(function(r) { return !r.error || r.error.length === 0; }) : allItems;
     var total = rec ? rec.total : 0;
     document.getElementById('logCount').textContent = total > 0 ? total : '';
 
