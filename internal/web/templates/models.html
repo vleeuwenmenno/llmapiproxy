@@ -319,6 +319,12 @@
         .backend-card.circuit-open { border-color: rgba(248,113,113,0.4); }
         .backend-card.circuit-open:hover { border-color: rgba(248,113,113,0.6); }
 
+        /* Allow dropdown menu to render outside the card boundaries */
+        .backend-card:has(.backend-dropdown-container.open) {
+            overflow: visible;
+            z-index: 20;
+        }
+
         .disabled-badge {
             font-size: 0.6rem;
             background: rgba(248,113,113,0.15);
