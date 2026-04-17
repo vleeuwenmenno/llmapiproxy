@@ -92,7 +92,7 @@ type CircuitBreakerConfig struct {
 	Enabled *bool `yaml:"enabled,omitempty" json:"enabled,omitempty"`
 	// Threshold is the number of consecutive 429 responses before tripping. Default: 3.
 	Threshold int `yaml:"threshold,omitempty" json:"threshold,omitempty"`
-	// CooldownSec is the number of seconds to keep a tripped backend suspended. Default: 300 (5m).
+	// CooldownSec is the number of seconds to keep a tripped backend suspended. Default: 900 (15m).
 	CooldownSec int `yaml:"cooldown,omitempty" json:"cooldown,omitempty"`
 }
 

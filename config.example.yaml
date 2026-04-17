@@ -298,5 +298,5 @@ clients:
 #   # temporarily removed from routing until the cooldown expires.
 #   # circuit_breaker:
 #   #   enabled: true         # Enable/disable circuit breaker (default: true).
-#   #   threshold: 3          # Consecutive 429s before tripping (default: 3).
-#   #   cooldown: 300         # Seconds to keep tripped backend suspended (default: 300 = 5min).
+#   #   threshold: 3          # Consecutive failures before tripping (default: 3).
+#   #   cooldown: 900         # Seconds to keep tripped backend suspended (default: 900 = 15min).

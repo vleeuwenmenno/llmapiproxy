@@ -256,8 +256,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Threshold != 3 {
 		t.Errorf("default threshold should be 3, got %d", cfg.Threshold)
 	}
-	if cfg.Cooldown != 300 {
-		t.Errorf("default cooldown should be 300, got %d", cfg.Cooldown)
+	if cfg.Cooldown != 900 {
+		t.Errorf("default cooldown should be 900, got %d", cfg.Cooldown)
 	}
 }
 

@@ -57,7 +57,7 @@ func DefaultConfig() Config {
 	return Config{
 		Enabled:   true,
 		Threshold: 3,
-		Cooldown:  300,
+		Cooldown:  900,
 	}
 }
 
@@ -183,7 +183,7 @@ func NewManager(cfg Config) *Manager {
 		cfg.Threshold = 3
 	}
 	if cfg.Cooldown <= 0 {
-		cfg.Cooldown = 300
+		cfg.Cooldown = 900
 	}
 	return &Manager{
 		breakers: make(map[string]*breaker),
@@ -272,7 +272,7 @@ func (m *Manager) UpdateConfig(cfg Config) {
 		cfg.Threshold = 3
 	}
 	if cfg.Cooldown <= 0 {
-		cfg.Cooldown = 300
+		cfg.Cooldown = 900
 	}
 	cooldown := time.Duration(cfg.Cooldown) * time.Second
 
