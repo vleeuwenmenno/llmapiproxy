@@ -17,7 +17,7 @@ services:
   ollama:
     image: ollama/ollama:latest
     ports:
-      - "11434:11434"    # Ollama API (optional, for direct access)
+      - "11434:11434" # Ollama API (optional, for direct access)
     volumes:
       - ollama-data:/root/.ollama
     restart: unless-stopped
@@ -32,13 +32,15 @@ services:
     # To build from source instead:
     build: .
     ports:
-      - "8000:8000"      # API + web UI
+      - "8000:8000" # API + web UI
     volumes:
-      - ./data:/app/data  # Persist stats, tokens, caches, config
+      - ./data:/app/data # Persist stats, tokens, caches, config
     depends_on:
       ollama:
         condition: service_healthy
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
