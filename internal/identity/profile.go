@@ -103,7 +103,7 @@ var builtinProfiles = []Profile{
 	{
 		ID:          "codex-cli",
 		DisplayName: "Codex CLI",
-		UserAgent:   "codex_cli_rs/0.120.0 ({{.OS}}; {{.Arch}})",
+		UserAgent:   "codex_cli_rs/0.121.0 ({{.OS}}; {{.Arch}})",
 		Headers: map[string]string{
 			"originator": "codex_cli_rs",
 		},
@@ -111,7 +111,7 @@ var builtinProfiles = []Profile{
 	{
 		ID:          "gemini-cli",
 		DisplayName: "Gemini CLI",
-		UserAgent:   "GeminiCLI/0.38.0/{{.Model}} ({{.Platform}}; {{.Arch}}; terminal)",
+		UserAgent:   "GeminiCLI/0.38.1/{{.Model}} ({{.Platform}}; {{.Arch}}; terminal)",
 		Headers:     nil,
 	},
 	{
@@ -119,8 +119,8 @@ var builtinProfiles = []Profile{
 		DisplayName: "GitHub Copilot (VS Code)",
 		UserAgent:   "GitHubCopilot/1.0",
 		Headers: map[string]string{
-			"Editor-Version":         "vscode/1.96.0",
-			"Editor-Plugin-Version":  "copilot-chat/0.24.0",
+			"Editor-Version":         "vscode/1.115.0",
+			"Editor-Plugin-Version":  "copilot-chat/0.43.0",
 			"Copilot-Integration-Id": "vscode-chat",
 		},
 	},
@@ -136,7 +136,7 @@ var builtinProfiles = []Profile{
 	{
 		ID:          "claude-code",
 		DisplayName: "Claude Code CLI",
-		UserAgent:   "claude-cli/1.0.22 (pro, cli)",
+		UserAgent:   "claude-cli/2.1.112 (pro, cli)",
 		Headers: map[string]string{
 			"x-app":                    "cli",
 			"X-Claude-Code-Session-Id": "{{.SessionID}}",
