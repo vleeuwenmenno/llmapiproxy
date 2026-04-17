@@ -139,7 +139,11 @@
                         </button>
                         {{end}}
                     </div>
-
+                    <div class="backend-menu-separator"></div>
+                    <button type="button" class="backend-submenu-option" onclick="toggleGlobalDisabledVisibility()">
+                        <span class="submenu-check">&#x1F441;</span>
+                        <span id="global-hide-disabled-label">Hide disabled models</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -200,10 +204,7 @@
                                 <span class="backend-menu-label"><span class="backend-menu-icon">&#x25B6;</span><span>Enable all models</span></span>
                                 <span class="backend-menu-meta">bulk</span>
                             </button>
-                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); toggleDisabledVisibility('{{.Name}}')">
-                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x1F441;</span><span id="toggle-label-{{.Name}}">Hide disabled</span></span>
-                                <span class="backend-menu-meta">ui</span>
-                            </button>
+
                             {{end}}
                             {{if .CircuitOpen}}
                             <form method="POST" action="/ui/circuit/reset/{{.Name}}?redirect=/ui/models" class="backend-dropdown-form">
@@ -1974,29 +1975,32 @@
             }).catch(function(e) { alert('Error: ' + e); });
         }
 
-        function toggleDisabledVisibility(backendName) {
-            var scrollEl = document.getElementById('models-scroll-' + backendName);
-            var labelEl = document.getElementById('toggle-label-' + backendName);
-            if (!scrollEl) return;
-            var hidden = scrollEl.classList.toggle('hide-disabled');
-            if (labelEl) labelEl.textContent = hidden ? 'Show disabled' : 'Hide disabled';
-            try { localStorage.setItem('hide-disabled-' + backendName, hidden ? '1' : '0'); } catch(e) {}
+        function toggleGlobalDisabledVisibility() {
+            var labelEl = document.getElementById('global-hide-disabled-label');
+            var scrollEls = document.querySelectorAll('.model-scroll');
+            var currentlyHidden = scrollEls.length > 0 && scrollEls[0].classList.contains('hide-disabled');
+            var hidden = !currentlyHidden;
+            scrollEls.forEach(function(el) {
+                el.classList.toggle('hide-disabled', hidden);
+            });
+            if (labelEl) labelEl.textContent = hidden ? 'Show disabled models' : 'Hide disabled models';
+            try { localStorage.setItem('hide-disabled-models', hidden ? '1' : '0'); } catch(e) {}
+            // Close the global dropdown menu
+            var container = document.getElementById('global-identity-dropdown');
+            if (container) container.classList.remove('open');
         }
 
         // Restore hide-disabled state from localStorage on page load
         (function() {
-            document.querySelectorAll('.model-scroll').forEach(function(el) {
-                var id = el.id; // models-scroll-<name>
-                if (!id.startsWith('models-scroll-')) return;
-                var name = id.substring('models-scroll-'.length);
-                try {
-                    if (localStorage.getItem('hide-disabled-' + name) === '1') {
+            try {
+                if (localStorage.getItem('hide-disabled-models') === '1') {
+                    document.querySelectorAll('.model-scroll').forEach(function(el) {
                         el.classList.add('hide-disabled');
-                        var labelEl = document.getElementById('toggle-label-' + name);
-                        if (labelEl) labelEl.textContent = 'Show disabled';
-                    }
-                } catch(e) {}
-            });
+                    });
+                    var labelEl = document.getElementById('global-hide-disabled-label');
+                    if (labelEl) labelEl.textContent = 'Show disabled models';
+                }
+            } catch(e) {}
         })();
 
         function copyBlock(btn, id) {
