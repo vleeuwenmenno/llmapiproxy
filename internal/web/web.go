@@ -747,7 +747,7 @@ type BackendEntry struct {
 	StaticCount     int          // pre-computed count for statically-configured backends
 	DisabledModels  []string     // model IDs disabled on this backend
 	IdentityProfile string       // per-backend identity profile override (empty = use global)
-	CircuitOpen     bool         // true when circuit breaker is tripped (429 rate limit)
+	CircuitOpen     bool         // true when circuit breaker is tripped
 	CompatMode      string       // ollama compat mode: "openai", "anthropic", "native"
 }
 

@@ -157,7 +157,7 @@
                         {{.Name}}
                         <span class="type-badge type-{{.Type}}">{{.Type}}</span>
                         {{if and (eq .Type "ollama") .CompatMode}}<span class="type-badge type-{{.CompatMode}}" style="font-size:0.65rem">{{.CompatMode}}</span>{{end}}
-                        {{if .CircuitOpen}}<span class="type-badge" style="background:rgba(248,113,113,0.15);color:var(--red);cursor:help" title="Rate-limited — circuit breaker tripped. Requests are being routed to other backends. Click the ⋮ menu to reset.">429 LIMITED</span>{{end}}
+                        {{if .CircuitOpen}}<span class="type-badge" style="background:rgba(248,113,113,0.15);color:var(--red);cursor:help" title="Circuit breaker tripped — requests are being routed to other backends. Click the ⋮ menu to reset.">CIRCUIT OPEN</span>{{end}}
                         <span class="collapse-chevron">&#x25BE;</span>
                     </div>
                     <div class="backend-actions" onclick="event.stopPropagation()">
