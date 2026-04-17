@@ -31,6 +31,15 @@ type Registry struct {
 	// modelCacheStore persists model lists to disk so they survive restarts.
 	// Preserved across config reloads.
 	modelCacheStore *ModelCacheStore
+
+	// modelIndex is the single source of truth for canonical model identity
+	// and cross-backend overlap detection. Built after model caches are warmed.
+	// Access via ModelIndex() — may be nil during early startup.
+	modelIndex *ModelIndex
+
+	// backendConfigs stores the last loaded backend configs, needed when
+	// rebuilding the model index (to resolve backend types).
+	backendConfigs []config.BackendConfig
 }
 
 func NewRegistry() *Registry {
@@ -97,14 +106,17 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 
 	r.backends = newBackends
 	r.tokenStores = newTokenStores
+	r.backendConfigs = cfg.Backends
 
 	// Warm model caches in the background so SupportsModel works immediately.
+	// The model index is built after warming completes.
 	go r.warmModelCaches(cacheTTL)
 }
 
 // warmModelCaches calls ListModels on every registered backend to populate
 // their model caches. This runs in the background at startup so that
 // SupportsModel returns accurate results from the first request.
+// After warming, it builds (or rebuilds) the ModelIndex.
 func (r *Registry) warmModelCaches(cacheTTL time.Duration) {
 	r.mu.RLock()
 	backends := make(map[string]Backend, len(r.backends))
@@ -131,6 +143,200 @@ func (r *Registry) warmModelCaches(cacheTTL time.Duration) {
 		}(name, b)
 	}
 	wg.Wait()
+
+	// Build the model index now that all caches are populated.
+	r.buildModelIndex()
+}
+
+// buildModelIndex creates or rebuilds the model index from current backends.
+// Called after warmModelCaches completes and from RebuildIndex.
+func (r *Registry) buildModelIndex() {
+	r.mu.RLock()
+	backends := make(map[string]Backend, len(r.backends))
+	for k, v := range r.backends {
+		backends[k] = v
+	}
+	cfgs := r.backendConfigs
+	r.mu.RUnlock()
+
+	idx := NewModelIndex(DefaultCanonicalizeRules())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	idx.Build(ctx, backends, cfgs)
+
+	r.mu.Lock()
+	r.modelIndex = idx
+	r.mu.Unlock()
+}
+
+// RebuildIndex forces a rebuild of the model index from current backend data.
+// Safe to call from any goroutine. The new index atomically replaces the old one.
+func (r *Registry) RebuildIndex() {
+	r.buildModelIndex()
+}
+
+// ModelIndex returns the current model index, or nil if it hasn't been built yet
+// (e.g. during early startup before model caches are warmed).
+func (r *Registry) ModelIndex() *ModelIndex {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.modelIndex
+}
+
+// FlatModelList returns deduplicated models with routing-aware backend lists.
+// This is the single source of truth for "which models exist and who serves them".
+// It combines the ModelIndex (for canonical IDs and overlap detection) with
+// ResolveRoute (for routing-aware backend ordering).
+//
+// If the ModelIndex is not yet built (early startup), it falls back to
+// iterating all backends and deduplicating manually.
+func (r *Registry) FlatModelList(ctx context.Context, routing config.RoutingConfig) []Model {
+	idx := r.ModelIndex()
+	if idx == nil {
+		return r.flatModelListFallback(ctx, routing)
+	}
+
+	indexed := idx.FlatModels()
+	result := make([]Model, 0, len(indexed))
+
+	for _, im := range indexed {
+		m := Model{
+			ID:              im.CanonicalID,
+			Object:          "model",
+			Created:         1774620000,
+			OwnedBy:         im.OwnedBy,
+			DisplayName:     im.DisplayName,
+			ContextLength:   im.ContextLength,
+			MaxOutputTokens: im.MaxOutputTokens,
+			Capabilities:    im.Capabilities,
+		}
+
+		// Determine backend order: prefer explicit routing config, fall back to index order.
+		strategy := routing.Strategy
+		if strategy == "" {
+			strategy = config.StrategyPriority
+		}
+
+		routedBackends := make([]string, 0, len(im.Backends))
+		for _, ref := range im.Backends {
+			routedBackends = append(routedBackends, ref.BackendName)
+		}
+
+		entries, resolvedStrategy, _, err := r.ResolveRoute(im.CanonicalID, routing)
+		if err == nil && len(entries) > 0 {
+			routedBackends = make([]string, 0, len(entries))
+			sources := make(map[string]string, len(entries))
+			for _, re := range entries {
+				routedBackends = append(routedBackends, re.Backend.Name())
+				if re.Source != "" {
+					sources[re.Backend.Name()] = re.Source
+				}
+			}
+			strategy = resolvedStrategy
+			if len(sources) > 0 {
+				m.BackendSources = sources
+			}
+		}
+
+		m.AvailableBackends = routedBackends
+		m.RoutingStrategy = strategy
+
+		if len(routedBackends) > 0 {
+			m.OwnedBy = routedBackends[0]
+		}
+
+		result = append(result, m)
+	}
+
+	return result
+}
+
+// flatModelListFallback is the pre-ModelIndex dedup logic used during early
+// startup before model caches are warmed and the index is built.
+func (r *Registry) flatModelListFallback(ctx context.Context, routing config.RoutingConfig) []Model {
+	type modelEntry struct {
+		model    Model
+		backends []string
+	}
+	seen := make(map[string]*modelEntry)
+	var order []string
+
+	for _, b := range r.All() {
+		models, err := b.ListModels(ctx)
+		if err != nil {
+			log.Warn().Err(err).Str("backend", b.Name()).Msg("flatModelList fallback: error listing models")
+			continue
+		}
+		for _, m := range models {
+			if m.Disabled {
+				continue
+			}
+			baseID := strings.TrimPrefix(m.ID, b.Name()+"/")
+
+			if existing, ok := seen[baseID]; ok {
+				if m.ContextLength != nil && (existing.model.ContextLength == nil || *m.ContextLength > *existing.model.ContextLength) {
+					existing.model.ContextLength = m.ContextLength
+				}
+				if m.MaxOutputTokens != nil && (existing.model.MaxOutputTokens == nil || *m.MaxOutputTokens > *existing.model.MaxOutputTokens) {
+					existing.model.MaxOutputTokens = m.MaxOutputTokens
+				}
+				capSet := make(map[string]bool, len(existing.model.Capabilities))
+				for _, c := range existing.model.Capabilities {
+					capSet[c] = true
+				}
+				for _, c := range m.Capabilities {
+					if !capSet[c] {
+						existing.model.Capabilities = append(existing.model.Capabilities, c)
+					}
+				}
+				existing.backends = append(existing.backends, b.Name())
+			} else {
+				mCopy := m
+				mCopy.ID = baseID
+				if mCopy.OwnedBy == "" {
+					mCopy.OwnedBy = b.Name()
+				}
+				seen[baseID] = &modelEntry{
+					model:    mCopy,
+					backends: []string{b.Name()},
+				}
+				order = append(order, baseID)
+			}
+		}
+	}
+
+	result := make([]Model, 0, len(order))
+	for _, id := range order {
+		entry := seen[id]
+		m := entry.model
+
+		strategy := routing.Strategy
+		if strategy == "" {
+			strategy = config.StrategyPriority
+		}
+
+		routedBackends := entry.backends
+		entries, resolvedStrategy, _, err := r.ResolveRoute(id, routing)
+		if err == nil && len(entries) > 0 {
+			routedBackends = make([]string, 0, len(entries))
+			for _, re := range entries {
+				routedBackends = append(routedBackends, re.Backend.Name())
+			}
+			strategy = resolvedStrategy
+		}
+
+		m.AvailableBackends = routedBackends
+		m.RoutingStrategy = strategy
+
+		if len(routedBackends) > 1 {
+			m.OwnedBy = routedBackends[0]
+		}
+
+		result = append(result, m)
+	}
+
+	return result
 }
 
 // createBackend instantiates the appropriate backend based on the config type.
@@ -482,7 +688,7 @@ func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]R
 					continue
 				}
 				if b, ok := r.backends[bName]; ok {
-					entries = append(entries, RouteEntry{Backend: b, ModelID: b.ResolveModelID(model)})
+					entries = append(entries, RouteEntry{Backend: b, ModelID: b.ResolveModelID(model), Source: "config"})
 				}
 			}
 			if len(entries) > 0 {
@@ -513,10 +719,68 @@ func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]R
 		}
 	}
 
-	for _, b := range r.backends {
-		if b.SupportsModel(model) {
-			return []RouteEntry{{Backend: b, ModelID: b.ResolveModelID(model)}}, config.StrategyPriority, 0, nil
+	// Fallback: use the ModelIndex to find ALL backends serving this model.
+	// This replaces the old single-backend map iteration that was nondeterministic.
+	if idx := r.modelIndex; idx != nil {
+		refs := idx.BackendsFor(model)
+		if len(refs) > 0 {
+			strategy := routing.Strategy
+			if strategy == "" {
+				strategy = config.StrategyPriority
+			}
+			staggerDelayMs := routing.StaggerDelayMs
+
+			var entries []RouteEntry
+			for _, ref := range refs {
+				if b, ok := r.backends[ref.BackendName]; ok {
+					entries = append(entries, RouteEntry{
+						Backend: b,
+						ModelID: ref.RawModelID,
+						Source:  "discovered",
+					})
+				}
+			}
+			if len(entries) > 0 {
+				if strategy == config.StrategyRoundRobin {
+					entries = r.rrTracker.Next(model, entries)
+				}
+				return entries, strategy, staggerDelayMs, nil
+			}
 		}
+	}
+
+	// Last resort: iterate backends directly (handles nil index during startup).
+	// Collect ALL matching backends, sorted by name for deterministic ordering.
+	type matchEntry struct {
+		name    string
+		backend Backend
+	}
+	var matches []matchEntry
+	for name, b := range r.backends {
+		if b.SupportsModel(model) {
+			matches = append(matches, matchEntry{name: name, backend: b})
+		}
+	}
+	if len(matches) > 0 {
+		sort.Slice(matches, func(i, j int) bool {
+			return matches[i].name < matches[j].name
+		})
+		strategy := routing.Strategy
+		if strategy == "" {
+			strategy = config.StrategyPriority
+		}
+		entries := make([]RouteEntry, 0, len(matches))
+		for _, m := range matches {
+			entries = append(entries, RouteEntry{
+				Backend: m.backend,
+				ModelID: m.backend.ResolveModelID(model),
+				Source:  "discovered",
+			})
+		}
+		if strategy == config.StrategyRoundRobin {
+			entries = r.rrTracker.Next(model, entries)
+		}
+		return entries, strategy, routing.StaggerDelayMs, nil
 	}
 
 	return nil, "", 0, fmt.Errorf("no backend found for model %q", model)
@@ -543,6 +807,8 @@ func (r *Registry) ClearAllModelCaches() {
 		case *CodexBackend:
 			tb.ClearModelCache()
 		case *CopilotBackend:
+			tb.ClearModelCache()
+		case *OllamaBackend:
 			tb.ClearModelCache()
 		}
 	}

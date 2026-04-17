@@ -33,6 +33,7 @@ func (e *BackendError) Unwrap() error { return e.Err }
 type RouteEntry struct {
 	Backend Backend
 	ModelID string
+	Source  string // "config", "discovered", or "" (legacy/prefix)
 }
 
 type Message struct {
@@ -98,6 +99,9 @@ type Model struct {
 	// AvailableBackends lists the backends that serve this model, in routing priority order.
 	// Set by the /v1/models handler when flattening across multiple backends.
 	AvailableBackends []string `json:"available_backends,omitempty"`
+	// BackendSources maps each backend name to its route source: "config" (explicitly
+	// configured in routing) or "discovered" (auto-detected from model lists).
+	BackendSources map[string]string `json:"backend_sources,omitempty"`
 	// RoutingStrategy is the effective routing strategy for this model
 	// (e.g. "priority", "round-robin", "race", "staggered-race").
 	RoutingStrategy string `json:"routing_strategy,omitempty"`
