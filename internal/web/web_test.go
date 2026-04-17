@@ -820,7 +820,33 @@ func TestModelsPage_IncludesOAuthCSS(t *testing.T) {
 
 	body := w.Body.String()
 
-	// Verify oauth-* CSS classes used by backend cards are defined in models page
+	if !strings.Contains(body, `href="/ui/static/main.css"`) {
+		t.Error("expected main.css link tag in models page")
+	}
+
+	staticFS := StaticFS()
+	f, err := staticFS.Open("static/main.css")
+	if err != nil {
+		t.Fatalf("failed to open static/main.css: %v", err)
+	}
+	defer f.Close()
+	cssBytes, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatalf("failed to read static/main.css: %v", err)
+	}
+	cssContent := string(cssBytes)
+
+	f2, err := staticFS.Open("static/models.css")
+	if err != nil {
+		t.Fatalf("failed to open static/models.css: %v", err)
+	}
+	defer f2.Close()
+	cssBytes2, err := io.ReadAll(f2)
+	if err != nil {
+		t.Fatalf("failed to read static/models.css: %v", err)
+	}
+	cssContent += string(cssBytes2)
+
 	cssClasses := []string{
 		".oauth-status-dot",
 		".oauth-status-dot-valid",
@@ -842,8 +868,8 @@ func TestModelsPage_IncludesOAuthCSS(t *testing.T) {
 	}
 
 	for _, cls := range cssClasses {
-		if !strings.Contains(body, cls) {
-			t.Errorf("expected CSS class %s definition in models page style block", cls)
+		if !strings.Contains(cssContent, cls) {
+			t.Errorf("expected CSS class %s definition in main.css", cls)
 		}
 	}
 }
@@ -1006,17 +1032,31 @@ func TestSettingsPage_OAuthCSSDarkLightMode(t *testing.T) {
 
 	body := w.Body.String()
 
-	// Dark mode colors (CSS variables) should be defined in :root
+	if !strings.Contains(body, `href="/ui/static/main.css"`) {
+		t.Error("expected main.css link tag in settings page")
+	}
+
+	staticFS := StaticFS()
+	f, err := staticFS.Open("static/main.css")
+	if err != nil {
+		t.Fatalf("failed to open static/main.css: %v", err)
+	}
+	defer f.Close()
+	cssBytes, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatalf("failed to read static/main.css: %v", err)
+	}
+	cssContent := string(cssBytes)
+
 	darkModeVars := []string{"--green", "--red", "--amber"}
 	for _, v := range darkModeVars {
-		if !strings.Contains(body, v) {
-			t.Errorf("expected CSS variable %s for dark mode token colors", v)
+		if !strings.Contains(cssContent, v) {
+			t.Errorf("expected CSS variable %s for dark mode token colors in main.css", v)
 		}
 	}
 
-	// Light mode overrides should exist
-	if !strings.Contains(body, "body.light") {
-		t.Error("expected body.light CSS rules for light mode token colors")
+	if !strings.Contains(cssContent, "body.light") {
+		t.Error("expected body.light CSS rules for light mode token colors in main.css")
 	}
 }
 
