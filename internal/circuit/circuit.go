@@ -1,5 +1,5 @@
 // Package circuit implements per-backend circuit breakers that trip on
-// consecutive 429 (Too Many Requests) responses, temporarily removing
+// consecutive failure responses (e.g. 429, 403), temporarily removing
 // the backend from routing until a cooldown expires.
 package circuit
 
@@ -66,7 +66,7 @@ type breaker struct {
 	mu         sync.Mutex
 	name       string
 	state      State
-	failures   int // Consecutive 429 count.
+	failures   int // Consecutive failure count.
 	threshold  int // Trip after this many consecutive 429s.
 	cooldown   time.Duration
 	trippedAt  time.Time
@@ -74,12 +74,12 @@ type breaker struct {
 	reason     string
 }
 
-func (b *breaker) record429(retryAfterHint time.Duration) {
+func (b *breaker) recordFailure(retryAfterHint time.Duration) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	b.failures++
-	log.Debug().Str("backend", b.name).Int("failures", b.failures).Int("threshold", b.threshold).Msg("circuit: 429 recorded")
+	log.Debug().Str("backend", b.name).Int("failures", b.failures).Int("threshold", b.threshold).Msg("circuit: failure recorded")
 
 	if b.failures >= b.threshold && b.state != Open {
 		b.state = Open
@@ -90,7 +90,7 @@ func (b *breaker) record429(retryAfterHint time.Duration) {
 			cooldown = retryAfterHint
 		}
 		b.retryAfter = time.Now().Add(cooldown)
-		b.reason = fmt.Sprintf("rate limited (%d consecutive 429s)", b.failures)
+		b.reason = fmt.Sprintf("consecutive failures (%d)", b.failures)
 
 		log.Warn().
 			Str("backend", b.name).
@@ -191,13 +191,13 @@ func NewManager(cfg Config) *Manager {
 	}
 }
 
-// Record429 records a 429 response for the named backend.
-func (m *Manager) Record429(backendName string, retryAfterHint time.Duration) {
+// RecordFailure records a failure response for the named backend.
+func (m *Manager) RecordFailure(backendName string, retryAfterHint time.Duration) {
 	if !m.config.Enabled {
 		return
 	}
 	b := m.getOrCreate(backendName)
-	b.record429(retryAfterHint)
+	b.recordFailure(retryAfterHint)
 }
 
 // RecordSuccess records a successful response for the named backend.

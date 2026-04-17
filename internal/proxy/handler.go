@@ -23,7 +23,7 @@ import (
 // CircuitManager is the interface for the circuit breaker system.
 // Defined here to avoid circular imports between proxy and circuit packages.
 type CircuitManager interface {
-	Record429(backendName string, retryAfterHint time.Duration)
+	RecordFailure(backendName string, retryAfterHint time.Duration)
 	RecordSuccess(backendName string)
 	IsOpen(backendName string) bool
 	FilterEntries(names []string) []string
@@ -171,12 +171,10 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 				lastBE = be
 				a.StatusCode = be.StatusCode
 				a.ResponseBody = be.Body
-				// Record 429 for circuit breaker.
-				if be.StatusCode == http.StatusTooManyRequests {
-					h.circuitRecord429(entry.Backend.Name(), be)
+				if isCircuitTripError(be.StatusCode) {
+					h.circuitRecordFailure(entry.Backend.Name(), be)
 				}
-				// 4xx errors (except 429 rate-limit and 404 not-found) are client errors — don't retry.
-				if be.StatusCode >= 400 && be.StatusCode < 500 && be.StatusCode != http.StatusTooManyRequests && be.StatusCode != http.StatusNotFound {
+				if be.StatusCode >= 400 && be.StatusCode < 500 && !isRetryableError(be.StatusCode) {
 					attempts = append(attempts, a)
 					break
 				}
@@ -289,12 +287,10 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 				lastBE = be
 				a.StatusCode = be.StatusCode
 				a.ResponseBody = be.Body
-				// Record 429 for circuit breaker.
-				if be.StatusCode == http.StatusTooManyRequests {
-					h.circuitRecord429(entry.Backend.Name(), be)
+				if isCircuitTripError(be.StatusCode) {
+					h.circuitRecordFailure(entry.Backend.Name(), be)
 				}
-				// 4xx errors (except 429 rate-limit and 404 not-found) are client errors — don't retry.
-				if be.StatusCode >= 400 && be.StatusCode < 500 && be.StatusCode != http.StatusTooManyRequests && be.StatusCode != http.StatusNotFound {
+				if be.StatusCode >= 400 && be.StatusCode < 500 && !isRetryableError(be.StatusCode) {
 					attempts = append(attempts, a)
 					break
 				}
@@ -498,9 +494,8 @@ func (h *Handler) handleRaceNonStream(ctx context.Context, w http.ResponseWriter
 			if rr.beErr != nil {
 				a.StatusCode = rr.beErr.StatusCode
 				a.ResponseBody = rr.beErr.Body
-				// Record 429 for circuit breaker.
-				if rr.beErr.StatusCode == http.StatusTooManyRequests {
-					h.circuitRecord429(rr.be.Name(), rr.beErr)
+				if isCircuitTripError(rr.beErr.StatusCode) {
+					h.circuitRecordFailure(rr.be.Name(), rr.beErr)
 				}
 			}
 			attempts = append(attempts, a)
@@ -820,7 +815,7 @@ func (h *Handler) handleStaggeredRaceNonStream(ctx context.Context, w http.Respo
 				a.StatusCode = rr.beErr.StatusCode
 				a.ResponseBody = rr.beErr.Body
 				if rr.beErr.StatusCode == http.StatusTooManyRequests {
-					h.circuitRecord429(rr.be.Name(), rr.beErr)
+					h.circuitRecordFailure(rr.be.Name(), rr.beErr)
 				}
 			}
 			attempts = append(attempts, a)
@@ -1301,13 +1296,25 @@ func (h *Handler) filterCircuitEntries(entries []backend.RouteEntry) []backend.R
 	return active
 }
 
-// circuitRecord429 records a 429 response and attempts to extract a Retry-After hint
+// circuitRecordFailure records a failure response for the circuit breaker.
+// circuitRecordFailure records a failure response and attempts to extract a Retry-After hint
 // from the backend error body.
-func (h *Handler) circuitRecord429(backendName string, be *backend.BackendError) {
+func (h *Handler) circuitRecordFailure(backendName string, be *backend.BackendError) {
 	if h.circuit == nil {
 		return
 	}
-	h.circuit.Record429(backendName, 0)
+	h.circuit.RecordFailure(backendName, 0)
+}
+
+// isCircuitTripError returns true for status codes that should trip the circuit breaker.
+func isCircuitTripError(statusCode int) bool {
+	return statusCode == http.StatusTooManyRequests || statusCode == http.StatusForbidden
+}
+
+// isRetryableError returns true for status codes that should allow retry/fallback
+// rather than immediately breaking the retry loop.
+func isRetryableError(statusCode int) bool {
+	return statusCode == http.StatusTooManyRequests || statusCode == http.StatusForbidden || statusCode == http.StatusNotFound
 }
 
 // circuitRecordSuccess records a successful response.

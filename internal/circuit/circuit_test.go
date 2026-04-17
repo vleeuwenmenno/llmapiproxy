@@ -8,15 +8,15 @@ import (
 func TestBreakerTripsOnConsecutive429s(t *testing.T) {
 	m := NewManager(Config{Enabled: true, Threshold: 3, Cooldown: 60})
 
-	m.Record429("backend-a", 0)
-	m.Record429("backend-a", 0)
+	m.RecordFailure("backend-a", 0)
+	m.RecordFailure("backend-a", 0)
 	if m.IsOpen("backend-a") {
 		t.Fatal("should not trip after 2 failures with threshold 3")
 	}
 
-	m.Record429("backend-a", 0)
+	m.RecordFailure("backend-a", 0)
 	if !m.IsOpen("backend-a") {
-		t.Fatal("should trip after 3 consecutive 429s")
+		t.Fatal("should trip after 3 consecutive failures")
 	}
 
 	s := m.State("backend-a")
@@ -31,8 +31,8 @@ func TestBreakerTripsOnConsecutive429s(t *testing.T) {
 func TestBreakerResetsOnSuccess(t *testing.T) {
 	m := NewManager(Config{Enabled: true, Threshold: 2, Cooldown: 60})
 
-	m.Record429("b", 0)
-	m.Record429("b", 0)
+	m.RecordFailure("b", 0)
+	m.RecordFailure("b", 0)
 	if !m.IsOpen("b") {
 		t.Fatal("should be open")
 	}
@@ -54,7 +54,7 @@ func TestBreakerResetsOnSuccess(t *testing.T) {
 func TestBreakerCooldownTransitionsToHalfOpen(t *testing.T) {
 	m := NewManager(Config{Enabled: true, Threshold: 1, Cooldown: 1})
 
-	m.Record429("b", 0)
+	m.RecordFailure("b", 0)
 	if !m.IsOpen("b") {
 		t.Fatal("should be open")
 	}
@@ -74,7 +74,7 @@ func TestBreakerCooldownTransitionsToHalfOpen(t *testing.T) {
 func TestHalfOpenProbeSuccess(t *testing.T) {
 	m := NewManager(Config{Enabled: true, Threshold: 1, Cooldown: 1})
 
-	m.Record429("b", 0)
+	m.RecordFailure("b", 0)
 	time.Sleep(1100 * time.Millisecond)
 	_ = m.IsOpen("b")
 
@@ -88,11 +88,11 @@ func TestHalfOpenProbeSuccess(t *testing.T) {
 func TestHalfOpenProbeFailure(t *testing.T) {
 	m := NewManager(Config{Enabled: true, Threshold: 1, Cooldown: 1})
 
-	m.Record429("b", 0)
+	m.RecordFailure("b", 0)
 	time.Sleep(1100 * time.Millisecond)
 	_ = m.IsOpen("b")
 
-	m.Record429("b", 0)
+	m.RecordFailure("b", 0)
 	s := m.State("b")
 	if s.State != "open" {
 		t.Fatalf("expected open after probe failure, got %q", s.State)
@@ -102,7 +102,7 @@ func TestHalfOpenProbeFailure(t *testing.T) {
 func TestRetryAfterHint(t *testing.T) {
 	m := NewManager(Config{Enabled: true, Threshold: 1, Cooldown: 300})
 
-	m.Record429("b", 10*time.Second)
+	m.RecordFailure("b", 10*time.Second)
 	if !m.IsOpen("b") {
 		t.Fatal("should be open")
 	}
@@ -120,7 +120,7 @@ func TestRetryAfterHint(t *testing.T) {
 func TestRetryAfterHintCapped(t *testing.T) {
 	m := NewManager(Config{Enabled: true, Threshold: 1, Cooldown: 60})
 
-	m.Record429("b", 3*time.Hour)
+	m.RecordFailure("b", 3*time.Hour)
 	s := m.State("b")
 	until := time.Until(s.RetryAfter)
 	if until > 2*time.Minute {
@@ -131,7 +131,7 @@ func TestRetryAfterHintCapped(t *testing.T) {
 func TestManualReset(t *testing.T) {
 	m := NewManager(Config{Enabled: true, Threshold: 1, Cooldown: 300})
 
-	m.Record429("b", 0)
+	m.RecordFailure("b", 0)
 	if !m.IsOpen("b") {
 		t.Fatal("should be open")
 	}
@@ -150,8 +150,8 @@ func TestManualReset(t *testing.T) {
 func TestResetAll(t *testing.T) {
 	m := NewManager(Config{Enabled: true, Threshold: 1, Cooldown: 300})
 
-	m.Record429("a", 0)
-	m.Record429("b", 0)
+	m.RecordFailure("a", 0)
+	m.RecordFailure("b", 0)
 
 	m.ResetAll()
 
@@ -165,11 +165,11 @@ func TestResetAll(t *testing.T) {
 func TestNonConsecutiveFailuresReset(t *testing.T) {
 	m := NewManager(Config{Enabled: true, Threshold: 3, Cooldown: 60})
 
-	m.Record429("b", 0)
-	m.Record429("b", 0)
+	m.RecordFailure("b", 0)
+	m.RecordFailure("b", 0)
 	m.RecordSuccess("b")
-	m.Record429("b", 0)
-	m.Record429("b", 0)
+	m.RecordFailure("b", 0)
+	m.RecordFailure("b", 0)
 	if m.IsOpen("b") {
 		t.Fatal("should not trip — failures were not consecutive")
 	}
@@ -178,7 +178,7 @@ func TestNonConsecutiveFailuresReset(t *testing.T) {
 func TestFilterEntries(t *testing.T) {
 	m := NewManager(Config{Enabled: true, Threshold: 1, Cooldown: 300})
 
-	m.Record429("a", 0)
+	m.RecordFailure("a", 0)
 
 	filtered := m.FilterEntries([]string{"a", "b", "c"})
 	if len(filtered) != 2 {
@@ -194,8 +194,8 @@ func TestFilterEntries(t *testing.T) {
 func TestFilterEntriesNeverBlocksAll(t *testing.T) {
 	m := NewManager(Config{Enabled: true, Threshold: 1, Cooldown: 300})
 
-	m.Record429("a", 0)
-	m.Record429("b", 0)
+	m.RecordFailure("a", 0)
+	m.RecordFailure("b", 0)
 
 	names := []string{"a", "b"}
 	filtered := m.FilterEntries(names)
@@ -207,7 +207,7 @@ func TestFilterEntriesNeverBlocksAll(t *testing.T) {
 func TestDisabledManager(t *testing.T) {
 	m := NewManager(Config{Enabled: false, Threshold: 1, Cooldown: 300})
 
-	m.Record429("b", 0)
+	m.RecordFailure("b", 0)
 	if m.IsOpen("b") {
 		t.Fatal("disabled manager should never trip")
 	}
@@ -274,7 +274,7 @@ func TestEnsureBackend(t *testing.T) {
 func TestAllStates(t *testing.T) {
 	m := NewManager(Config{Enabled: true, Threshold: 1, Cooldown: 300})
 
-	m.Record429("a", 0)
+	m.RecordFailure("a", 0)
 	m.EnsureBackend("b")
 
 	states := m.AllStates()
