@@ -52,7 +52,7 @@ main {
         /* ── Backend cards ────────────────────────────────────── */
         .backend-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
             gap: 1rem;
             margin-bottom: 2.5rem;
         }
@@ -237,6 +237,99 @@ main {
         .model-item:hover .model-disable-btn { opacity: 1; }
         .model-disable-btn:hover { color: var(--amber); }
         .model-item.model-disabled .model-disable-btn { opacity: 1; color: var(--green); }
+
+        /* ── Per-model action dropdown ────────────────────── */
+        .model-menu-container {
+            position: relative;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
+
+        .model-menu-trigger {
+            width: 22px;
+            height: 22px;
+            border-radius: 5px;
+            border: 1px solid var(--border);
+            background: var(--surface-2);
+            color: var(--text-dim);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            line-height: 1;
+            cursor: pointer;
+            opacity: 0.75;
+            transition: all 0.15s ease;
+        }
+
+        .model-item:hover .model-menu-trigger,
+        .model-menu-container.open .model-menu-trigger {
+            opacity: 1;
+        }
+
+        .model-menu-trigger:hover,
+        .model-menu-container.open .model-menu-trigger {
+            color: var(--accent);
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .model-dropdown-menu {
+            position: fixed;
+            min-width: 150px;
+            padding: 0.25rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: color-mix(in srgb, var(--surface) 92%, black 8%);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            display: none;
+            z-index: 300;
+        }
+
+        .model-dropdown-menu.is-open {
+            display: block;
+            animation: fadeIn 0.12s ease both;
+        }
+
+        .model-menu-item {
+            width: 100%;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text);
+            border-radius: 6px;
+            padding: 0.4rem 0.6rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            font-family: var(--sans);
+            font-size: 0.75rem;
+            text-align: left;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+
+        .model-menu-item:hover {
+            color: var(--accent);
+            border-color: rgba(34,211,238,0.22);
+            background: var(--accent-dim);
+        }
+
+        .model-menu-item.danger:hover {
+            color: var(--red);
+            border-color: rgba(248,113,113,0.24);
+            background: rgba(248,113,113,0.1);
+        }
+
+        .model-menu-icon {
+            width: 1rem;
+            text-align: center;
+            color: var(--text-dim);
+            flex-shrink: 0;
+            font-size: 0.72rem;
+        }
+
+        .model-menu-item:hover .model-menu-icon { color: inherit; }
 
         .model-id {
             font-family: var(--mono);

@@ -276,9 +276,25 @@
                     {{range .Models}}
                     <div class="model-item{{if .Disabled}} model-disabled{{end}}">
                         <span class="model-id">{{.BareID}}</span>
-                        <button class="model-disable-btn" onclick="toggleModelDisabled(this, '{{$backendName}}', '{{.BareID}}', {{.Disabled}})" title="{{if .Disabled}}Enable{{else}}Disable{{end}} this model on this backend">{{if .Disabled}}&#x25B6;{{else}}&#x23FB;{{end}}</button>
-                        {{if eq $backendType "ollama"}}<button class="copy-btn" style="color:var(--red);margin-right:2px" onclick="ollamaDeleteModel('{{$backendName}}', '{{.BareID}}', this)" title="Delete this model from Ollama">delete</button>{{end}}
-                        <button class="copy-btn" onclick="copyText(this, '{{.FullID}}')" title="Copy full ID: {{.FullID}}">copy</button>
+                        <div class="model-menu-container">
+                            <button type="button" class="model-menu-trigger" onclick="toggleModelDropdown(event, this)" title="Model actions">&#x22EE;</button>
+                            <div class="model-dropdown-menu">
+                                <button type="button" class="model-menu-item" onclick="closeModelDropdown(); toggleModelDisabled(this, '{{$backendName}}', '{{.BareID}}', {{.Disabled}})">
+                                    <span class="model-menu-icon">{{if .Disabled}}&#x25B6;{{else}}&#x23FB;{{end}}</span>
+                                    <span>{{if .Disabled}}Enable{{else}}Disable{{end}}</span>
+                                </button>
+                                {{if eq $backendType "ollama"}}
+                                <button type="button" class="model-menu-item danger" onclick="closeModelDropdown(); ollamaDeleteModel('{{$backendName}}', '{{.BareID}}', this)">
+                                    <span class="model-menu-icon">&#x2715;</span>
+                                    <span>Delete</span>
+                                </button>
+                                {{end}}
+                                <button type="button" class="model-menu-item" onclick="closeModelDropdown(); modelCopyText(this, '{{.FullID}}')">
+                                    <span class="model-menu-icon">&#x2398;</span>
+                                    <span>Copy ID</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                     {{end}}
                     {{end}}
@@ -1003,6 +1019,8 @@
             if (e.target === document.getElementById(id)) closeModal(id);
         }
         var openBackendDropdown = null;
+        var openModelDropdown = null;
+        var openModelDropdownMenu = null;
 
         function closeBackendDropdown() {
             if (!openBackendDropdown) return;
@@ -1024,6 +1042,74 @@
             var trigger = dropdown.querySelector('.backend-menu-trigger');
             if (trigger) trigger.setAttribute('aria-expanded', 'true');
             openBackendDropdown = dropdown;
+        }
+
+        function positionModelDropdown(container) {
+            if (!container) return;
+            var triggerBtn = container.querySelector('.model-menu-trigger');
+            var menu = openModelDropdownMenu || container.querySelector('.model-dropdown-menu');
+            if (!triggerBtn || !menu) return;
+
+            var rect = triggerBtn.getBoundingClientRect();
+            var menuWidth = Math.max(menu.offsetWidth || 0, 150);
+            var left = rect.right - menuWidth;
+            var top = rect.bottom + 6;
+
+            if (left < 8) left = 8;
+            if (left + menuWidth > window.innerWidth - 8) {
+                left = Math.max(8, window.innerWidth - menuWidth - 8);
+            }
+
+            menu.style.left = left + 'px';
+            menu.style.top = top + 'px';
+            menu.style.right = 'auto';
+        }
+
+        function closeModelDropdown() {
+            if (!openModelDropdown) return;
+            var container = openModelDropdown;
+            var menu = openModelDropdownMenu || container.querySelector('.model-dropdown-menu');
+            container.classList.remove('open');
+            if (menu) menu.classList.remove('is-open');
+            if (menu && container.contains(menu) === false) {
+                container.appendChild(menu);
+            }
+            if (menu) {
+                menu.style.left = '';
+                menu.style.top = '';
+                menu.style.right = '';
+            }
+            openModelDropdown = null;
+            openModelDropdownMenu = null;
+        }
+
+        function toggleModelDropdown(event, triggerBtn) {
+            event.preventDefault();
+            event.stopPropagation();
+            var container = triggerBtn.closest('.model-menu-container');
+            if (!container) return;
+            var isOpen = container.classList.contains('open');
+            closeModelDropdown();
+            closeBackendDropdown();
+            if (isOpen) return;
+
+            var menu = container.querySelector('.model-dropdown-menu');
+            if (!menu) return;
+            document.body.appendChild(menu);
+            menu.classList.add('is-open');
+            container.classList.add('open');
+            openModelDropdown = container;
+            openModelDropdownMenu = menu;
+            positionModelDropdown(container);
+        }
+
+        function modelCopyText(btn, text) {
+            var spans = btn.querySelectorAll('span');
+            var textSpan = spans[1] || btn;
+            var orig = textSpan.textContent;
+            copyToClipboard(text)
+                .then(function() { textSpan.textContent = 'Copied!'; setTimeout(function() { textSpan.textContent = orig; }, 1500); })
+                .catch(function() { textSpan.textContent = 'Failed'; setTimeout(function() { textSpan.textContent = orig; }, 1500); });
         }
 
         function localizeOAuthMetadata(root) {
@@ -1060,6 +1146,7 @@
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') {
                 closeBackendDropdown();
+                closeModelDropdown();
                 document.querySelectorAll('.modal-overlay.open').forEach(el => {
                     closeModal(el.id);
                 });
@@ -1815,8 +1902,16 @@
                     } else {
                         item.classList.remove('model-disabled');
                     }
-                    btn.textContent = disable ? '\u25B6' : '\u23FB';
-                    btn.title = disable ? 'Enable this model on this backend' : 'Disable this model on this backend';
+                    // Support new dropdown structure (icon + text spans) and legacy plain button
+                    var iconEl = btn.querySelector('.model-menu-icon');
+                    var textEl = btn.querySelectorAll('span')[1];
+                    if (iconEl && textEl) {
+                        iconEl.textContent = disable ? '\u25B6' : '\u23FB';
+                        textEl.textContent = disable ? 'Enable' : 'Disable';
+                    } else {
+                        btn.textContent = disable ? '\u25B6' : '\u23FB';
+                        btn.title = disable ? 'Enable this model on this backend' : 'Disable this model on this backend';
+                    }
                     btn.onclick = function() { toggleModelDisabled(btn, backendName, modelID, disable); };
                 }
             }).catch(function(e) { alert('Error: ' + e); });
@@ -1845,13 +1940,26 @@
                         var idSpan = item.querySelector('.model-id');
                         if (!idSpan) return;
                         var mid = idSpan.textContent.trim();
-                        var btn = item.querySelector('.model-disable-btn');
+                        // Find the toggle button — first .model-menu-item in the dropdown
+                        var btn = item.querySelector('.model-dropdown-menu .model-menu-item');
                         if (disable) {
                             item.classList.add('model-disabled');
-                            if (btn) { btn.textContent = '\u25B6'; btn.title = 'Enable this model on this backend'; btn.onclick = function() { toggleModelDisabled(btn, backendName, mid, true); }; }
+                            if (btn) {
+                                var iconEl = btn.querySelector('.model-menu-icon');
+                                var textEl = btn.querySelectorAll('span')[1];
+                                if (iconEl) iconEl.textContent = '\u25B6';
+                                if (textEl) textEl.textContent = 'Enable';
+                                btn.onclick = function() { toggleModelDisabled(btn, backendName, mid, true); };
+                            }
                         } else {
                             item.classList.remove('model-disabled');
-                            if (btn) { btn.textContent = '\u23FB'; btn.title = 'Disable this model on this backend'; btn.onclick = function() { toggleModelDisabled(btn, backendName, mid, false); }; }
+                            if (btn) {
+                                var iconEl = btn.querySelector('.model-menu-icon');
+                                var textEl = btn.querySelectorAll('span')[1];
+                                if (iconEl) iconEl.textContent = '\u23FB';
+                                if (textEl) textEl.textContent = 'Disable';
+                                btn.onclick = function() { toggleModelDisabled(btn, backendName, mid, false); };
+                            }
                         }
                     });
                 }
@@ -2090,6 +2198,9 @@
             if (openBackendDropdown && !e.target.closest('.backend-dropdown-container')) {
                 closeBackendDropdown();
             }
+            if (openModelDropdown && !e.target.closest('.model-menu-container') && !(openModelDropdownMenu && openModelDropdownMenu.contains(e.target))) {
+                closeModelDropdown();
+            }
             // Close global identity menu on outside click
             var globalMenu = document.getElementById('global-identity-dropdown');
             if (globalMenu && globalMenu.classList.contains('open') && !e.target.closest('#global-identity-dropdown')) {
@@ -2105,6 +2216,14 @@
                 }
             }
         });
+
+        window.addEventListener('resize', function() {
+            if (openModelDropdown) positionModelDropdown(openModelDropdown);
+        });
+
+        window.addEventListener('scroll', function() {
+            if (openModelDropdown) positionModelDropdown(openModelDropdown);
+        }, true);
 
         // Legend items toggle
         document.querySelectorAll('.legend-item[data-legend]').forEach(function(item) {
@@ -2265,9 +2384,10 @@
             select.value = previous;
         }
 
-        function syncOverlapViewButtons() {
+        function syncOverlapViewButtons(effectiveView) {
+            var view = effectiveView || overlapState.view;
             document.querySelectorAll('#overlap-view-toggle .overlap-view-btn').forEach(function(btn) {
-                btn.classList.toggle('active', btn.dataset.view === overlapState.view);
+                btn.classList.toggle('active', btn.dataset.view === view);
             });
         }
 
@@ -2358,9 +2478,9 @@
             if (!section || !results || !count) return;
 
             updateOverlapBackendOptions(overlapState.items);
-            syncOverlapViewButtons();
 
             if (overlapState.items.length === 0) {
+                syncOverlapViewButtons();
                 section.hidden = true;
                 results.innerHTML = '';
                 count.textContent = '';
@@ -2376,7 +2496,12 @@
                 return;
             }
 
-            results.innerHTML = overlapState.view === 'list' ? renderOverlapList(visible) : renderOverlapGrid(visible);
+            // Auto-switch to list view for large result sets when user has no explicit preference
+            var effectiveView = overlapState.view;
+            if (localStorage.getItem(overlapViewStorageKey) === null && visible.length > 8) {
+                effectiveView = 'list';
+            }
+            results.innerHTML = effectiveView === 'list' ? renderOverlapList(visible) : renderOverlapGrid(visible);
         }
 
         function setOverlapItems(items) {
@@ -3149,30 +3274,38 @@
         function renderModelItem(m, backendName) {
             var srcSym = { upstream: '\u2191', config: '\u2699', builtin: '\uD83D\uDCCB' };
             var displayId = m.BareID || m.FullID;
-            var disableBtn = '';
-            var deleteBtn = '';
             var isDisabled = false;
             var backendType = allBackendTypes[backendName] || '';
+            var bn = '', bareID = '';
             if (backendName) {
-                var bareID = displayId;
-                // Check both the model data (from API) and the server-side config map
-                isDisabled = !!(m.Disabled || (allBackendDisabledModels[backendName] && allBackendDisabledModels[backendName][bareID]));
-                disableBtn = '<button class="model-disable-btn" onclick="toggleModelDisabled(this, \'' + escHtml(backendName).replace(/'/g, "\\'") + '\', \'' + escHtml(bareID).replace(/'/g, "\\'") + '\', ' + isDisabled + ')" title="' + (isDisabled ? 'Enable' : 'Disable') + ' this model on this backend">' + (isDisabled ? '\u25B6' : '\u23FB') + '</button>';
-                if (backendType === 'ollama') {
-                    deleteBtn = '<button class="copy-btn" style="color:var(--red);margin-right:2px" onclick="ollamaDeleteModel(\'' + escHtml(backendName).replace(/'/g, "\\'") + '\', \'' + escHtml(bareID).replace(/'/g, "\\'") + '\', this)" title="Delete this model from Ollama">delete</button>';
-                }
+                bn = escHtml(backendName).replace(/'/g, "\\'");
+                bareID = escHtml(displayId).replace(/'/g, "\\'");
+                isDisabled = !!(m.Disabled || (allBackendDisabledModels[backendName] && allBackendDisabledModels[backendName][displayId]));
             }
             var cls = 'model-item';
             if (isDisabled) cls += ' model-disabled';
+            var toggleIcon = isDisabled ? '\u25B6' : '\u23FB';
+            var toggleLabel = isDisabled ? 'Enable' : 'Disable';
+            var deleteItem = backendType === 'ollama'
+                ? '<button type="button" class="model-menu-item danger" onclick="closeModelDropdown(); ollamaDeleteModel(\'' + bn + '\', \'' + bareID + '\', this)"><span class="model-menu-icon">\u2715</span><span>Delete</span></button>'
+                : '';
+            var menuHtml = backendName
+                ? '<div class="model-menu-container">'
+                  + '<button type="button" class="model-menu-trigger" onclick="toggleModelDropdown(event, this)" title="Model actions">\u22EE</button>'
+                  + '<div class="model-dropdown-menu">'
+                  + '<button type="button" class="model-menu-item" onclick="closeModelDropdown(); toggleModelDisabled(this, \'' + bn + '\', \'' + bareID + '\', ' + isDisabled + ')"><span class="model-menu-icon">' + toggleIcon + '</span><span>' + toggleLabel + '</span></button>'
+                  + deleteItem
+                  + '<button type="button" class="model-menu-item" onclick="closeModelDropdown(); modelCopyText(this, \'' + escHtml(m.FullID).replace(/'/g, "\\'") + '\')"><span class="model-menu-icon">\u2398</span><span>Copy ID</span></button>'
+                  + '</div>'
+                  + '</div>'
+                : '';
             return '<div class="' + cls + '">'
                 + '<span class="model-id">' + escHtml(displayId) + '</span>'
                 + (m.ContextLength ? '<span class="ctx-badge" title="Context window">' + fmtN(m.ContextLength) + 'ctx</span>' : '')
                 + (m.MaxOutputTokens ? '<span class="out-badge" title="Max output tokens">' + fmtN(m.MaxOutputTokens) + 'out</span>' : '')
                 + (m.Capabilities || []).map(function(c) { return '<span class="cap-badge">' + escHtml(c) + '</span>'; }).join('')
                 + (m.DataSource ? '<span class="src-badge src-' + escHtml(m.DataSource) + '" title="Metadata source: ' + escHtml(m.DataSource) + '">' + (srcSym[m.DataSource] || '') + '</span>' : '')
-                + disableBtn
-                + deleteBtn
-                + '<button class="copy-btn" data-copy="' + escHtml(m.FullID) + '" title="Copy full ID: ' + escHtml(m.FullID) + '" onclick="copyText(this,this.dataset.copy)">copy</button>'
+                + menuHtml
                 + '</div>';
         }
 
