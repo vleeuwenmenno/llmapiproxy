@@ -1,996 +1,2221 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM API Proxy — Dashboard</title>
-    <link rel="stylesheet" href="/ui/static/main.css">
-    <link rel="stylesheet" href="/ui/static/dashboard.css">
-</head>
-<body>
-<div class="noise"></div>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>LLM API Proxy — Dashboard</title>
+        <link rel="stylesheet" href="/ui/static/main.css" />
+        <link rel="stylesheet" href="/ui/static/dashboard.css" />
+    </head>
+    <body>
+        <div class="noise"></div>
 
-<div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="closeMobileMenu()"></div>
-<div class="nav-links-mobile" id="navLinksMobile">
-    <div class="mobile-menu-header">
-        <span class="mobile-menu-title">Navigation</span>
-        <button class="mobile-menu-close" onclick="closeMobileMenu()">&times;</button>
-    </div>
-    <a href="/ui/" class="active">&#128200; Dashboard</a>
-    <a href="/ui/models">&#129302; Models</a>
-    <a href="/ui/chat">&#128172; Chat</a>
-    <a href="/ui/settings">&#9881; Settings</a>
-    <button class="theme-toggle-mobile" onclick="toggleTheme(); closeMobileMenu();">
-        <span id="themeIconMobile">☀</span> Toggle Theme
-    </button>
-</div>
-
-<nav>
-    <div class="logo">
-        <div class="icon">⚡</div>
-        LLM API Proxy{{if appVersion}} <span class="version">{{appVersion}}</span>{{end}}
-    </div>
-    <div class="links">
-        <a href="/ui/" class="active">Dashboard</a>
-        <a href="/ui/models">Models</a>
-        <a href="/ui/chat">Chat</a>
-        <a href="/ui/settings">Settings</a>
-        <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()">☀</button>
-        {{if .User}}<span class="user-badge">{{.User.Username}}<form method="POST" action="/ui/logout" style="display:inline"><button type="submit" class="logout-btn" data-tooltip="Logout" aria-label="Logout"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button></form></span>{{end}}
-    </div>
-    <button class="mobile-menu-btn" onclick="openMobileMenu()" aria-label="Open menu">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="3" y1="6" x2="21" y2="6"/>
-            <line x1="3" y1="12" x2="21" y2="12"/>
-            <line x1="3" y1="18" x2="21" y2="18"/>
-        </svg>
-    </button>
-</nav>
-
-<main>
-    <!-- ── Time Bar ── -->
-    <div class="filter-bar" id="filterBar">
-        <!-- Always-visible control row -->
-        <div class="control-row">
-            <button class="filter-toggle-btn" id="filtersToggleBtn" onclick="toggleFilters()" title="Toggle filters">
-                ⚙ Filters <span class="filter-badge" id="filterBadge" style="display:none">0</span>
-            </button>
-            <div class="control-right">
-                <button class="time-summary-btn" id="timeSummaryBtn" onclick="toggleTimePanel()" title="Edit time range">
-                    <span class="time-summary-icon">⏱</span>
-                    <span id="timeSummaryText">Last 1h</span>
-                    <span class="panel-chevron" id="timePanelChevron">▾</span>
+        <div
+            class="mobile-menu-overlay"
+            id="mobileMenuOverlay"
+            onclick="closeMobileMenu()"
+        ></div>
+        <div class="nav-links-mobile" id="navLinksMobile">
+            <div class="mobile-menu-header">
+                <span class="mobile-menu-title">Navigation</span>
+                <button class="mobile-menu-close" onclick="closeMobileMenu()">
+                    &times;
                 </button>
-                <div class="control-divider"></div>
-                <button class="filter-btn" onclick="fetchData()" title="Refresh now">&#8635; Refresh</button>
             </div>
+            <a href="/ui/" class="active">&#128200; Dashboard</a>
+            <a href="/ui/models">&#129302; Models</a>
+            <a href="/ui/chat">&#128172; Chat</a>
+            <a href="/ui/settings">&#9881; Settings</a>
+            <button
+                class="theme-toggle-mobile"
+                onclick="
+                    toggleTheme();
+                    closeMobileMenu();
+                "
+            >
+                <span id="themeIconMobile">☀</span> Toggle Theme
+            </button>
         </div>
-        <!-- Collapsible time panel -->
-        <div class="time-panel" id="timePanel">
-            <!-- Row 1: From → To + Now -->
-            <div class="time-range-row">
-                <div class="time-inputs">
-                    <span class="time-label">From</span>
-                    <input type="datetime-local" id="fromInput" class="time-input" title="Start time">
-                    <span class="time-arrow">→</span>
-                    <span class="time-label">To</span>
-                    <input type="datetime-local" id="toInput" class="time-input" title="End time">
-                    <button class="now-btn" id="nowBtn" onclick="toggleNow()" title="Lock end time to now">Now</button>
+
+        <nav>
+            <div class="logo">
+                <div class="icon">⚡</div>
+                LLM API Proxy{{if appVersion}}
+                <span class="version">{{appVersion}}</span>{{end}}
+            </div>
+            <div class="links">
+                <a href="/ui/" class="active">Dashboard</a>
+                <a href="/ui/models">Models</a>
+                <a href="/ui/chat">Chat</a>
+                <a href="/ui/settings">Settings</a>
+                <button
+                    class="theme-toggle"
+                    id="themeBtn"
+                    onclick="toggleTheme()"
+                >
+                    ☀
+                </button>
+                {{if .User}}<span class="user-badge"
+                    >{{.User.Username}}
+                    <form
+                        method="POST"
+                        action="/ui/logout"
+                        style="display: inline"
+                    >
+                        <button
+                            type="submit"
+                            class="logout-btn"
+                            data-tooltip="Logout"
+                            aria-label="Logout"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path
+                                    d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
+                                />
+                                <polyline points="16 17 21 12 16 7" />
+                                <line x1="21" y1="12" x2="9" y2="12" />
+                            </svg>
+                        </button></form></span
+                >{{end}}
+            </div>
+            <button
+                class="mobile-menu-btn"
+                onclick="openMobileMenu()"
+                aria-label="Open menu"
+            >
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                >
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+            </button>
+        </nav>
+
+        <main>
+            <!-- ── Time Bar ── -->
+            <div class="filter-bar" id="filterBar">
+                <!-- Always-visible control row -->
+                <div class="control-row">
+                    <button
+                        class="filter-toggle-btn"
+                        id="filtersToggleBtn"
+                        onclick="toggleFilters()"
+                        title="Toggle filters"
+                    >
+                        ⚙ Filters
+                        <span
+                            class="filter-badge"
+                            id="filterBadge"
+                            style="display: none"
+                            >0</span
+                        >
+                    </button>
+                    <div class="control-right">
+                        <button
+                            class="time-summary-btn"
+                            id="timeSummaryBtn"
+                            onclick="toggleTimePanel()"
+                            title="Edit time range"
+                        >
+                            <span class="time-summary-icon">⏱</span>
+                            <span id="timeSummaryText">Last 1h</span>
+                            <span class="panel-chevron" id="timePanelChevron"
+                                >▾</span
+                            >
+                        </button>
+                        <div class="control-divider"></div>
+                        <button
+                            class="filter-btn"
+                            onclick="fetchData()"
+                            title="Refresh now"
+                        >
+                            &#8635; Refresh
+                        </button>
+                    </div>
+                </div>
+                <!-- Collapsible time panel -->
+                <div class="time-panel" id="timePanel">
+                    <!-- Row 1: From → To + Now -->
+                    <div class="time-range-row">
+                        <div class="time-inputs">
+                            <span class="time-label">From</span>
+                            <input
+                                type="datetime-local"
+                                id="fromInput"
+                                class="time-input"
+                                title="Start time"
+                            />
+                            <span class="time-arrow">→</span>
+                            <span class="time-label">To</span>
+                            <input
+                                type="datetime-local"
+                                id="toInput"
+                                class="time-input"
+                                title="End time"
+                            />
+                            <button
+                                class="now-btn"
+                                id="nowBtn"
+                                onclick="toggleNow()"
+                                title="Lock end time to now"
+                            >
+                                Now
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Row 2: Quick presets (4 visible) + More dropdown -->
+                    <div class="quick-presets" id="quickPresets">
+                        <span class="presets-label">Quick:</span>
+                        <button class="preset-pill" data-w="5m">5m</button>
+                        <button class="preset-pill" data-w="15m">15m</button>
+                        <button class="preset-pill" data-w="30m">30m</button>
+                        <button class="preset-pill active" data-w="1h">
+                            1h
+                        </button>
+                        <select
+                            class="preset-more-sel"
+                            id="presetMore"
+                            title="More ranges"
+                            onchange="
+                                if (this.value) {
+                                    setPreset(this.value);
+                                    this.value = '';
+                                }
+                            "
+                        >
+                            <option value="">More…</option>
+                            <option value="2h">Last 2h</option>
+                            <option value="4h">Last 4h</option>
+                            <option value="8h">Last 8h</option>
+                            <option value="12h">Last 12h</option>
+                            <option value="1d">Last 24h</option>
+                            <option value="2d">Last 2d</option>
+                            <option value="3d">Last 3d</option>
+                            <option value="7d">Last 7d</option>
+                            <option value="14d">Last 14d</option>
+                            <option value="30d">Last 30d</option>
+                            <option value="all">All time</option>
+                        </select>
+                    </div>
+                    <div
+                        class="quick-presets period-presets"
+                        id="periodPresets"
+                    >
+                        <span class="presets-label">Calendar:</span>
+                        <button
+                            class="preset-pill period-pill"
+                            data-period="last-month"
+                        >
+                            Last Month
+                        </button>
+                        <button
+                            class="preset-pill period-pill"
+                            data-period="this-month"
+                        >
+                            This Month
+                        </button>
+                        <button
+                            class="preset-pill period-pill"
+                            data-period="last-week"
+                        >
+                            Last Week
+                        </button>
+                        <button
+                            class="preset-pill period-pill"
+                            data-period="this-week"
+                        >
+                            This Week
+                        </button>
+                        <button
+                            class="preset-pill period-pill"
+                            data-period="yesterday"
+                        >
+                            Yesterday
+                        </button>
+                        <button
+                            class="preset-pill period-pill"
+                            data-period="today"
+                        >
+                            Today
+                        </button>
+                    </div>
+                    <!-- Row 3: Auto-refresh + Clear + Apply -->
+                    <div class="time-actions-row">
+                        <span class="time-label">Auto-refresh</span>
+                        <select
+                            class="auto-refresh-sel"
+                            id="autoRefresh"
+                            title="Auto-refresh"
+                        >
+                            <option value="0">Off</option>
+                            <option value="5000">5s</option>
+                            <option value="15000" selected>15s</option>
+                            <option value="30000">30s</option>
+                            <option value="60000">1m</option>
+                        </select>
+                        <button
+                            class="time-clear-btn"
+                            onclick="clearTimeRange()"
+                            title="Reset to default"
+                        >
+                            ✕ Clear
+                        </button>
+                        <button class="apply-btn" onclick="applyTimeRange()">
+                            Apply
+                        </button>
+                    </div>
+                </div>
+                <!-- Collapsible filters panel -->
+                <div class="filters-panel" id="filtersPanel">
+                    <div class="filters-row">
+                        <select
+                            class="filter-select"
+                            id="filterBackend"
+                            title="Backend"
+                        >
+                            <option value="">All Backends</option>
+                        </select>
+                        <select
+                            class="filter-select"
+                            id="filterModel"
+                            title="Model"
+                        >
+                            <option value="">All Models</option>
+                        </select>
+                        <select
+                            class="filter-select"
+                            id="filterClient"
+                            title="Client"
+                        >
+                            <option value="">All Clients</option>
+                        </select>
+                        <div class="filter-sep"></div>
+                        <label class="toggle-label">
+                            <span class="toggle-text">Hide errors</span>
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="filterHideErrors" />
+                                <span class="toggle-track"
+                                    ><span class="toggle-thumb"></span
+                                ></span>
+                            </span>
+                        </label>
+                        <label class="toggle-label">
+                            <span class="toggle-text">Errors only</span>
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="filterErrors" />
+                                <span class="toggle-track"
+                                    ><span class="toggle-thumb"></span
+                                ></span>
+                            </span>
+                        </label>
+                        <button
+                            class="clear-filters-btn"
+                            onclick="clearFilters()"
+                            title="Clear all filters"
+                        >
+                            ✕ Clear filters
+                        </button>
+                    </div>
                 </div>
             </div>
-            <!-- Row 2: Quick presets (4 visible) + More dropdown -->
-            <div class="quick-presets" id="quickPresets">
-                <span class="presets-label">Quick:</span>
-                <button class="preset-pill" data-w="5m">5m</button>
-                <button class="preset-pill" data-w="15m">15m</button>
-                <button class="preset-pill" data-w="30m">30m</button>
-                <button class="preset-pill active" data-w="1h">1h</button>
-                <select class="preset-more-sel" id="presetMore" title="More ranges" onchange="if(this.value){setPreset(this.value);this.value='';}">
-                    <option value="">More…</option>
-                    <option value="2h">Last 2h</option>
-                    <option value="4h">Last 4h</option>
-                    <option value="8h">Last 8h</option>
-                    <option value="12h">Last 12h</option>
-                    <option value="1d">Last 24h</option>
-                    <option value="2d">Last 2d</option>
-                    <option value="3d">Last 3d</option>
-                    <option value="7d">Last 7d</option>
-                    <option value="14d">Last 14d</option>
-                    <option value="30d">Last 30d</option>
-                    <option value="all">All time</option>
-                </select>
+
+            <!-- ── Summary Cards ── -->
+            <div class="cards">
+                <div class="card">
+                    <div class="label">Requests</div>
+                    <div class="value" id="c-requests">—</div>
+                </div>
+                <div class="card">
+                    <div class="label">Tokens</div>
+                    <div class="value" id="c-tokens">—</div>
+                </div>
+                <div class="card">
+                    <div class="label">Avg Latency</div>
+                    <div class="value" id="c-latency">—</div>
+                    <div class="sub" id="c-percentiles"></div>
+                </div>
+                <div class="card" id="c-tps-card" style="display: none">
+                    <div class="label">Avg TPS</div>
+                    <div class="value" style="color: #06b6d4" id="c-tps">—</div>
+                    <div class="sub" id="c-tps-sub"></div>
+                </div>
+                <div class="card">
+                    <div class="label">Errors</div>
+                    <div class="value green" id="c-errors">—</div>
+                </div>
+                <div class="card" id="c-cached-card" style="display: none">
+                    <div class="label">Cached Tokens</div>
+                    <div class="value" id="c-cached">—</div>
+                </div>
+                <div class="card" id="c-reason-card" style="display: none">
+                    <div class="label">Reasoning Tokens</div>
+                    <div class="value" id="c-reason">—</div>
+                </div>
             </div>
-            <!-- Row 3: Auto-refresh + Clear + Apply -->
-            <div class="time-actions-row">
-                <span class="time-label">Auto-refresh</span>
-                <select class="auto-refresh-sel" id="autoRefresh" title="Auto-refresh">
-                    <option value="0">Off</option>
-                    <option value="5000">5s</option>
-                    <option value="15000" selected>15s</option>
-                    <option value="30000">30s</option>
-                    <option value="60000">1m</option>
-                </select>
-                <button class="time-clear-btn" onclick="clearTimeRange()" title="Reset to default">✕ Clear</button>
-                <button class="apply-btn" onclick="applyTimeRange()">Apply</button>
+
+            <!-- ── Charts ── -->
+            <div class="charts-row">
+                <div class="chart-box">
+                    <div class="chart-title">Requests Over Time</div>
+                    <canvas id="chart-requests" data-height="160"></canvas>
+                </div>
+                <div class="chart-box">
+                    <div class="chart-title">Latency Over Time</div>
+                    <canvas id="chart-latency" data-height="160"></canvas>
+                </div>
+                <div class="chart-box">
+                    <div class="chart-title">TPS Over Time</div>
+                    <canvas id="chart-tps" data-height="160"></canvas>
+                </div>
             </div>
-        </div>
-        <!-- Collapsible filters panel -->
-        <div class="filters-panel" id="filtersPanel">
-            <div class="filters-row">
-                <select class="filter-select" id="filterBackend" title="Backend">
-                    <option value="">All Backends</option>
-                </select>
-                <select class="filter-select" id="filterModel" title="Model">
-                    <option value="">All Models</option>
-                </select>
-                <select class="filter-select" id="filterClient" title="Client">
-                    <option value="">All Clients</option>
-                </select>
-                <div class="filter-sep"></div>
-                <label class="toggle-label">
-                    <span class="toggle-text">Hide errors</span>
-                    <span class="toggle-switch">
-                        <input type="checkbox" id="filterHideErrors">
-                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                    </span>
-                </label>
-                <label class="toggle-label">
-                    <span class="toggle-text">Errors only</span>
-                    <span class="toggle-switch">
-                        <input type="checkbox" id="filterErrors">
-                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                    </span>
-                </label>
-                <button class="clear-filters-btn" onclick="clearFilters()" title="Clear all filters">✕ Clear filters</button>
+
+            <!-- ── Backend Health ── -->
+            <div
+                id="circuit-cards"
+                hx-get="/ui/circuit/card"
+                hx-trigger="load"
+                hx-swap="outerHTML"
+            ></div>
+
+            <!-- ── Rankings ── -->
+            <div class="section-title">Rankings</div>
+            <div class="tabs" id="rankTabs">
+                <button class="tab-btn active" onclick="showRankTab('models')">
+                    Models
+                </button>
+                <button class="tab-btn" onclick="showRankTab('backends')">
+                    Backends
+                </button>
+                <button class="tab-btn" onclick="showRankTab('clients')">
+                    Clients
+                </button>
             </div>
+            <div id="rankContainer"></div>
+
+            <!-- ── Routing ── -->
+            <div
+                class="routing-section"
+                id="routingSection"
+                style="display: none"
+            >
+                <div class="section-title">
+                    Routing Stats
+                    <button
+                        class="routing-toggle"
+                        id="routingToggle"
+                        onclick="toggleRouting()"
+                    >
+                        Show ▾
+                    </button>
+                </div>
+                <div class="routing-content" id="routingContent"></div>
+            </div>
+
+            <!-- ── Request Log ── -->
+            <div class="section-title">
+                Request Log <span class="badge" id="logCount"></span>
+            </div>
+            <table class="log-table">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>Time</th>
+                        <th>Backend</th>
+                        <th>Model</th>
+                        <th>Prompt</th>
+                        <th>Compl.</th>
+                        <th>Total</th>
+                        <th>Latency</th>
+                        <th>TPS</th>
+                        <th>Stream</th>
+                        <th>Route</th>
+                        <th>Client</th>
+                    </tr>
+                </thead>
+                <tbody id="logBody"></tbody>
+            </table>
+            <div class="pagination" id="logPagination"></div>
+        </main>
+
+        <!-- Drilldown modals -->
+        <div
+            class="modal-bg"
+            id="detailModal"
+            onclick="if (event.target === this) this.classList.remove('open');"
+        >
+            <div class="modal-box" id="detailContent"></div>
         </div>
-    </div>
-
-    <!-- ── Summary Cards ── -->
-    <div class="cards">
-        <div class="card">
-            <div class="label">Requests</div>
-            <div class="value" id="c-requests">—</div>
+        <div
+            class="modal-bg"
+            id="drilldownModal"
+            onclick="if (event.target === this) this.classList.remove('open');"
+        >
+            <div class="modal-box" id="drilldownContent"></div>
         </div>
-        <div class="card">
-            <div class="label">Tokens</div>
-            <div class="value" id="c-tokens">—</div>
-        </div>
-        <div class="card">
-            <div class="label">Avg Latency</div>
-            <div class="value" id="c-latency">—</div>
-            <div class="sub" id="c-percentiles"></div>
-        </div>
-        <div class="card" id="c-tps-card" style="display:none">
-            <div class="label">Avg TPS</div>
-            <div class="value" style="color:#06b6d4" id="c-tps">—</div>
-            <div class="sub" id="c-tps-sub"></div>
-        </div>
-        <div class="card">
-            <div class="label">Errors</div>
-            <div class="value green" id="c-errors">—</div>
-        </div>
-        <div class="card" id="c-cached-card" style="display:none">
-            <div class="label">Cached Tokens</div>
-            <div class="value" id="c-cached">—</div>
-        </div>
-        <div class="card" id="c-reason-card" style="display:none">
-            <div class="label">Reasoning Tokens</div>
-            <div class="value" id="c-reason">—</div>
-        </div>
-    </div>
 
-    <!-- ── Charts ── -->
-    <div class="charts-row">
-        <div class="chart-box">
-            <div class="chart-title">Requests Over Time</div>
-            <canvas id="chart-requests" data-height="160"></canvas>
-        </div>
-        <div class="chart-box">
-            <div class="chart-title">Latency Over Time</div>
-            <canvas id="chart-latency" data-height="160"></canvas>
-        </div>
-        <div class="chart-box">
-            <div class="chart-title">TPS Over Time</div>
-            <canvas id="chart-tps" data-height="160"></canvas>
-        </div>
-    </div>
-
-    <!-- ── Backend Health ── -->
-    <div id="circuit-cards" hx-get="/ui/circuit/card" hx-trigger="load" hx-swap="outerHTML"></div>
-
-    <!-- ── Rankings ── -->
-    <div class="section-title">Rankings</div>
-    <div class="tabs" id="rankTabs">
-        <button class="tab-btn active" onclick="showRankTab('models')">Models</button>
-        <button class="tab-btn" onclick="showRankTab('backends')">Backends</button>
-        <button class="tab-btn" onclick="showRankTab('clients')">Clients</button>
-    </div>
-    <div id="rankContainer"></div>
-
-    <!-- ── Routing ── -->
-    <div class="routing-section" id="routingSection" style="display:none">
-        <div class="section-title">
-            Routing Stats
-            <button class="routing-toggle" id="routingToggle" onclick="toggleRouting()">Show ▾</button>
-        </div>
-        <div class="routing-content" id="routingContent"></div>
-    </div>
-
-    <!-- ── Request Log ── -->
-    <div class="section-title">Request Log <span class="badge" id="logCount"></span></div>
-    <table class="log-table">
-        <thead>
-            <tr>
-                <th></th>
-                <th>Time</th>
-                <th>Backend</th>
-                <th>Model</th>
-                <th>Prompt</th>
-                <th>Compl.</th>
-                <th>Total</th>
-                <th>Latency</th>
-                <th>TPS</th>
-                <th>Stream</th>
-                <th>Route</th>
-                <th>Client</th>
-            </tr>
-        </thead>
-        <tbody id="logBody"></tbody>
-    </table>
-    <div class="pagination" id="logPagination"></div>
-</main>
-
-<!-- Drilldown modals -->
-<div class="modal-bg" id="detailModal" onclick="if(event.target===this)this.classList.remove('open')">
-    <div class="modal-box" id="detailContent"></div>
-</div>
-<div class="modal-bg" id="drilldownModal" onclick="if(event.target===this)this.classList.remove('open')">
-    <div class="modal-box" id="drilldownContent"></div>
-</div>
-
-<script>
-// ── Theme ──────────────────────────────────────────────────
-(function() {
-    var saved = localStorage.getItem('theme') || 'dark';
-    if (saved === 'light') document.body.classList.add('light');
-    document.getElementById('themeBtn').textContent = document.body.classList.contains('light') ? '🌙' : '☀';
-    var m = document.getElementById('themeIconMobile');
-    if (m) m.textContent = document.body.classList.contains('light') ? '🌙' : '☀';
-})();
-function toggleTheme() {
-    var isLight = document.body.classList.toggle('light');
-    localStorage.setItem('theme', isLight ? 'light' : 'dark');
-    var icon = isLight ? '🌙' : '☀';
-    document.getElementById('themeBtn').textContent = icon;
-    var m = document.getElementById('themeIconMobile');
-    if (m) m.textContent = icon;
-}
-
-// ── Mobile Menu ────────────────────────────────────────────
-function openMobileMenu() { document.getElementById('navLinksMobile').classList.add('open'); document.getElementById('mobileMenuOverlay').classList.add('open'); document.body.style.overflow = 'hidden'; }
-function closeMobileMenu() { document.getElementById('navLinksMobile').classList.remove('open'); document.getElementById('mobileMenuOverlay').classList.remove('open'); document.body.style.overflow = ''; }
-document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeMobileMenu(); document.getElementById('detailModal').classList.remove('open'); document.getElementById('drilldownModal').classList.remove('open'); } });
-
-// ── Formatting helpers ─────────────────────────────────────
-function fmtDur(ms) { if (!ms) return '0ms'; if (ms < 1000) return ms + 'ms'; return (ms / 1000).toFixed(2) + 's'; }
-function fmtNum(n) { if (n === undefined || n === null) return '—'; if (n >= 1e9) return (n/1e9).toFixed(1) + 'B'; if (n >= 1e6) return (n/1e6).toFixed(1) + 'M'; if (n >= 1e3) return (n/1e3).toFixed(1) + 'k'; return n.toString(); }
-function fmtTime(iso) { return new Date(iso).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
-function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function latClass(ms) { if (ms < 500) return 'lat-good'; if (ms < 2000) return 'lat-ok'; return 'lat-bad'; }
-
-// ── State ──────────────────────────────────────────────────
-var state = { window: localStorage.getItem('dash-window') || '1h', backend: '', model: '', client: '', errors: false, hideErrors: false, toNow: true, page: 0, customFrom: '', customTo: '' };
-var rankData = { models: [], backends: [], clients: [] };
-var sortState = { models: {col:'req',asc:false}, backends: {col:'req',asc:false}, clients: {col:'req',asc:false} };
-var activeRankTab = 'models';
-var autoTimer = null;
-var lastData = null;
-
-// ── Time helpers ───────────────────────────────────────────
-function parseWindowMs(w) {
-    var m = w ? w.match(/^(\d+)(m|h|d)$/) : null;
-    if (!m) return 3600000;
-    var n = parseInt(m[1]);
-    if (m[2] === 'm') return n * 60000;
-    if (m[2] === 'h') return n * 3600000;
-    return n * 86400000;
-}
-function isoToLocal(iso) {
-    var d = new Date(iso);
-    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
-    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
-}
-
-// ── Filters ────────────────────────────────────────────────
-function initFilters() {
-    var p = new URLSearchParams(window.location.search);
-    if (p.get('window')) state.window = p.get('window');
-    if (p.get('backend')) state.backend = p.get('backend');
-    if (p.get('model')) state.model = p.get('model');
-    if (p.get('client')) state.client = p.get('client');
-    if (p.get('errors') === '1') state.errors = true;
-    if (p.get('hideErrors') === '1') state.hideErrors = true;
-    if (p.get('from')) { state.customFrom = p.get('from'); state.window = 'custom'; }
-    if (p.get('to')) { state.customTo = p.get('to'); state.toNow = false; }
-    if (p.get('from') && !p.get('to')) state.toNow = true;
-
-    if (localStorage.getItem('dash-filters-open') === '1') {
-        document.getElementById('filtersPanel').classList.add('open');
-        document.getElementById('filtersToggleBtn').classList.add('active');
-    }
-    if (localStorage.getItem('dash-time-open') === '1') {
-        document.getElementById('timePanel').classList.add('open');
-        document.getElementById('timeSummaryBtn').classList.add('active');
-    }
-
-    document.getElementById('fromInput').addEventListener('change', function() {
-        if (!this.value) return;
-        state.customFrom = new Date(this.value).toISOString();
-        state.window = 'custom';
-        updateFilterUI();
-    });
-    document.getElementById('toInput').addEventListener('change', function() {
-        if (!this.value || state.toNow) return;
-        state.customTo = new Date(this.value).toISOString();
-        state.window = 'custom';
-        updateFilterUI();
-    });
-
-    document.querySelectorAll('.preset-pill').forEach(function(btn) {
-        btn.addEventListener('click', function() { setPreset(this.dataset.w); });
-    });
-
-    document.getElementById('filterBackend').addEventListener('change', function() { state.backend = this.value; state.page = 0; updateFilterUI(); fetchData(); });
-    document.getElementById('filterModel').addEventListener('change', function() { state.model = this.value; state.page = 0; updateFilterUI(); fetchData(); });
-    document.getElementById('filterClient').addEventListener('change', function() { state.client = this.value; state.page = 0; updateFilterUI(); fetchData(); });
-
-    document.getElementById('filterErrors').addEventListener('change', function() {
-        state.errors = this.checked;
-        if (this.checked) { state.hideErrors = false; document.getElementById('filterHideErrors').checked = false; }
-        state.page = 0;
-        updateFilterUI();
-        fetchData();
-    });
-    document.getElementById('filterHideErrors').addEventListener('change', function() {
-        state.hideErrors = this.checked;
-        if (this.checked) { state.errors = false; document.getElementById('filterErrors').checked = false; }
-        updateFilterUI();
-        renderLogFromCache();
-    });
-
-    document.getElementById('autoRefresh').addEventListener('change', function() { setupAutoRefresh(); });
-
-    updateFilterUI();
-}
-
-function setPreset(w) {
-    if (w === 'all') {
-        state.window = 'all';
-        state.toNow = false;
-        state.customFrom = '';
-        state.customTo = '';
-    } else {
-        state.window = w;
-        state.toNow = true;
-        state.customFrom = '';
-        state.customTo = '';
-    }
-    state.page = 0;
-    updateFilterUI();
-    fetchData();
-}
-
-function clearTimeRange() {
-    state.window = '1h';
-    state.toNow = true;
-    state.customFrom = '';
-    state.customTo = '';
-    state.page = 0;
-    updateFilterUI();
-    fetchData();
-}
-
-function toggleNow() {
-    if (state.toNow) {
-        if (!state.customFrom && state.window !== 'custom') {
-            state.customFrom = new Date(Date.now() - parseWindowMs(state.window)).toISOString();
-        }
-        state.customTo = new Date().toISOString();
-        state.window = 'custom';
-        state.toNow = false;
-    } else {
-        state.toNow = true;
-        state.customTo = '';
-    }
-    updateFilterUI();
-}
-
-function applyTimeRange() {
-    var fromVal = document.getElementById('fromInput').value;
-    if (!fromVal) return;
-    state.customFrom = new Date(fromVal).toISOString();
-    state.window = 'custom';
-    if (!state.toNow) {
-        var toVal = document.getElementById('toInput').value;
-        if (!toVal) return;
-        state.customTo = new Date(toVal).toISOString();
-    } else {
-        state.customTo = '';
-    }
-    state.page = 0;
-    updateFilterUI();
-    fetchData();
-}
-
-function toggleTimePanel() {
-    var panel = document.getElementById('timePanel');
-    var btn = document.getElementById('timeSummaryBtn');
-    var isOpen = panel.classList.toggle('open');
-    btn.classList.toggle('active', isOpen);
-    localStorage.setItem('dash-time-open', isOpen ? '1' : '0');
-}
-
-function toggleFilters() {
-    var panel = document.getElementById('filtersPanel');
-    var btn = document.getElementById('filtersToggleBtn');
-    var isOpen = panel.classList.toggle('open');
-    btn.classList.toggle('active', isOpen);
-    localStorage.setItem('dash-filters-open', isOpen ? '1' : '0');
-}
-
-function clearFilters() {
-    state.backend = '';
-    state.model = '';
-    state.client = '';
-    state.errors = false;
-    state.hideErrors = false;
-    state.page = 0;
-    updateFilterUI();
-    fetchData();
-}
-
-function renderLogFromCache() {
-    if (lastData) renderLog(lastData.records);
-}
-
-function updateFilterUI() {
-    var now = new Date();
-    var fromInput = document.getElementById('fromInput');
-    var toInput = document.getElementById('toInput');
-    var nowBtn = document.getElementById('nowBtn');
-
-    if (state.window === 'all' && !state.customFrom) {
-        fromInput.value = '2010-01-01T00:00';
-    } else if (state.customFrom) {
-        fromInput.value = isoToLocal(state.customFrom);
-    } else if (state.window && state.window !== 'custom') {
-        fromInput.value = isoToLocal(new Date(now.getTime() - parseWindowMs(state.window)).toISOString());
-    }
-
-    if (state.toNow) {
-        toInput.value = isoToLocal(now.toISOString());
-        toInput.disabled = true;
-        nowBtn.classList.remove('inactive');
-    } else {
-        toInput.disabled = false;
-        if (state.customTo) toInput.value = isoToLocal(state.customTo);
-        nowBtn.classList.add('inactive');
-    }
-
-    document.querySelectorAll('.preset-pill').forEach(function(btn) {
-        btn.classList.toggle('active', state.toNow && !state.customFrom && btn.dataset.w === state.window);
-    });
-    var moreEl = document.getElementById('presetMore');
-    if (moreEl) moreEl.value = '';
-
-    var n = (state.backend ? 1 : 0) + (state.model ? 1 : 0) + (state.client ? 1 : 0) + (state.errors ? 1 : 0) + (state.hideErrors ? 1 : 0);
-    var badge = document.getElementById('filterBadge');
-    badge.textContent = n;
-    badge.style.display = n > 0 ? '' : 'none';
-
-    document.getElementById('filterBackend').value = state.backend;
-    document.getElementById('filterModel').value = state.model;
-    document.getElementById('filterClient').value = state.client;
-    document.getElementById('filterErrors').checked = state.errors;
-    document.getElementById('filterHideErrors').checked = state.hideErrors;
-
-    localStorage.setItem('dash-window', state.window);
-    localStorage.setItem('dash-to-now', state.toNow ? '1' : '0');
-    updateTimeSummary();
-}
-
-function updateTimeSummary() {
-    var el = document.getElementById('timeSummaryText');
-    if (!el) return;
-    if (state.window === 'all' && !state.customFrom) {
-        el.textContent = 'All time';
-    } else if (state.toNow && !state.customFrom) {
-        var labels = { '5m': 'Last 5m', '15m': 'Last 15m', '30m': 'Last 30m', '1h': 'Last 1h', '2h': 'Last 2h', '4h': 'Last 4h', '8h': 'Last 8h', '12h': 'Last 12h', '1d': 'Last 24h', '2d': 'Last 2d', '3d': 'Last 3d', '7d': 'Last 7d', '14d': 'Last 14d', '30d': 'Last 30d' };
-        el.textContent = labels[state.window] || ('Last ' + state.window);
-    } else {
-        var fmtShort = function(iso) {
-            var d = new Date(iso);
-            return (d.getMonth()+1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
-        };
-        var from = state.customFrom ? fmtShort(state.customFrom) : '?';
-        var to = state.toNow ? 'Now' : (state.customTo ? fmtShort(state.customTo) : 'Now');
-        el.textContent = from + ' → ' + to;
-    }
-}
-
-function populateDropdowns(filters) {
-    populateSelect('filterBackend', filters.backends, state.backend, 'All Backends');
-    populateSelect('filterModel', filters.models, state.model, 'All Models');
-    populateSelect('filterClient', filters.clients, state.client, 'All Clients');
-}
-
-function populateSelect(id, values, current, placeholder) {
-    var sel = document.getElementById(id);
-    var opts = '<option value="">' + placeholder + '</option>';
-    (values || []).forEach(function(v) { opts += '<option value="' + esc(v) + '"' + (v === current ? ' selected' : '') + '>' + esc(v) + '</option>'; });
-    sel.innerHTML = opts;
-}
-
-function buildURL() {
-    var p = new URLSearchParams();
-    if (state.window === 'all' && !state.customFrom) {
-        p.set('from', '2010-01-01T00:00:00.000Z');
-        p.set('to', new Date().toISOString());
-    } else if (state.toNow && !state.customFrom) {
-        p.set('window', state.window || '1h');
-    } else if (state.toNow && state.customFrom) {
-        p.set('from', state.customFrom);
-        p.set('to', new Date().toISOString());
-    } else {
-        if (state.customFrom) p.set('from', state.customFrom);
-        if (state.customTo) p.set('to', state.customTo);
-    }
-    if (state.backend) p.set('backend', state.backend);
-    if (state.model) p.set('model', state.model);
-    if (state.client) p.set('client', state.client);
-    if (state.errors) p.set('errors', '1');
-    p.set('page', state.page);
-    return '/ui/dashboard/data?' + p.toString();
-}
-
-function updateBrowserURL() {
-    var p = new URLSearchParams();
-    if (state.toNow && !state.customFrom) {
-        if (state.window && state.window !== '1h') p.set('window', state.window);
-    } else if (state.toNow && state.customFrom) {
-        p.set('from', state.customFrom);
-    } else {
-        if (state.customFrom) p.set('from', state.customFrom);
-        if (state.customTo) p.set('to', state.customTo);
-    }
-    if (state.backend) p.set('backend', state.backend);
-    if (state.model) p.set('model', state.model);
-    if (state.client) p.set('client', state.client);
-    if (state.errors) p.set('errors', '1');
-    if (state.hideErrors) p.set('hideErrors', '1');
-    if (state.page > 0) p.set('page', state.page);
-    var qs = p.toString();
-    history.replaceState(null, '', '/ui/' + (qs ? '?' + qs : ''));
-}
-
-// ── Set filter from click ──────────────────────────────────
-function setFilter(dim, value) {
-    if (dim === 'backend') state.backend = value;
-    if (dim === 'model') state.model = value;
-    if (dim === 'client') state.client = value;
-    state.page = 0;
-    var panel = document.getElementById('filtersPanel');
-    if (!panel.classList.contains('open')) {
-        panel.classList.add('open');
-        document.getElementById('filtersToggleBtn').classList.add('active');
-        localStorage.setItem('dash-filters-open', '1');
-    }
-    updateFilterUI();
-    fetchData();
-}
-
-// ── Auto-refresh ───────────────────────────────────────────
-function setupAutoRefresh() {
-    if (autoTimer) clearInterval(autoTimer);
-    var ms = parseInt(document.getElementById('autoRefresh').value);
-    if (ms > 0) autoTimer = setInterval(fetchData, ms);
-}
-
-// ── Data fetch ─────────────────────────────────────────────
-function fetchData(p) {
-    if (p !== undefined) state.page = p;
-    updateBrowserURL();
-    fetch(buildURL())
-        .then(function(r) { return r.json(); })
-        .then(function(d) { lastData = d; renderAll(d); })
-        .catch(function(e) { console.error('Dashboard fetch error:', e); });
-}
-
-// ── Render all ─────────────────────────────────────────────
-function renderAll(d) {
-    renderSummary(d.summary, d.percentiles);
-    renderCharts(d.time_series);
-    rankData.models = d.top_models || [];
-    rankData.backends = d.top_backends || [];
-    rankData.clients = d.top_clients || [];
-    renderRankTab();
-    renderRouting(d.routing || []);
-    renderLog(d.records);
-    populateDropdowns(d.filters || {});
-}
-
-// ── Summary Cards ──────────────────────────────────────────
-function renderSummary(s, p) {
-    document.getElementById('c-requests').textContent = fmtNum(s.total_requests);
-    document.getElementById('c-tokens').textContent = fmtNum(s.total_tokens);
-    document.getElementById('c-latency').textContent = fmtDur(s.avg_latency_ms);
-    var tpsCard = document.getElementById('c-tps-card');
-    if (s.avg_tps > 0) { tpsCard.style.display = ''; document.getElementById('c-tps').textContent = s.avg_tps.toFixed(1) + ' tok/s'; } else { tpsCard.style.display = 'none'; }
-    var errEl = document.getElementById('c-errors');
-    errEl.textContent = fmtNum(s.total_errors);
-    errEl.className = 'value ' + (s.total_errors > 0 ? 'red' : 'green');
-    document.getElementById('c-percentiles').textContent = 'p50 ' + fmtDur(p.p50) + '  p90 ' + fmtDur(p.p90) + '  p99 ' + fmtDur(p.p99);
-    var cc = document.getElementById('c-cached-card');
-    if (s.total_cached > 0) { cc.style.display = ''; document.getElementById('c-cached').textContent = fmtNum(s.total_cached); } else { cc.style.display = 'none'; }
-    var rc = document.getElementById('c-reason-card');
-    if (s.total_reasoning > 0) { rc.style.display = ''; document.getElementById('c-reason').textContent = fmtNum(s.total_reasoning); } else { rc.style.display = 'none'; }
-}
-
-// ── Charts ─────────────────────────────────────────────────
-function renderCharts(series) {
-    if (!series || series.length === 0) { clearCanvas('chart-requests', 'No data'); clearCanvas('chart-latency', 'No data'); clearCanvas('chart-tps', 'No data'); return; }
-    var labels = series.map(function(p) { return new Date(p.t).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); });
-    drawBarChart('chart-requests', labels, series.map(function(p) { return p.req; }), getAccentColor(), series.map(function(p) { return p.err; }));
-    drawLineChart('chart-latency', labels, series.map(function(p) { return p.lat; }), '#34d399');
-    var tpsValues = series.map(function(p) { return p.tps || 0; });
-    var hasTps = tpsValues.some(function(v) { return v > 0; });
-    if (hasTps) { drawLineChart('chart-tps', labels, tpsValues, '#06b6d4', function(v) { return v + ' tps'; }); } else { clearCanvas('chart-tps', 'No TPS data'); }
-}
-
-function getAccentColor() { return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#22d3ee'; }
-function getTextDimColor() { return getComputedStyle(document.documentElement).getPropertyValue('--text-dim').trim() || '#64748b'; }
-function getBorderColor() { return getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#1e2d3d'; }
-
-function clearCanvas(id, msg) {
-    var cv = document.getElementById(id); var ctx = cv.getContext('2d');
-    ctx.clearRect(0, 0, cv.width, cv.height);
-    ctx.fillStyle = getTextDimColor(); ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(msg || '', cv.width/2, cv.height/2);
-}
-
-function setupCanvas(id) {
-    var cv = document.getElementById(id);
-    var dpr = window.devicePixelRatio || 1;
-    var logicalH = parseInt(cv.dataset.height || 160);
-    var rect = cv.parentElement.getBoundingClientRect();
-    cv.width = rect.width * dpr;
-    cv.height = logicalH * dpr;
-    cv.style.height = logicalH + 'px';
-    var ctx = cv.getContext('2d');
-    ctx.scale(dpr, dpr);
-    return { cv: cv, ctx: ctx, w: rect.width, h: logicalH };
-}
-
-function drawBarChart(id, labels, values, color, errValues) {
-    var s = setupCanvas(id);
-    var ctx = s.ctx, W = s.w, H = s.h;
-    var padL=32, padR=8, padT=10, padB=28;
-    var chartW = W - padL - padR, chartH = H - padT - padB;
-    ctx.clearRect(0, 0, W, H);
-    var max = Math.max.apply(null, values) || 1;
-    var n = values.length, gap = 2, bw = Math.max(1, (chartW - gap*(n-1)) / n);
-    ctx.fillStyle = getTextDimColor(); ctx.font = '9px monospace'; ctx.textAlign = 'right';
-    [0, 0.5, 1].forEach(function(f) {
-        var y = padT + chartH * (1 - f);
-        ctx.fillText(Math.round(max*f), padL - 4, y + 3);
-        ctx.strokeStyle = getBorderColor(); ctx.lineWidth = 0.5;
-        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
-    });
-    values.forEach(function(v, i) {
-        var x = padL + i*(bw+gap), h = (v/max) * chartH;
-        ctx.fillStyle = color; ctx.globalAlpha = 0.85;
-        ctx.fillRect(x, padT + chartH - h, bw, h);
-        if (errValues && errValues[i] > 0) {
-            ctx.fillStyle = '#f87171'; ctx.globalAlpha = 0.9;
-            var eh = (errValues[i]/max) * chartH;
-            ctx.fillRect(x, padT + chartH - eh, bw, eh);
-        }
-        ctx.globalAlpha = 1;
-    });
-    ctx.fillStyle = getTextDimColor(); ctx.font = '9px monospace'; ctx.textAlign = 'center';
-    var step = Math.max(1, Math.floor(n / 8));
-    for (var i = 0; i < n; i += step) { ctx.fillText(labels[i], padL + i*(bw+gap) + bw/2, H - 4); }
-}
-
-function drawLineChart(id, labels, values, color, fmtLabel) {
-    var s = setupCanvas(id);
-    var ctx = s.ctx, W = s.w, H = s.h;
-    var padL=40, padR=8, padT=10, padB=28;
-    var chartW = W - padL - padR, chartH = H - padT - padB;
-    ctx.clearRect(0, 0, W, H);
-    var max = Math.max.apply(null, values) || 1;
-    var n = values.length;
-    if (n < 2) { clearCanvas(id, 'Not enough data'); return; }
-    if (!fmtLabel) fmtLabel = fmtDur;
-    [0, 0.5, 1].forEach(function(f) {
-        var y = padT + chartH * (1 - f);
-        ctx.fillStyle = getTextDimColor(); ctx.font = '9px monospace'; ctx.textAlign = 'right';
-        ctx.fillText(fmtLabel(Math.round(max*f)), padL - 4, y + 3);
-        ctx.strokeStyle = getBorderColor(); ctx.lineWidth = 0.5;
-        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
-    });
-    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.beginPath();
-    values.forEach(function(v, i) {
-        var x = padL + (i/(n-1)) * chartW, y = padT + chartH * (1 - v/max);
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-    ctx.globalAlpha = 0.12; ctx.fillStyle = color;
-    ctx.lineTo(padL + chartW, padT + chartH); ctx.lineTo(padL, padT + chartH); ctx.closePath(); ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = color;
-    values.forEach(function(v, i) {
-        var x = padL + (i/(n-1)) * chartW, y = padT + chartH * (1 - v/max);
-        ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI*2); ctx.fill();
-    });
-    ctx.fillStyle = getTextDimColor(); ctx.font = '9px monospace'; ctx.textAlign = 'center';
-    var step = Math.max(1, Math.floor(n / 8));
-    for (var i = 0; i < n; i += step) { ctx.fillText(labels[i], padL + (i/(n-1)) * chartW, H - 4); }
-}
-
-// ── Rankings ───────────────────────────────────────────────
-function showRankTab(tab) {
-    activeRankTab = tab;
-    document.querySelectorAll('#rankTabs .tab-btn').forEach(function(b, i) {
-        b.classList.toggle('active', ['models','backends','clients'][i] === tab);
-    });
-    renderRankTab();
-}
-
-function sortRank(tab, col) {
-    var ss = sortState[tab];
-    if (ss.col === col) { ss.asc = !ss.asc; } else { ss.col = col; ss.asc = false; }
-    renderRankTab();
-}
-
-function renderRankTab() {
-    var tab = activeRankTab;
-    var data = rankData[tab] || [];
-    var ss = sortState[tab];
-    var dim = tab === 'models' ? 'model' : tab === 'backends' ? 'backend' : 'client';
-
-    // Clone and sort
-    var rows = data.slice();
-    rows.sort(function(a, b) {
-        var va = a[ss.col], vb = b[ss.col];
-        if (typeof va === 'string') return ss.asc ? va.localeCompare(vb) : vb.localeCompare(va);
-        return ss.asc ? va - vb : vb - va;
-    });
-
-    var arrow = function(col) { return ss.col === col ? (ss.asc ? ' ▲' : ' ▼') : ''; };
-    var html = '<table class="rank-table"><thead><tr>';
-    html += '<th onclick="sortRank(\'' + tab + '\',\'name\')">Name' + arrow('name') + '</th>';
-    html += '<th onclick="sortRank(\'' + tab + '\',\'req\')">Requests' + arrow('req') + '</th>';
-    html += '<th onclick="sortRank(\'' + tab + '\',\'tok\')">Tokens' + arrow('tok') + '</th>';
-    html += '<th onclick="sortRank(\'' + tab + '\',\'err\')">Errors' + arrow('err') + '</th>';
-    html += '<th onclick="sortRank(\'' + tab + '\',\'err_pct\')">Error %' + arrow('err_pct') + '</th>';
-    // Only show attempt fail column for backends tab
-    if (tab === 'backends') {
-        html += '<th onclick="sortRank(\'' + tab + '\',\'attempt_failure_pct\')">Attempt Fail %' + arrow('attempt_failure_pct') + '</th>';
-    }
-    html += '<th onclick="sortRank(\'' + tab + '\',\'lat\')">Avg Lat' + arrow('lat') + '</th>';
-    html += '<th onclick="sortRank(\'' + tab + '\',\'p50\')">P50' + arrow('p50') + '</th>';
-    html += '<th onclick="sortRank(\'' + tab + '\',\'p90\')">P90' + arrow('p90') + '</th>';
-    html += '<th onclick="sortRank(\'' + tab + '\',\'p99\')">P99' + arrow('p99') + '</th>';
-    html += '</tr></thead><tbody>';
-
-    if (rows.length === 0) {
-        var colSpan = tab === 'backends' ? 10 : 9;
-        html += '<tr><td colspan="' + colSpan + '" class="empty">No data</td></tr>';
-    } else {
-        rows.forEach(function(r) {
-            var errBar = r.err_pct > 0 ? '<span class="err-bar" style="width:' + Math.min(r.err_pct, 100) * 0.4 + 'px"></span>' : '';
-            html += '<tr>';
-            html += '<td class="name-cell" onclick="setFilter(\'' + dim + '\',\'' + esc(r.name) + '\')">' + esc(r.name) + '</td>';
-            html += '<td>' + fmtNum(r.req) + '</td>';
-            html += '<td>' + fmtNum(r.tok) + '</td>';
-            html += '<td>' + (r.err > 0 ? '<span class="red">' + r.err + '</span>' : '0') + '</td>';
-            html += '<td>' + r.err_pct.toFixed(1) + '%' + errBar + '</td>';
-            if (tab === 'backends') {
-                var afPct = r.attempt_failure_pct || 0;
-                var afColor = afPct === 0 ? 'var(--text-dim)' : afPct < 5 ? '#eab308' : 'var(--red)';
-                var afText = r.attempt_count > 0 ? afPct.toFixed(1) + '% <span style="color:var(--text-dim);font-size:0.8em">(' + (r.attempt_failures || 0) + '/' + r.attempt_count + ')</span>' : '<span style="color:var(--text-dim)">—</span>';
-                html += '<td style="color:' + afColor + '">' + afText + '</td>';
+        <script>
+            // ── Theme ──────────────────────────────────────────────────
+            (function () {
+                var saved = localStorage.getItem("theme") || "dark";
+                if (saved === "light") document.body.classList.add("light");
+                document.getElementById("themeBtn").textContent =
+                    document.body.classList.contains("light") ? "🌙" : "☀";
+                var m = document.getElementById("themeIconMobile");
+                if (m)
+                    m.textContent = document.body.classList.contains("light")
+                        ? "🌙"
+                        : "☀";
+            })();
+            function toggleTheme() {
+                var isLight = document.body.classList.toggle("light");
+                localStorage.setItem("theme", isLight ? "light" : "dark");
+                var icon = isLight ? "🌙" : "☀";
+                document.getElementById("themeBtn").textContent = icon;
+                var m = document.getElementById("themeIconMobile");
+                if (m) m.textContent = icon;
             }
-            html += '<td class="' + latClass(r.lat) + '">' + fmtDur(r.lat) + '</td>';
-            html += '<td class="' + latClass(r.p50) + '">' + fmtDur(r.p50) + '</td>';
-            html += '<td class="' + latClass(r.p90) + '">' + fmtDur(r.p90) + '</td>';
-            html += '<td class="' + latClass(r.p99) + '">' + fmtDur(r.p99) + '</td>';
-            html += '</tr>';
-        });
-    }
-    html += '</tbody></table>';
-    document.getElementById('rankContainer').innerHTML = html;
-}
 
-// ── Routing Stats ──────────────────────────────────────────
-function toggleRouting() {
-    var c = document.getElementById('routingContent');
-    var open = c.classList.toggle('open');
-    document.getElementById('routingToggle').textContent = open ? 'Hide ▴' : 'Show ▾';
-}
+            // ── Mobile Menu ────────────────────────────────────────────
+            function openMobileMenu() {
+                document.getElementById("navLinksMobile").classList.add("open");
+                document
+                    .getElementById("mobileMenuOverlay")
+                    .classList.add("open");
+                document.body.style.overflow = "hidden";
+            }
+            function closeMobileMenu() {
+                document
+                    .getElementById("navLinksMobile")
+                    .classList.remove("open");
+                document
+                    .getElementById("mobileMenuOverlay")
+                    .classList.remove("open");
+                document.body.style.overflow = "";
+            }
+            document.addEventListener("keydown", function (e) {
+                if (e.key === "Escape") {
+                    closeMobileMenu();
+                    document
+                        .getElementById("detailModal")
+                        .classList.remove("open");
+                    document
+                        .getElementById("drilldownModal")
+                        .classList.remove("open");
+                }
+            });
 
-function strategyClass(s) {
-    switch(s) { case 'priority': return 'strategy-priority'; case 'round-robin': return 'strategy-round-robin'; case 'race': return 'strategy-race'; case 'staggered-race': return 'strategy-staggered-race'; default: return ''; }
-}
+            // ── Formatting helpers ─────────────────────────────────────
+            function fmtDur(ms) {
+                if (!ms) return "0ms";
+                if (ms < 1000) return ms + "ms";
+                return (ms / 1000).toFixed(2) + "s";
+            }
+            function fmtNum(n) {
+                if (n === undefined || n === null) return "—";
+                if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
+                if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+                if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
+                return n.toString();
+            }
+            function fmtTime(iso) {
+                return new Date(iso).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                });
+            }
+            function esc(s) {
+                return String(s || "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;");
+            }
+            function latClass(ms) {
+                if (ms < 500) return "lat-good";
+                if (ms < 2000) return "lat-ok";
+                return "lat-bad";
+            }
 
-function strategyLabel(s) {
-    switch(s) { case 'priority': return 'PRIORITY'; case 'round-robin': return 'ROUND-ROBIN'; case 'race': return 'RACE'; case 'staggered-race': return 'STAGGERED'; default: return s ? s.toUpperCase() : ''; }
-}
+            // ── State ──────────────────────────────────────────────────
+            var state = {
+                window: "custom",
+                backend: "",
+                model: "",
+                client: "",
+                errors: false,
+                hideErrors: false,
+                toNow: true,
+                page: 0,
+                customFrom: "",
+                customTo: "",
+                period: "today",
+            };
+            var rankData = { models: [], backends: [], clients: [] };
+            var sortState = {
+                models: { col: "req", asc: false },
+                backends: { col: "req", asc: false },
+                clients: { col: "req", asc: false },
+            };
+            var activeRankTab = "models";
+            var autoTimer = null;
+            var lastData = null;
 
-function renderRouting(models) {
-    var sec = document.getElementById('routingSection');
-    if (!models || models.length === 0) { sec.style.display = 'none'; return; }
-    sec.style.display = '';
-    var html = '';
-    models.forEach(function(m) {
-        html += '<div class="model-card">';
-        html += '<div class="model-header">';
-        html += '<span class="model-name">' + esc(m.model) + '</span>';
-        html += '<span class="strategy-badge ' + strategyClass(m.strategy) + '">' + strategyLabel(m.strategy) + '</span>';
-        html += '<span class="model-meta">' + fmtNum(m.total_requests) + ' req · ' + fmtDur(m.avg_lat_ms) + ' avg · ' + (m.fallback_rate || 0).toFixed(1) + '% fallback</span>';
-        html += '</div>';
-        html += '<table class="backend-table"><thead><tr><th>Backend</th><th>Avg Latency</th><th>Share</th><th>Error %</th><th>Attempt Fail %</th><th>Fallbacks</th><th>Requests</th></tr></thead><tbody>';
-        (m.backends || []).forEach(function(b) {
-            var errPct = b.requests > 0 ? (b.errors / b.requests * 100) : 0;
-            var fbPct = b.requests > 0 ? (b.fallbacks / b.requests * 100) : 0;
-            var attemptFailPct = b.attempt_failure_pct || 0;
-            var attemptFailColor = attemptFailPct === 0 ? 'var(--text-dim)' : attemptFailPct < 5 ? '#eab308' : 'var(--red)';
-            var attemptFailText = b.attempt_count > 0 ? (attemptFailPct.toFixed(1) + '% <span style="color:var(--text-dim);font-size:0.8em">(' + b.attempt_failures + '/' + b.attempt_count + ')</span>') : '<span style="color:var(--text-dim)">—</span>';
-            html += '<tr>';
-            html += '<td><span class="backend-name" onclick="showBackendDrilldown(\'' + esc(b.name) + '\')">' + esc(b.name) + '</span></td>';
-            html += '<td class="' + latClass(b.avg_lat_ms) + '">' + fmtDur(b.avg_lat_ms) + '</td>';
-            html += '<td><span class="bar-track" style="width:80px"><span class="bar-fill" style="width:' + (b.win_pct || 0) + '%"></span></span> ' + (b.win_pct || 0).toFixed(0) + '%</td>';
-            html += '<td>' + (errPct > 0 ? '<span class="red">' + errPct.toFixed(1) + '%</span>' : '<span style="color:var(--text-dim)">0%</span>') + '</td>';
-            html += '<td style="color:' + attemptFailColor + '">' + attemptFailText + '</td>';
-            html += '<td>' + b.fallbacks + (b.requests > 0 ? ' (' + fbPct.toFixed(0) + '%)' : '') + '</td>';
-            html += '<td>' + fmtNum(b.requests) + '</td>';
-            html += '</tr>';
-        });
-        html += '</tbody></table></div>';
-    });
-    document.getElementById('routingContent').innerHTML = html;
-}
+            // ── Time helpers ───────────────────────────────────────────
+            function parseWindowMs(w) {
+                var m = w ? w.match(/^(\d+)(m|h|d)$/) : null;
+                if (!m) return 3600000;
+                var n = parseInt(m[1]);
+                if (m[2] === "m") return n * 60000;
+                if (m[2] === "h") return n * 3600000;
+                return n * 86400000;
+            }
+            function isoToLocal(iso) {
+                var d = new Date(iso);
+                var pad = function (n) {
+                    return n < 10 ? "0" + n : "" + n;
+                };
+                return (
+                    d.getFullYear() +
+                    "-" +
+                    pad(d.getMonth() + 1) +
+                    "-" +
+                    pad(d.getDate()) +
+                    "T" +
+                    pad(d.getHours()) +
+                    ":" +
+                    pad(d.getMinutes())
+                );
+            }
 
-// ── Backend Drilldown Modal ────────────────────────────────
-function showBackendDrilldown(name) {
-    var modal = document.getElementById('drilldownModal');
-    var content = document.getElementById('drilldownContent');
-    modal.classList.add('open');
-    content.innerHTML = '<p style="color:var(--text-dim)">Loading fallback data for <strong>' + esc(name) + '</strong>…</p>';
-    var w = state.window === 'custom' ? '24h' : state.window;
-    fetch('/ui/routing/backend-fallbacks?name=' + encodeURIComponent(name) + '&window=' + w + '&attempts=1')
-        .then(function(r) { return r.json(); })
-        .then(function(d) { renderDrilldown(d.items || [], name); })
-        .catch(function() { content.innerHTML = '<p class="red">Failed to load data</p>'; });
-}
+            // ── Filters ────────────────────────────────────────────────
+            function setCookie(name, value, days) {
+                var expires = "";
+                if (days) {
+                    var d = new Date();
+                    d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
+                    expires = "; expires=" + d.toUTCString();
+                }
+                document.cookie =
+                    name +
+                    "=" +
+                    encodeURIComponent(value) +
+                    expires +
+                    "; path=/; SameSite=Lax";
+            }
 
-function renderDrilldown(items, name) {
-    var c = document.getElementById('drilldownContent');
-    if (items.length === 0) { c.innerHTML = '<p style="color:var(--text-dim)">No fallback records for <strong>' + esc(name) + '</strong></p>'; return; }
-    // Summary stats
-    var totalFails = 0;
-    var totalLat = 0;
-    items.forEach(function(r) { totalLat += (r.latency_ms || 0); });
-    var avgLat = items.length > 0 ? Math.round(totalLat / items.length) : 0;
-    var summaryHtml = '<div style="display:flex;gap:1.5rem;margin-bottom:1rem;flex-wrap:wrap">';
-    summaryHtml += '<div style="font-size:0.85rem"><span style="color:var(--text-dim)">Fallback records:</span> <strong>' + items.length + '</strong></div>';
-    summaryHtml += '<div style="font-size:0.85rem"><span style="color:var(--text-dim)">Avg latency:</span> <strong>' + fmtDur(avgLat) + '</strong></div>';
-    summaryHtml += '</div>';
+            function getCookie(name) {
+                var prefix = name + "=";
+                var parts = document.cookie ? document.cookie.split("; ") : [];
+                for (var i = 0; i < parts.length; i++) {
+                    if (parts[i].indexOf(prefix) === 0) {
+                        return decodeURIComponent(
+                            parts[i].substring(prefix.length),
+                        );
+                    }
+                }
+                return "";
+            }
 
-    var html = '<h3 style="margin-bottom:0.5rem;font-size:0.95rem">Fallback log for <span style="color:var(--accent)">' + esc(name) + '</span></h3>';
-    html += summaryHtml;
-    html += '<table class="backend-table"><thead><tr><th>Time</th><th>Model</th><th>Attempt Error</th><th>Attempt Status</th><th>Latency</th><th>Won By</th></tr></thead><tbody>';
-    items.forEach(function(r) {
-        // Extract this backend's attempt error from attempts array
-        var attemptError = '—';
-        var attemptStatus = '—';
-        if (r.attempts && r.attempts.length > 0) {
-            for (var i = 0; i < r.attempts.length; i++) {
-                if (r.attempts[i].backend === name && r.attempts[i].error) {
-                    attemptError = r.attempts[i].error.length > 60 ? r.attempts[i].error.substring(0, 60) + '…' : r.attempts[i].error;
-                    attemptStatus = r.attempts[i].status_code || '—';
-                    break;
+            function deleteCookie(name) {
+                document.cookie =
+                    name +
+                    "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax";
+            }
+
+            function applyTodayDefault() {
+                var now = new Date();
+                state.window = "custom";
+                state.period = "today";
+                state.toNow = true;
+                state.customFrom = new Date(
+                    now.getFullYear(),
+                    now.getMonth(),
+                    now.getDate(),
+                    0,
+                    0,
+                    0,
+                    0,
+                ).toISOString();
+                state.customTo = "";
+            }
+
+            function loadPersistedTimePreference() {
+                var savedWindow = getCookie("dash-window");
+                var savedPeriod = getCookie("dash-period");
+                var savedToNow = getCookie("dash-to-now");
+                var savedFrom = getCookie("dash-from");
+                var savedTo = getCookie("dash-to");
+
+                if (!savedWindow && !savedPeriod && !savedFrom && !savedTo) {
+                    applyTodayDefault();
+                    return;
+                }
+
+                state.window = savedWindow || "custom";
+                state.period = savedPeriod || "";
+                state.toNow = savedToNow !== "0";
+                state.customFrom = savedFrom || "";
+                state.customTo = savedTo || "";
+
+                if (!state.customFrom && state.period === "today") {
+                    applyTodayDefault();
                 }
             }
-        } else if (r.error) {
-            attemptError = r.error.length > 60 ? r.error.substring(0, 60) + '…' : r.error;
-        }
-        var errDisplay = attemptError !== '—' ? '<span style="color:var(--red)" title="' + esc(attemptError) + '">' + esc(attemptError) + '</span>' : '<span style="color:var(--text-dim)">—</span>';
-        html += '<tr><td>' + fmtTime(r.timestamp) + '</td><td>' + esc(r.model) + '</td><td>' + errDisplay + '</td><td>' + attemptStatus + '</td><td class="' + latClass(r.latency_ms) + '">' + fmtDur(r.latency_ms) + '</td><td style="color:var(--green)">' + esc(r.backend) + '</td></tr>';
-    });
-    html += '</tbody></table>';
-    c.innerHTML = html;
-}
 
-// ── Request Log ────────────────────────────────────────────
-function stratBadge(s) {
-    if (!s) return '';
-    switch(s) { case 'priority': return '<span class="strat-label strat-p">P</span>'; case 'round-robin': return '<span class="strat-label strat-rr">RR</span>'; case 'race': return '<span class="strat-label strat-r">R</span>'; case 'staggered-race': return '<span class="strat-label strat-sr">SR</span>'; default: return '<span class="strat-label">' + esc(s) + '</span>'; }
-}
+            function persistTimePreference() {
+                setCookie("dash-window", state.window || "custom", 365);
+                setCookie("dash-period", state.period || "", 365);
+                setCookie("dash-to-now", state.toNow ? "1" : "0", 365);
 
-function renderLog(rec) {
-    var allItems = (rec && rec.items) || [];
-    var items = state.hideErrors ? allItems.filter(function(r) { return !r.error || r.error.length === 0; }) : allItems;
-    var total = rec ? rec.total : 0;
-    document.getElementById('logCount').textContent = total > 0 ? total : '';
+                if (state.customFrom) {
+                    setCookie("dash-from", state.customFrom, 365);
+                } else {
+                    deleteCookie("dash-from");
+                }
 
-    if (items.length === 0) {
-        document.getElementById('logBody').innerHTML = '<tr><td colspan="12" class="empty">No requests found</td></tr>';
-        document.getElementById('logPagination').innerHTML = '';
-        return;
-    }
+                if (!state.toNow && state.customTo) {
+                    setCookie("dash-to", state.customTo, 365);
+                } else {
+                    deleteCookie("dash-to");
+                }
+            }
 
-    var html = '';
-    items.forEach(function(r) {
-        var isErr = r.error && r.error.length > 0;
-        var rowClass = isErr ? ' class="error-row"' : '';
-        var totalTok = r.total_tokens || 0;
-        var tokExtra = '';
-        if (r.cached_tokens > 0) tokExtra += ' <span class="cached-badge" title="Cached: ' + r.cached_tokens + '">⚡' + fmtNum(r.cached_tokens) + '</span>';
-        if (r.reasoning_tokens > 0) tokExtra += ' <span class="reason-badge" title="Reasoning: ' + r.reasoning_tokens + '">🧠' + fmtNum(r.reasoning_tokens) + '</span>';
+            function clearPersistedTimePreference() {
+                deleteCookie("dash-window");
+                deleteCookie("dash-period");
+                deleteCookie("dash-to-now");
+                deleteCookie("dash-from");
+                deleteCookie("dash-to");
+            }
 
-        html += '<tr' + rowClass + ' onclick="showDetail(' + r.id + ')">';
-        html += '<td><span class="status-dot ' + (isErr ? 'status-err' : 'status-ok') + '"></span></td>';
-        html += '<td>' + fmtTime(r.timestamp) + '</td>';
-        html += '<td>' + esc(r.backend) + (r.fallback ? '<span class="fallback-icon" title="Fallback">↩</span>' : '') + '</td>';
-        html += '<td>' + esc(r.model) + '</td>';
-        html += '<td>' + fmtNum(r.prompt_tokens) + '</td>';
-        html += '<td>' + fmtNum(r.completion_tokens) + '</td>';
-        html += '<td>' + fmtNum(totalTok) + tokExtra + '</td>';
-        html += '<td class="' + latClass(r.latency_ms) + '">' + fmtDur(r.latency_ms) + '</td>';
-        html += '<td style="color:#06b6d4">' + (r.tps > 0 ? r.tps.toFixed(1) : '—') + '</td>';
-        html += '<td>' + (r.stream ? 'SSE' : '—') + '</td>';
-        html += '<td>' + stratBadge(r.strategy) + (r.fallback ? '<span class="fallback-icon">↩</span>' : '') + '</td>';
-        html += '<td>' + esc(r.client || '—') + '</td>';
-        html += '</tr>';
-    });
-    document.getElementById('logBody').innerHTML = html;
+            function initFilters() {
+                loadPersistedTimePreference();
 
-    // Pagination
-    var tp = rec.total_pages || 1;
-    var pg = rec.page || 0;
-    if (tp <= 1) { document.getElementById('logPagination').innerHTML = ''; return; }
-    var phtml = '<button class="page-btn" onclick="fetchData(' + Math.max(0, pg-1) + ')"' + (pg <= 0 ? ' disabled' : '') + '>← Prev</button>';
-    phtml += '<span class="page-info">' + (pg+1) + ' / ' + tp + '</span>';
-    phtml += '<button class="page-btn" onclick="fetchData(' + (pg+1) + ')"' + (pg >= tp-1 ? ' disabled' : '') + '>Next →</button>';
-    document.getElementById('logPagination').innerHTML = phtml;
-}
+                var p = new URLSearchParams(window.location.search);
+                if (p.get("window")) {
+                    state.window = p.get("window");
+                    state.period = "";
+                    state.customFrom = "";
+                    state.customTo = "";
+                    state.toNow = true;
+                }
+                if (p.get("backend")) state.backend = p.get("backend");
+                if (p.get("model")) state.model = p.get("model");
+                if (p.get("client")) state.client = p.get("client");
+                if (p.get("errors") === "1") state.errors = true;
+                if (p.get("hideErrors") === "1") state.hideErrors = true;
+                if (p.get("from")) {
+                    state.customFrom = p.get("from");
+                    state.window = "custom";
+                    state.period = "";
+                }
+                if (p.get("to")) {
+                    state.customTo = p.get("to");
+                    state.toNow = false;
+                    state.period = "";
+                }
+                if (p.get("from") && !p.get("to")) state.toNow = true;
 
-// ── Request Detail Modal ───────────────────────────────────
-function showDetail(id) {
-    var modal = document.getElementById('detailModal');
-    var content = document.getElementById('detailContent');
-    modal.classList.add('open');
-    content.innerHTML = '<p style="color:var(--text-dim)">Loading…</p>';
-    fetch('/ui/stats/detail?id=' + id)
-        .then(function(r) { return r.text(); })
-        .then(function(html) { content.innerHTML = html; })
-        .catch(function() { content.innerHTML = '<p class="red">Failed to load details</p>'; });
-}
+                if (localStorage.getItem("dash-filters-open") === "1") {
+                    document
+                        .getElementById("filtersPanel")
+                        .classList.add("open");
+                    document
+                        .getElementById("filtersToggleBtn")
+                        .classList.add("active");
+                }
+                if (localStorage.getItem("dash-time-open") === "1") {
+                    document.getElementById("timePanel").classList.add("open");
+                    document
+                        .getElementById("timeSummaryBtn")
+                        .classList.add("active");
+                }
 
-// ── Init ───────────────────────────────────────────────────
-initFilters();
-fetchData();
-setupAutoRefresh();
+                document
+                    .getElementById("fromInput")
+                    .addEventListener("change", function () {
+                        if (!this.value) return;
+                        state.period = "";
+                        state.customFrom = new Date(this.value).toISOString();
+                        state.window = "custom";
+                        updateFilterUI();
+                    });
+                document
+                    .getElementById("toInput")
+                    .addEventListener("change", function () {
+                        if (!this.value || state.toNow) return;
+                        state.period = "";
+                        state.customTo = new Date(this.value).toISOString();
+                        state.window = "custom";
+                        updateFilterUI();
+                    });
 
-// Redraw charts on resize
-var resizeTimer;
-window.addEventListener('resize', function() {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(function() { if (lastData) { renderCharts(lastData.time_series); } }, 250);
-});
-</script>
-</body>
+                document
+                    .querySelectorAll(".preset-pill[data-w]")
+                    .forEach(function (btn) {
+                        btn.addEventListener("click", function () {
+                            setPreset(this.dataset.w);
+                        });
+                    });
+                document
+                    .querySelectorAll(".period-pill")
+                    .forEach(function (btn) {
+                        btn.addEventListener("click", function () {
+                            setPeriod(this.dataset.period);
+                        });
+                    });
+
+                document
+                    .getElementById("filterBackend")
+                    .addEventListener("change", function () {
+                        state.backend = this.value;
+                        state.page = 0;
+                        updateFilterUI();
+                        fetchData();
+                    });
+                document
+                    .getElementById("filterModel")
+                    .addEventListener("change", function () {
+                        state.model = this.value;
+                        state.page = 0;
+                        updateFilterUI();
+                        fetchData();
+                    });
+                document
+                    .getElementById("filterClient")
+                    .addEventListener("change", function () {
+                        state.client = this.value;
+                        state.page = 0;
+                        updateFilterUI();
+                        fetchData();
+                    });
+
+                document
+                    .getElementById("filterErrors")
+                    .addEventListener("change", function () {
+                        state.errors = this.checked;
+                        if (this.checked) {
+                            state.hideErrors = false;
+                            document.getElementById(
+                                "filterHideErrors",
+                            ).checked = false;
+                        }
+                        state.page = 0;
+                        updateFilterUI();
+                        fetchData();
+                    });
+                document
+                    .getElementById("filterHideErrors")
+                    .addEventListener("change", function () {
+                        state.hideErrors = this.checked;
+                        if (this.checked) {
+                            state.errors = false;
+                            document.getElementById("filterErrors").checked =
+                                false;
+                        }
+                        updateFilterUI();
+                        renderLogFromCache();
+                    });
+
+                document
+                    .getElementById("autoRefresh")
+                    .addEventListener("change", function () {
+                        setupAutoRefresh();
+                    });
+
+                updateFilterUI();
+            }
+
+            function setPreset(w) {
+                state.period = "";
+                if (w === "all") {
+                    state.window = "all";
+                    state.toNow = false;
+                    state.customFrom = "";
+                    state.customTo = "";
+                } else {
+                    state.window = w;
+                    state.toNow = true;
+                    state.customFrom = "";
+                    state.customTo = "";
+                }
+                state.page = 0;
+                updateFilterUI();
+                fetchData();
+            }
+
+            function setPeriod(period) {
+                var now = new Date();
+                var start;
+                var end;
+
+                function startOfDay(d) {
+                    return new Date(
+                        d.getFullYear(),
+                        d.getMonth(),
+                        d.getDate(),
+                        0,
+                        0,
+                        0,
+                        0,
+                    );
+                }
+                function endOfDay(d) {
+                    return new Date(
+                        d.getFullYear(),
+                        d.getMonth(),
+                        d.getDate(),
+                        23,
+                        59,
+                        59,
+                        999,
+                    );
+                }
+                function startOfWeek(d) {
+                    var date = startOfDay(d);
+                    var day = date.getDay();
+                    var diff = day === 0 ? -6 : 1 - day;
+                    date.setDate(date.getDate() + diff);
+                    return date;
+                }
+
+                if (period === "today") {
+                    start = startOfDay(now);
+                    end = now;
+                } else if (period === "yesterday") {
+                    var yesterday = new Date(now);
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    start = startOfDay(yesterday);
+                    end = endOfDay(yesterday);
+                } else if (period === "this-week") {
+                    start = startOfWeek(now);
+                    end = now;
+                } else if (period === "last-week") {
+                    var thisWeekStart = startOfWeek(now);
+                    start = new Date(thisWeekStart);
+                    start.setDate(start.getDate() - 7);
+                    end = new Date(thisWeekStart);
+                    end.setMilliseconds(-1);
+                } else if (period === "this-month") {
+                    start = new Date(
+                        now.getFullYear(),
+                        now.getMonth(),
+                        1,
+                        0,
+                        0,
+                        0,
+                        0,
+                    );
+                    end = now;
+                } else if (period === "last-month") {
+                    start = new Date(
+                        now.getFullYear(),
+                        now.getMonth() - 1,
+                        1,
+                        0,
+                        0,
+                        0,
+                        0,
+                    );
+                    end = new Date(
+                        now.getFullYear(),
+                        now.getMonth(),
+                        1,
+                        0,
+                        0,
+                        0,
+                        0,
+                    );
+                    end.setMilliseconds(-1);
+                } else {
+                    return;
+                }
+
+                state.period = period;
+                state.window = "custom";
+                state.toNow =
+                    period === "today" ||
+                    period === "this-week" ||
+                    period === "this-month";
+                state.customFrom = start.toISOString();
+                state.customTo = state.toNow ? "" : end.toISOString();
+                state.page = 0;
+                updateFilterUI();
+                fetchData();
+            }
+
+            function clearTimeRange() {
+                clearPersistedTimePreference();
+                applyTodayDefault();
+                state.page = 0;
+                updateFilterUI();
+                fetchData();
+            }
+
+            function toggleNow() {
+                state.period = "";
+                if (state.toNow) {
+                    if (!state.customFrom && state.window !== "custom") {
+                        state.customFrom = new Date(
+                            Date.now() - parseWindowMs(state.window),
+                        ).toISOString();
+                    }
+                    state.customTo = new Date().toISOString();
+                    state.window = "custom";
+                    state.toNow = false;
+                } else {
+                    state.toNow = true;
+                    state.customTo = "";
+                }
+                updateFilterUI();
+            }
+
+            function applyTimeRange() {
+                var fromVal = document.getElementById("fromInput").value;
+                if (!fromVal) return;
+                state.period = "";
+                state.customFrom = new Date(fromVal).toISOString();
+                state.window = "custom";
+                if (!state.toNow) {
+                    var toVal = document.getElementById("toInput").value;
+                    if (!toVal) return;
+                    state.customTo = new Date(toVal).toISOString();
+                } else {
+                    state.customTo = "";
+                }
+                state.page = 0;
+                updateFilterUI();
+                fetchData();
+            }
+
+            function toggleTimePanel() {
+                var panel = document.getElementById("timePanel");
+                var btn = document.getElementById("timeSummaryBtn");
+                var isOpen = panel.classList.toggle("open");
+                btn.classList.toggle("active", isOpen);
+                localStorage.setItem("dash-time-open", isOpen ? "1" : "0");
+            }
+
+            function toggleFilters() {
+                var panel = document.getElementById("filtersPanel");
+                var btn = document.getElementById("filtersToggleBtn");
+                var isOpen = panel.classList.toggle("open");
+                btn.classList.toggle("active", isOpen);
+                localStorage.setItem("dash-filters-open", isOpen ? "1" : "0");
+            }
+
+            function clearFilters() {
+                state.backend = "";
+                state.model = "";
+                state.client = "";
+                state.errors = false;
+                state.hideErrors = false;
+                state.page = 0;
+                updateFilterUI();
+                fetchData();
+            }
+
+            function renderLogFromCache() {
+                if (lastData) renderLog(lastData.records);
+            }
+
+            function updateFilterUI() {
+                var now = new Date();
+                var fromInput = document.getElementById("fromInput");
+                var toInput = document.getElementById("toInput");
+                var nowBtn = document.getElementById("nowBtn");
+
+                if (state.window === "all" && !state.customFrom) {
+                    fromInput.value = "2010-01-01T00:00";
+                } else if (state.customFrom) {
+                    fromInput.value = isoToLocal(state.customFrom);
+                } else if (state.window && state.window !== "custom") {
+                    fromInput.value = isoToLocal(
+                        new Date(
+                            now.getTime() - parseWindowMs(state.window),
+                        ).toISOString(),
+                    );
+                }
+
+                if (state.toNow) {
+                    toInput.value = isoToLocal(now.toISOString());
+                    toInput.disabled = true;
+                    nowBtn.classList.remove("inactive");
+                } else {
+                    toInput.disabled = false;
+                    if (state.customTo)
+                        toInput.value = isoToLocal(state.customTo);
+                    nowBtn.classList.add("inactive");
+                }
+
+                document
+                    .querySelectorAll(".preset-pill[data-w]")
+                    .forEach(function (btn) {
+                        btn.classList.toggle(
+                            "active",
+                            state.toNow &&
+                                !state.customFrom &&
+                                btn.dataset.w === state.window,
+                        );
+                    });
+                document
+                    .querySelectorAll(".period-pill")
+                    .forEach(function (btn) {
+                        btn.classList.toggle(
+                            "active",
+                            btn.dataset.period === state.period,
+                        );
+                    });
+                var moreEl = document.getElementById("presetMore");
+                if (moreEl) moreEl.value = "";
+
+                var n =
+                    (state.backend ? 1 : 0) +
+                    (state.model ? 1 : 0) +
+                    (state.client ? 1 : 0) +
+                    (state.errors ? 1 : 0) +
+                    (state.hideErrors ? 1 : 0);
+                var badge = document.getElementById("filterBadge");
+                badge.textContent = n;
+                badge.style.display = n > 0 ? "" : "none";
+
+                document.getElementById("filterBackend").value = state.backend;
+                document.getElementById("filterModel").value = state.model;
+                document.getElementById("filterClient").value = state.client;
+                document.getElementById("filterErrors").checked = state.errors;
+                document.getElementById("filterHideErrors").checked =
+                    state.hideErrors;
+
+                localStorage.setItem("dash-window", state.window);
+                localStorage.setItem("dash-to-now", state.toNow ? "1" : "0");
+                persistTimePreference();
+                updateTimeSummary();
+            }
+
+            function updateTimeSummary() {
+                var el = document.getElementById("timeSummaryText");
+                if (!el) return;
+                if (state.period) {
+                    var periodLabels = {
+                        "last-month": "Last Month",
+                        "this-month": "This Month",
+                        "last-week": "Last Week",
+                        "this-week": "This Week",
+                        yesterday: "Yesterday",
+                        today: "Today",
+                    };
+                    el.textContent = periodLabels[state.period] || state.period;
+                } else if (state.window === "all" && !state.customFrom) {
+                    el.textContent = "All time";
+                } else if (state.toNow && !state.customFrom) {
+                    var labels = {
+                        "5m": "Last 5m",
+                        "15m": "Last 15m",
+                        "30m": "Last 30m",
+                        "1h": "Last 1h",
+                        "2h": "Last 2h",
+                        "4h": "Last 4h",
+                        "8h": "Last 8h",
+                        "12h": "Last 12h",
+                        "1d": "Last 24h",
+                        "2d": "Last 2d",
+                        "3d": "Last 3d",
+                        "7d": "Last 7d",
+                        "14d": "Last 14d",
+                        "30d": "Last 30d",
+                    };
+                    el.textContent =
+                        labels[state.window] || "Last " + state.window;
+                } else {
+                    var fmtShort = function (iso) {
+                        var d = new Date(iso);
+                        return (
+                            d.getMonth() +
+                            1 +
+                            "/" +
+                            d.getDate() +
+                            " " +
+                            d.getHours() +
+                            ":" +
+                            (d.getMinutes() < 10 ? "0" : "") +
+                            d.getMinutes()
+                        );
+                    };
+                    var from = state.customFrom
+                        ? fmtShort(state.customFrom)
+                        : "?";
+                    var to = state.toNow
+                        ? "Now"
+                        : state.customTo
+                          ? fmtShort(state.customTo)
+                          : "Now";
+                    el.textContent = from + " → " + to;
+                }
+            }
+
+            function populateDropdowns(filters) {
+                populateSelect(
+                    "filterBackend",
+                    filters.backends,
+                    state.backend,
+                    "All Backends",
+                );
+                populateSelect(
+                    "filterModel",
+                    filters.models,
+                    state.model,
+                    "All Models",
+                );
+                populateSelect(
+                    "filterClient",
+                    filters.clients,
+                    state.client,
+                    "All Clients",
+                );
+            }
+
+            function populateSelect(id, values, current, placeholder) {
+                var sel = document.getElementById(id);
+                var opts = '<option value="">' + placeholder + "</option>";
+                (values || []).forEach(function (v) {
+                    opts +=
+                        '<option value="' +
+                        esc(v) +
+                        '"' +
+                        (v === current ? " selected" : "") +
+                        ">" +
+                        esc(v) +
+                        "</option>";
+                });
+                sel.innerHTML = opts;
+            }
+
+            function buildURL() {
+                var p = new URLSearchParams();
+                if (state.window === "all" && !state.customFrom) {
+                    p.set("from", "2010-01-01T00:00:00.000Z");
+                    p.set("to", new Date().toISOString());
+                } else if (state.toNow && !state.customFrom) {
+                    p.set("window", state.window || "1h");
+                } else if (state.toNow && state.customFrom) {
+                    p.set("from", state.customFrom);
+                    p.set("to", new Date().toISOString());
+                } else {
+                    if (state.customFrom) p.set("from", state.customFrom);
+                    if (state.customTo) p.set("to", state.customTo);
+                }
+                if (state.backend) p.set("backend", state.backend);
+                if (state.model) p.set("model", state.model);
+                if (state.client) p.set("client", state.client);
+                if (state.errors) p.set("errors", "1");
+                p.set("page", state.page);
+                return "/ui/dashboard/data?" + p.toString();
+            }
+
+            function updateBrowserURL() {
+                var p = new URLSearchParams();
+                if (state.toNow && !state.customFrom) {
+                    if (state.window && state.window !== "1h")
+                        p.set("window", state.window);
+                } else if (state.toNow && state.customFrom) {
+                    p.set("from", state.customFrom);
+                } else {
+                    if (state.customFrom) p.set("from", state.customFrom);
+                    if (state.customTo) p.set("to", state.customTo);
+                }
+                if (state.backend) p.set("backend", state.backend);
+                if (state.model) p.set("model", state.model);
+                if (state.client) p.set("client", state.client);
+                if (state.errors) p.set("errors", "1");
+                if (state.hideErrors) p.set("hideErrors", "1");
+                if (state.page > 0) p.set("page", state.page);
+                var qs = p.toString();
+                history.replaceState(null, "", "/ui/" + (qs ? "?" + qs : ""));
+            }
+
+            // ── Set filter from click ──────────────────────────────────
+            function setFilter(dim, value) {
+                if (dim === "backend") state.backend = value;
+                if (dim === "model") state.model = value;
+                if (dim === "client") state.client = value;
+                state.page = 0;
+                var panel = document.getElementById("filtersPanel");
+                if (!panel.classList.contains("open")) {
+                    panel.classList.add("open");
+                    document
+                        .getElementById("filtersToggleBtn")
+                        .classList.add("active");
+                    localStorage.setItem("dash-filters-open", "1");
+                }
+                updateFilterUI();
+                fetchData();
+            }
+
+            // ── Auto-refresh ───────────────────────────────────────────
+            function setupAutoRefresh() {
+                if (autoTimer) clearInterval(autoTimer);
+                var ms = parseInt(document.getElementById("autoRefresh").value);
+                if (ms > 0) autoTimer = setInterval(fetchData, ms);
+            }
+
+            // ── Data fetch ─────────────────────────────────────────────
+            function fetchData(p) {
+                if (p !== undefined) state.page = p;
+                updateBrowserURL();
+                fetch(buildURL())
+                    .then(function (r) {
+                        return r.json();
+                    })
+                    .then(function (d) {
+                        lastData = d;
+                        renderAll(d);
+                    })
+                    .catch(function (e) {
+                        console.error("Dashboard fetch error:", e);
+                    });
+            }
+
+            // ── Render all ─────────────────────────────────────────────
+            function renderAll(d) {
+                renderSummary(d.summary, d.percentiles);
+                renderCharts(d.time_series);
+                rankData.models = d.top_models || [];
+                rankData.backends = d.top_backends || [];
+                rankData.clients = d.top_clients || [];
+                renderRankTab();
+                renderRouting(d.routing || []);
+                renderLog(d.records);
+                populateDropdowns(d.filters || {});
+            }
+
+            // ── Summary Cards ──────────────────────────────────────────
+            function renderSummary(s, p) {
+                document.getElementById("c-requests").textContent = fmtNum(
+                    s.total_requests,
+                );
+                document.getElementById("c-tokens").textContent = fmtNum(
+                    s.total_tokens,
+                );
+                document.getElementById("c-latency").textContent = fmtDur(
+                    s.avg_latency_ms,
+                );
+                var tpsCard = document.getElementById("c-tps-card");
+                if (s.avg_tps > 0) {
+                    tpsCard.style.display = "";
+                    document.getElementById("c-tps").textContent =
+                        s.avg_tps.toFixed(1) + " tok/s";
+                } else {
+                    tpsCard.style.display = "none";
+                }
+                var errEl = document.getElementById("c-errors");
+                errEl.textContent = fmtNum(s.total_errors);
+                errEl.className =
+                    "value " + (s.total_errors > 0 ? "red" : "green");
+                document.getElementById("c-percentiles").textContent =
+                    "p50 " +
+                    fmtDur(p.p50) +
+                    "  p90 " +
+                    fmtDur(p.p90) +
+                    "  p99 " +
+                    fmtDur(p.p99);
+                var cc = document.getElementById("c-cached-card");
+                if (s.total_cached > 0) {
+                    cc.style.display = "";
+                    document.getElementById("c-cached").textContent = fmtNum(
+                        s.total_cached,
+                    );
+                } else {
+                    cc.style.display = "none";
+                }
+                var rc = document.getElementById("c-reason-card");
+                if (s.total_reasoning > 0) {
+                    rc.style.display = "";
+                    document.getElementById("c-reason").textContent = fmtNum(
+                        s.total_reasoning,
+                    );
+                } else {
+                    rc.style.display = "none";
+                }
+            }
+
+            // ── Charts ─────────────────────────────────────────────────
+            function renderCharts(series) {
+                if (!series || series.length === 0) {
+                    clearCanvas("chart-requests", "No data");
+                    clearCanvas("chart-latency", "No data");
+                    clearCanvas("chart-tps", "No data");
+                    return;
+                }
+                var labels = series.map(function (p) {
+                    return new Date(p.t).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                    });
+                });
+                drawBarChart(
+                    "chart-requests",
+                    labels,
+                    series.map(function (p) {
+                        return p.req;
+                    }),
+                    getAccentColor(),
+                    series.map(function (p) {
+                        return p.err;
+                    }),
+                );
+                drawLineChart(
+                    "chart-latency",
+                    labels,
+                    series.map(function (p) {
+                        return p.lat;
+                    }),
+                    "#34d399",
+                );
+                var tpsValues = series.map(function (p) {
+                    return p.tps || 0;
+                });
+                var hasTps = tpsValues.some(function (v) {
+                    return v > 0;
+                });
+                if (hasTps) {
+                    drawLineChart(
+                        "chart-tps",
+                        labels,
+                        tpsValues,
+                        "#06b6d4",
+                        function (v) {
+                            return v + " tps";
+                        },
+                    );
+                } else {
+                    clearCanvas("chart-tps", "No TPS data");
+                }
+            }
+
+            function getAccentColor() {
+                return (
+                    getComputedStyle(document.documentElement)
+                        .getPropertyValue("--accent")
+                        .trim() || "#22d3ee"
+                );
+            }
+            function getTextDimColor() {
+                return (
+                    getComputedStyle(document.documentElement)
+                        .getPropertyValue("--text-dim")
+                        .trim() || "#64748b"
+                );
+            }
+            function getBorderColor() {
+                return (
+                    getComputedStyle(document.documentElement)
+                        .getPropertyValue("--border")
+                        .trim() || "#1e2d3d"
+                );
+            }
+
+            function clearCanvas(id, msg) {
+                var cv = document.getElementById(id);
+                var ctx = cv.getContext("2d");
+                ctx.clearRect(0, 0, cv.width, cv.height);
+                ctx.fillStyle = getTextDimColor();
+                ctx.font = "12px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText(msg || "", cv.width / 2, cv.height / 2);
+            }
+
+            function setupCanvas(id) {
+                var cv = document.getElementById(id);
+                var dpr = window.devicePixelRatio || 1;
+                var logicalH = parseInt(cv.dataset.height || 160);
+                var rect = cv.parentElement.getBoundingClientRect();
+                cv.width = rect.width * dpr;
+                cv.height = logicalH * dpr;
+                cv.style.height = logicalH + "px";
+                var ctx = cv.getContext("2d");
+                ctx.scale(dpr, dpr);
+                return { cv: cv, ctx: ctx, w: rect.width, h: logicalH };
+            }
+
+            function drawBarChart(id, labels, values, color, errValues) {
+                var s = setupCanvas(id);
+                var ctx = s.ctx,
+                    W = s.w,
+                    H = s.h;
+                var padL = 32,
+                    padR = 8,
+                    padT = 10,
+                    padB = 28;
+                var chartW = W - padL - padR,
+                    chartH = H - padT - padB;
+                ctx.clearRect(0, 0, W, H);
+                var max = Math.max.apply(null, values) || 1;
+                var n = values.length,
+                    gap = 2,
+                    bw = Math.max(1, (chartW - gap * (n - 1)) / n);
+                ctx.fillStyle = getTextDimColor();
+                ctx.font = "9px monospace";
+                ctx.textAlign = "right";
+                [0, 0.5, 1].forEach(function (f) {
+                    var y = padT + chartH * (1 - f);
+                    ctx.fillText(Math.round(max * f), padL - 4, y + 3);
+                    ctx.strokeStyle = getBorderColor();
+                    ctx.lineWidth = 0.5;
+                    ctx.beginPath();
+                    ctx.moveTo(padL, y);
+                    ctx.lineTo(W - padR, y);
+                    ctx.stroke();
+                });
+                values.forEach(function (v, i) {
+                    var x = padL + i * (bw + gap),
+                        h = (v / max) * chartH;
+                    ctx.fillStyle = color;
+                    ctx.globalAlpha = 0.85;
+                    ctx.fillRect(x, padT + chartH - h, bw, h);
+                    if (errValues && errValues[i] > 0) {
+                        ctx.fillStyle = "#f87171";
+                        ctx.globalAlpha = 0.9;
+                        var eh = (errValues[i] / max) * chartH;
+                        ctx.fillRect(x, padT + chartH - eh, bw, eh);
+                    }
+                    ctx.globalAlpha = 1;
+                });
+                ctx.fillStyle = getTextDimColor();
+                ctx.font = "9px monospace";
+                ctx.textAlign = "center";
+                var step = Math.max(1, Math.floor(n / 8));
+                for (var i = 0; i < n; i += step) {
+                    ctx.fillText(
+                        labels[i],
+                        padL + i * (bw + gap) + bw / 2,
+                        H - 4,
+                    );
+                }
+            }
+
+            function drawLineChart(id, labels, values, color, fmtLabel) {
+                var s = setupCanvas(id);
+                var ctx = s.ctx,
+                    W = s.w,
+                    H = s.h;
+                var padL = 40,
+                    padR = 8,
+                    padT = 10,
+                    padB = 28;
+                var chartW = W - padL - padR,
+                    chartH = H - padT - padB;
+                ctx.clearRect(0, 0, W, H);
+                var max = Math.max.apply(null, values) || 1;
+                var n = values.length;
+                if (n < 2) {
+                    clearCanvas(id, "Not enough data");
+                    return;
+                }
+                if (!fmtLabel) fmtLabel = fmtDur;
+                [0, 0.5, 1].forEach(function (f) {
+                    var y = padT + chartH * (1 - f);
+                    ctx.fillStyle = getTextDimColor();
+                    ctx.font = "9px monospace";
+                    ctx.textAlign = "right";
+                    ctx.fillText(
+                        fmtLabel(Math.round(max * f)),
+                        padL - 4,
+                        y + 3,
+                    );
+                    ctx.strokeStyle = getBorderColor();
+                    ctx.lineWidth = 0.5;
+                    ctx.beginPath();
+                    ctx.moveTo(padL, y);
+                    ctx.lineTo(W - padR, y);
+                    ctx.stroke();
+                });
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.lineJoin = "round";
+                ctx.beginPath();
+                values.forEach(function (v, i) {
+                    var x = padL + (i / (n - 1)) * chartW,
+                        y = padT + chartH * (1 - v / max);
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+                ctx.globalAlpha = 0.12;
+                ctx.fillStyle = color;
+                ctx.lineTo(padL + chartW, padT + chartH);
+                ctx.lineTo(padL, padT + chartH);
+                ctx.closePath();
+                ctx.fill();
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = color;
+                values.forEach(function (v, i) {
+                    var x = padL + (i / (n - 1)) * chartW,
+                        y = padT + chartH * (1 - v / max);
+                    ctx.beginPath();
+                    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.fillStyle = getTextDimColor();
+                ctx.font = "9px monospace";
+                ctx.textAlign = "center";
+                var step = Math.max(1, Math.floor(n / 8));
+                for (var i = 0; i < n; i += step) {
+                    ctx.fillText(
+                        labels[i],
+                        padL + (i / (n - 1)) * chartW,
+                        H - 4,
+                    );
+                }
+            }
+
+            // ── Rankings ───────────────────────────────────────────────
+            function showRankTab(tab) {
+                activeRankTab = tab;
+                document
+                    .querySelectorAll("#rankTabs .tab-btn")
+                    .forEach(function (b, i) {
+                        b.classList.toggle(
+                            "active",
+                            ["models", "backends", "clients"][i] === tab,
+                        );
+                    });
+                renderRankTab();
+            }
+
+            function sortRank(tab, col) {
+                var ss = sortState[tab];
+                if (ss.col === col) {
+                    ss.asc = !ss.asc;
+                } else {
+                    ss.col = col;
+                    ss.asc = false;
+                }
+                renderRankTab();
+            }
+
+            function renderRankTab() {
+                var tab = activeRankTab;
+                var data = rankData[tab] || [];
+                var ss = sortState[tab];
+                var dim =
+                    tab === "models"
+                        ? "model"
+                        : tab === "backends"
+                          ? "backend"
+                          : "client";
+
+                // Clone and sort
+                var rows = data.slice();
+                rows.sort(function (a, b) {
+                    var va = a[ss.col],
+                        vb = b[ss.col];
+                    if (typeof va === "string")
+                        return ss.asc
+                            ? va.localeCompare(vb)
+                            : vb.localeCompare(va);
+                    return ss.asc ? va - vb : vb - va;
+                });
+
+                var arrow = function (col) {
+                    return ss.col === col ? (ss.asc ? " ▲" : " ▼") : "";
+                };
+                var html = '<table class="rank-table"><thead><tr>';
+                html +=
+                    "<th onclick=\"sortRank('" +
+                    tab +
+                    "','name')\">Name" +
+                    arrow("name") +
+                    "</th>";
+                html +=
+                    "<th onclick=\"sortRank('" +
+                    tab +
+                    "','req')\">Requests" +
+                    arrow("req") +
+                    "</th>";
+                html +=
+                    "<th onclick=\"sortRank('" +
+                    tab +
+                    "','tok')\">Tokens" +
+                    arrow("tok") +
+                    "</th>";
+                html +=
+                    "<th onclick=\"sortRank('" +
+                    tab +
+                    "','err')\">Errors" +
+                    arrow("err") +
+                    "</th>";
+                html +=
+                    "<th onclick=\"sortRank('" +
+                    tab +
+                    "','err_pct')\">Error %" +
+                    arrow("err_pct") +
+                    "</th>";
+                // Only show attempt fail column for backends tab
+                if (tab === "backends") {
+                    html +=
+                        "<th onclick=\"sortRank('" +
+                        tab +
+                        "','attempt_failure_pct')\">Attempt Fail %" +
+                        arrow("attempt_failure_pct") +
+                        "</th>";
+                }
+                html +=
+                    "<th onclick=\"sortRank('" +
+                    tab +
+                    "','lat')\">Avg Lat" +
+                    arrow("lat") +
+                    "</th>";
+                html +=
+                    "<th onclick=\"sortRank('" +
+                    tab +
+                    "','p50')\">P50" +
+                    arrow("p50") +
+                    "</th>";
+                html +=
+                    "<th onclick=\"sortRank('" +
+                    tab +
+                    "','p90')\">P90" +
+                    arrow("p90") +
+                    "</th>";
+                html +=
+                    "<th onclick=\"sortRank('" +
+                    tab +
+                    "','p99')\">P99" +
+                    arrow("p99") +
+                    "</th>";
+                html += "</tr></thead><tbody>";
+
+                if (rows.length === 0) {
+                    var colSpan = tab === "backends" ? 10 : 9;
+                    html +=
+                        '<tr><td colspan="' +
+                        colSpan +
+                        '" class="empty">No data</td></tr>';
+                } else {
+                    rows.forEach(function (r) {
+                        var errBar =
+                            r.err_pct > 0
+                                ? '<span class="err-bar" style="width:' +
+                                  Math.min(r.err_pct, 100) * 0.4 +
+                                  'px"></span>'
+                                : "";
+                        html += "<tr>";
+                        html +=
+                            '<td class="name-cell" onclick="setFilter(\'' +
+                            dim +
+                            "','" +
+                            esc(r.name) +
+                            "')\">" +
+                            esc(r.name) +
+                            "</td>";
+                        html += "<td>" + fmtNum(r.req) + "</td>";
+                        html += "<td>" + fmtNum(r.tok) + "</td>";
+                        html +=
+                            "<td>" +
+                            (r.err > 0
+                                ? '<span class="red">' + r.err + "</span>"
+                                : "0") +
+                            "</td>";
+                        html +=
+                            "<td>" +
+                            r.err_pct.toFixed(1) +
+                            "%" +
+                            errBar +
+                            "</td>";
+                        if (tab === "backends") {
+                            var afPct = r.attempt_failure_pct || 0;
+                            var afColor =
+                                afPct === 0
+                                    ? "var(--text-dim)"
+                                    : afPct < 5
+                                      ? "#eab308"
+                                      : "var(--red)";
+                            var afText =
+                                r.attempt_count > 0
+                                    ? afPct.toFixed(1) +
+                                      '% <span style="color:var(--text-dim);font-size:0.8em">(' +
+                                      (r.attempt_failures || 0) +
+                                      "/" +
+                                      r.attempt_count +
+                                      ")</span>"
+                                    : '<span style="color:var(--text-dim)">—</span>';
+                            html +=
+                                '<td style="color:' +
+                                afColor +
+                                '">' +
+                                afText +
+                                "</td>";
+                        }
+                        html +=
+                            '<td class="' +
+                            latClass(r.lat) +
+                            '">' +
+                            fmtDur(r.lat) +
+                            "</td>";
+                        html +=
+                            '<td class="' +
+                            latClass(r.p50) +
+                            '">' +
+                            fmtDur(r.p50) +
+                            "</td>";
+                        html +=
+                            '<td class="' +
+                            latClass(r.p90) +
+                            '">' +
+                            fmtDur(r.p90) +
+                            "</td>";
+                        html +=
+                            '<td class="' +
+                            latClass(r.p99) +
+                            '">' +
+                            fmtDur(r.p99) +
+                            "</td>";
+                        html += "</tr>";
+                    });
+                }
+                html += "</tbody></table>";
+                document.getElementById("rankContainer").innerHTML = html;
+            }
+
+            // ── Routing Stats ──────────────────────────────────────────
+            function toggleRouting() {
+                var c = document.getElementById("routingContent");
+                var open = c.classList.toggle("open");
+                document.getElementById("routingToggle").textContent = open
+                    ? "Hide ▴"
+                    : "Show ▾";
+            }
+
+            function strategyClass(s) {
+                switch (s) {
+                    case "priority":
+                        return "strategy-priority";
+                    case "round-robin":
+                        return "strategy-round-robin";
+                    case "race":
+                        return "strategy-race";
+                    case "staggered-race":
+                        return "strategy-staggered-race";
+                    default:
+                        return "";
+                }
+            }
+
+            function strategyLabel(s) {
+                switch (s) {
+                    case "priority":
+                        return "PRIORITY";
+                    case "round-robin":
+                        return "ROUND-ROBIN";
+                    case "race":
+                        return "RACE";
+                    case "staggered-race":
+                        return "STAGGERED";
+                    default:
+                        return s ? s.toUpperCase() : "";
+                }
+            }
+
+            function renderRouting(models) {
+                var sec = document.getElementById("routingSection");
+                if (!models || models.length === 0) {
+                    sec.style.display = "none";
+                    return;
+                }
+                sec.style.display = "";
+                var html = "";
+                models.forEach(function (m) {
+                    html += '<div class="model-card">';
+                    html += '<div class="model-header">';
+                    html +=
+                        '<span class="model-name">' + esc(m.model) + "</span>";
+                    html +=
+                        '<span class="strategy-badge ' +
+                        strategyClass(m.strategy) +
+                        '">' +
+                        strategyLabel(m.strategy) +
+                        "</span>";
+                    html +=
+                        '<span class="model-meta">' +
+                        fmtNum(m.total_requests) +
+                        " req · " +
+                        fmtDur(m.avg_lat_ms) +
+                        " avg · " +
+                        (m.fallback_rate || 0).toFixed(1) +
+                        "% fallback</span>";
+                    html += "</div>";
+                    html +=
+                        '<table class="backend-table"><thead><tr><th>Backend</th><th>Avg Latency</th><th>Share</th><th>Error %</th><th>Attempt Fail %</th><th>Fallbacks</th><th>Requests</th></tr></thead><tbody>';
+                    (m.backends || []).forEach(function (b) {
+                        var errPct =
+                            b.requests > 0 ? (b.errors / b.requests) * 100 : 0;
+                        var fbPct =
+                            b.requests > 0
+                                ? (b.fallbacks / b.requests) * 100
+                                : 0;
+                        var attemptFailPct = b.attempt_failure_pct || 0;
+                        var attemptFailColor =
+                            attemptFailPct === 0
+                                ? "var(--text-dim)"
+                                : attemptFailPct < 5
+                                  ? "#eab308"
+                                  : "var(--red)";
+                        var attemptFailText =
+                            b.attempt_count > 0
+                                ? attemptFailPct.toFixed(1) +
+                                  '% <span style="color:var(--text-dim);font-size:0.8em">(' +
+                                  b.attempt_failures +
+                                  "/" +
+                                  b.attempt_count +
+                                  ")</span>"
+                                : '<span style="color:var(--text-dim)">—</span>';
+                        html += "<tr>";
+                        html +=
+                            '<td><span class="backend-name" onclick="showBackendDrilldown(\'' +
+                            esc(b.name) +
+                            "')\">" +
+                            esc(b.name) +
+                            "</span></td>";
+                        html +=
+                            '<td class="' +
+                            latClass(b.avg_lat_ms) +
+                            '">' +
+                            fmtDur(b.avg_lat_ms) +
+                            "</td>";
+                        html +=
+                            '<td><span class="bar-track" style="width:80px"><span class="bar-fill" style="width:' +
+                            (b.win_pct || 0) +
+                            '%"></span></span> ' +
+                            (b.win_pct || 0).toFixed(0) +
+                            "%</td>";
+                        html +=
+                            "<td>" +
+                            (errPct > 0
+                                ? '<span class="red">' +
+                                  errPct.toFixed(1) +
+                                  "%</span>"
+                                : '<span style="color:var(--text-dim)">0%</span>') +
+                            "</td>";
+                        html +=
+                            '<td style="color:' +
+                            attemptFailColor +
+                            '">' +
+                            attemptFailText +
+                            "</td>";
+                        html +=
+                            "<td>" +
+                            b.fallbacks +
+                            (b.requests > 0
+                                ? " (" + fbPct.toFixed(0) + "%)"
+                                : "") +
+                            "</td>";
+                        html += "<td>" + fmtNum(b.requests) + "</td>";
+                        html += "</tr>";
+                    });
+                    html += "</tbody></table></div>";
+                });
+                document.getElementById("routingContent").innerHTML = html;
+            }
+
+            // ── Backend Drilldown Modal ────────────────────────────────
+            function showBackendDrilldown(name) {
+                var modal = document.getElementById("drilldownModal");
+                var content = document.getElementById("drilldownContent");
+                modal.classList.add("open");
+                content.innerHTML =
+                    '<p style="color:var(--text-dim)">Loading fallback data for <strong>' +
+                    esc(name) +
+                    "</strong>…</p>";
+                var w = state.window === "custom" ? "24h" : state.window;
+                fetch(
+                    "/ui/routing/backend-fallbacks?name=" +
+                        encodeURIComponent(name) +
+                        "&window=" +
+                        w +
+                        "&attempts=1",
+                )
+                    .then(function (r) {
+                        return r.json();
+                    })
+                    .then(function (d) {
+                        renderDrilldown(d.items || [], name);
+                    })
+                    .catch(function () {
+                        content.innerHTML =
+                            '<p class="red">Failed to load data</p>';
+                    });
+            }
+
+            function renderDrilldown(items, name) {
+                var c = document.getElementById("drilldownContent");
+                if (items.length === 0) {
+                    c.innerHTML =
+                        '<p style="color:var(--text-dim)">No fallback records for <strong>' +
+                        esc(name) +
+                        "</strong></p>";
+                    return;
+                }
+                // Summary stats
+                var totalFails = 0;
+                var totalLat = 0;
+                items.forEach(function (r) {
+                    totalLat += r.latency_ms || 0;
+                });
+                var avgLat =
+                    items.length > 0 ? Math.round(totalLat / items.length) : 0;
+                var summaryHtml =
+                    '<div style="display:flex;gap:1.5rem;margin-bottom:1rem;flex-wrap:wrap">';
+                summaryHtml +=
+                    '<div style="font-size:0.85rem"><span style="color:var(--text-dim)">Fallback records:</span> <strong>' +
+                    items.length +
+                    "</strong></div>";
+                summaryHtml +=
+                    '<div style="font-size:0.85rem"><span style="color:var(--text-dim)">Avg latency:</span> <strong>' +
+                    fmtDur(avgLat) +
+                    "</strong></div>";
+                summaryHtml += "</div>";
+
+                var html =
+                    '<h3 style="margin-bottom:0.5rem;font-size:0.95rem">Fallback log for <span style="color:var(--accent)">' +
+                    esc(name) +
+                    "</span></h3>";
+                html += summaryHtml;
+                html +=
+                    '<table class="backend-table"><thead><tr><th>Time</th><th>Model</th><th>Attempt Error</th><th>Attempt Status</th><th>Latency</th><th>Won By</th></tr></thead><tbody>';
+                items.forEach(function (r) {
+                    // Extract this backend's attempt error from attempts array
+                    var attemptError = "—";
+                    var attemptStatus = "—";
+                    if (r.attempts && r.attempts.length > 0) {
+                        for (var i = 0; i < r.attempts.length; i++) {
+                            if (
+                                r.attempts[i].backend === name &&
+                                r.attempts[i].error
+                            ) {
+                                attemptError =
+                                    r.attempts[i].error.length > 60
+                                        ? r.attempts[i].error.substring(0, 60) +
+                                          "…"
+                                        : r.attempts[i].error;
+                                attemptStatus =
+                                    r.attempts[i].status_code || "—";
+                                break;
+                            }
+                        }
+                    } else if (r.error) {
+                        attemptError =
+                            r.error.length > 60
+                                ? r.error.substring(0, 60) + "…"
+                                : r.error;
+                    }
+                    var errDisplay =
+                        attemptError !== "—"
+                            ? '<span style="color:var(--red)" title="' +
+                              esc(attemptError) +
+                              '">' +
+                              esc(attemptError) +
+                              "</span>"
+                            : '<span style="color:var(--text-dim)">—</span>';
+                    html +=
+                        "<tr><td>" +
+                        fmtTime(r.timestamp) +
+                        "</td><td>" +
+                        esc(r.model) +
+                        "</td><td>" +
+                        errDisplay +
+                        "</td><td>" +
+                        attemptStatus +
+                        '</td><td class="' +
+                        latClass(r.latency_ms) +
+                        '">' +
+                        fmtDur(r.latency_ms) +
+                        '</td><td style="color:var(--green)">' +
+                        esc(r.backend) +
+                        "</td></tr>";
+                });
+                html += "</tbody></table>";
+                c.innerHTML = html;
+            }
+
+            // ── Request Log ────────────────────────────────────────────
+            function stratBadge(s) {
+                if (!s) return "";
+                switch (s) {
+                    case "priority":
+                        return '<span class="strat-label strat-p">P</span>';
+                    case "round-robin":
+                        return '<span class="strat-label strat-rr">RR</span>';
+                    case "race":
+                        return '<span class="strat-label strat-r">R</span>';
+                    case "staggered-race":
+                        return '<span class="strat-label strat-sr">SR</span>';
+                    default:
+                        return (
+                            '<span class="strat-label">' + esc(s) + "</span>"
+                        );
+                }
+            }
+
+            function renderLog(rec) {
+                var allItems = (rec && rec.items) || [];
+                var items = state.hideErrors
+                    ? allItems.filter(function (r) {
+                          return !r.error || r.error.length === 0;
+                      })
+                    : allItems;
+                var total = rec ? rec.total : 0;
+                document.getElementById("logCount").textContent =
+                    total > 0 ? total : "";
+
+                if (items.length === 0) {
+                    document.getElementById("logBody").innerHTML =
+                        '<tr><td colspan="12" class="empty">No requests found</td></tr>';
+                    document.getElementById("logPagination").innerHTML = "";
+                    return;
+                }
+
+                var html = "";
+                items.forEach(function (r) {
+                    var isErr = r.error && r.error.length > 0;
+                    var rowClass = isErr ? ' class="error-row"' : "";
+                    var totalTok = r.total_tokens || 0;
+                    var tokExtra = "";
+                    if (r.cached_tokens > 0)
+                        tokExtra +=
+                            ' <span class="cached-badge" title="Cached: ' +
+                            r.cached_tokens +
+                            '">⚡' +
+                            fmtNum(r.cached_tokens) +
+                            "</span>";
+                    if (r.reasoning_tokens > 0)
+                        tokExtra +=
+                            ' <span class="reason-badge" title="Reasoning: ' +
+                            r.reasoning_tokens +
+                            '">🧠' +
+                            fmtNum(r.reasoning_tokens) +
+                            "</span>";
+
+                    html +=
+                        "<tr" +
+                        rowClass +
+                        ' onclick="showDetail(' +
+                        r.id +
+                        ')">';
+                    html +=
+                        '<td><span class="status-dot ' +
+                        (isErr ? "status-err" : "status-ok") +
+                        '"></span></td>';
+                    html += "<td>" + fmtTime(r.timestamp) + "</td>";
+                    html +=
+                        "<td>" +
+                        esc(r.backend) +
+                        (r.fallback
+                            ? '<span class="fallback-icon" title="Fallback">↩</span>'
+                            : "") +
+                        "</td>";
+                    html += "<td>" + esc(r.model) + "</td>";
+                    html += "<td>" + fmtNum(r.prompt_tokens) + "</td>";
+                    html += "<td>" + fmtNum(r.completion_tokens) + "</td>";
+                    html += "<td>" + fmtNum(totalTok) + tokExtra + "</td>";
+                    html +=
+                        '<td class="' +
+                        latClass(r.latency_ms) +
+                        '">' +
+                        fmtDur(r.latency_ms) +
+                        "</td>";
+                    html +=
+                        '<td style="color:#06b6d4">' +
+                        (r.tps > 0 ? r.tps.toFixed(1) : "—") +
+                        "</td>";
+                    html += "<td>" + (r.stream ? "SSE" : "—") + "</td>";
+                    html +=
+                        "<td>" +
+                        stratBadge(r.strategy) +
+                        (r.fallback
+                            ? '<span class="fallback-icon">↩</span>'
+                            : "") +
+                        "</td>";
+                    html += "<td>" + esc(r.client || "—") + "</td>";
+                    html += "</tr>";
+                });
+                document.getElementById("logBody").innerHTML = html;
+
+                // Pagination
+                var tp = rec.total_pages || 1;
+                var pg = rec.page || 0;
+                if (tp <= 1) {
+                    document.getElementById("logPagination").innerHTML = "";
+                    return;
+                }
+                var phtml =
+                    '<button class="page-btn" onclick="fetchData(' +
+                    Math.max(0, pg - 1) +
+                    ')"' +
+                    (pg <= 0 ? " disabled" : "") +
+                    ">← Prev</button>";
+                phtml +=
+                    '<span class="page-info">' +
+                    (pg + 1) +
+                    " / " +
+                    tp +
+                    "</span>";
+                phtml +=
+                    '<button class="page-btn" onclick="fetchData(' +
+                    (pg + 1) +
+                    ')"' +
+                    (pg >= tp - 1 ? " disabled" : "") +
+                    ">Next →</button>";
+                document.getElementById("logPagination").innerHTML = phtml;
+            }
+
+            // ── Request Detail Modal ───────────────────────────────────
+            function showDetail(id) {
+                var modal = document.getElementById("detailModal");
+                var content = document.getElementById("detailContent");
+                modal.classList.add("open");
+                content.innerHTML =
+                    '<p style="color:var(--text-dim)">Loading…</p>';
+                fetch("/ui/stats/detail?id=" + id)
+                    .then(function (r) {
+                        return r.text();
+                    })
+                    .then(function (html) {
+                        content.innerHTML = html;
+                    })
+                    .catch(function () {
+                        content.innerHTML =
+                            '<p class="red">Failed to load details</p>';
+                    });
+            }
+
+            // ── Init ───────────────────────────────────────────────────
+            initFilters();
+            fetchData();
+            setupAutoRefresh();
+
+            // Redraw charts on resize
+            var resizeTimer;
+            window.addEventListener("resize", function () {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(function () {
+                    if (lastData) {
+                        renderCharts(lastData.time_series);
+                    }
+                }, 250);
+            });
+        </script>
+    </body>
 </html>
