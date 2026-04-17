@@ -630,11 +630,11 @@ func TestCodexBackend_GPT54NoneReasoningPreservesSamplingParams(t *testing.T) {
 // that "reasoning.encrypted_content" is added to the include array.
 func TestCodexBackend_ReasoningEffortTranslation(t *testing.T) {
 	cases := []struct {
-		name           string
-		rawBody        string
-		wantEffort     string
-		wantSummary    string
-		wantInclude    bool
+		name        string
+		rawBody     string
+		wantEffort  string
+		wantSummary string
+		wantInclude bool
 	}{
 		{
 			name:        "reasoning_effort medium via top-level field",
@@ -682,7 +682,7 @@ func TestCodexBackend_ReasoningEffortTranslation(t *testing.T) {
 					"model": "o4-mini",
 					"output": []map[string]any{{
 						"type": "message", "id": "msg-1", "role": "assistant",
-						"status": "completed",
+						"status":  "completed",
 						"content": []map[string]any{{"type": "output_text", "text": "ok"}},
 					}},
 				})
