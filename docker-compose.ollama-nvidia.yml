@@ -27,13 +27,22 @@ services:
       - "11434:11434"    # Ollama API (optional, for direct access)
     volumes:
       - ollama-data:/root/.ollama
+    # On some systems such as NixOS you need to use the following CDI driver for GPU access instead of the default NVIDIA driver:
     deploy:
       resources:
         reservations:
           devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+            - driver: cdi
+              device_ids:
+                - nvidia.com/gpu=all
+    # For all other systems with NVIDIA Container Toolkit, the following should work:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "ollama", "list"]
