@@ -682,6 +682,7 @@ main {
 
         /* ── Collapsible card ────────────────────────────────── */
         .backend-card.collapsed .model-list { display: none; }
+        .backend-card.collapsed .oauth-card-section { display: none; }
         .collapse-chevron {
             font-size: 0.75rem;
             color: var(--text-dim);
