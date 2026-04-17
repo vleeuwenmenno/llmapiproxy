@@ -67,6 +67,7 @@
         </div>
         <!-- Collapsible time panel -->
         <div class="time-panel" id="timePanel">
+            <!-- Row 1: From → To + Now -->
             <div class="time-range-row">
                 <div class="time-inputs">
                     <span class="time-label">From</span>
@@ -75,28 +76,42 @@
                     <span class="time-label">To</span>
                     <input type="datetime-local" id="toInput" class="time-input" title="End time">
                     <button class="now-btn" id="nowBtn" onclick="toggleNow()" title="Lock end time to now">Now</button>
-                    <button class="apply-btn" onclick="applyTimeRange()">Apply</button>
-                </div>
-                <div class="time-refresh-row">
-                    <span class="time-label">Auto-refresh</span>
-                    <select class="auto-refresh-sel" id="autoRefresh" title="Auto-refresh">
-                        <option value="0">Off</option>
-                        <option value="5000">5s</option>
-                        <option value="15000" selected>15s</option>
-                        <option value="30000">30s</option>
-                        <option value="60000">1m</option>
-                    </select>
                 </div>
             </div>
+            <!-- Row 2: Quick presets (4 visible) + More dropdown -->
             <div class="quick-presets" id="quickPresets">
                 <span class="presets-label">Quick:</span>
-                <button class="preset-pill" data-w="5m">Last 5m</button>
-                <button class="preset-pill" data-w="15m">Last 15m</button>
-                <button class="preset-pill active" data-w="1h">Last 1h</button>
-                <button class="preset-pill" data-w="6h">Last 6h</button>
-                <button class="preset-pill" data-w="1d">Last 24h</button>
-                <button class="preset-pill" data-w="7d">Last 7d</button>
-                <button class="preset-pill" data-w="30d">Last 30d</button>
+                <button class="preset-pill" data-w="5m">5m</button>
+                <button class="preset-pill" data-w="15m">15m</button>
+                <button class="preset-pill" data-w="30m">30m</button>
+                <button class="preset-pill active" data-w="1h">1h</button>
+                <select class="preset-more-sel" id="presetMore" title="More ranges" onchange="if(this.value){setPreset(this.value);this.value='';}">
+                    <option value="">More…</option>
+                    <option value="2h">Last 2h</option>
+                    <option value="4h">Last 4h</option>
+                    <option value="8h">Last 8h</option>
+                    <option value="12h">Last 12h</option>
+                    <option value="1d">Last 24h</option>
+                    <option value="2d">Last 2d</option>
+                    <option value="3d">Last 3d</option>
+                    <option value="7d">Last 7d</option>
+                    <option value="14d">Last 14d</option>
+                    <option value="30d">Last 30d</option>
+                    <option value="all">All time</option>
+                </select>
+            </div>
+            <!-- Row 3: Auto-refresh + Clear + Apply -->
+            <div class="time-actions-row">
+                <span class="time-label">Auto-refresh</span>
+                <select class="auto-refresh-sel" id="autoRefresh" title="Auto-refresh">
+                    <option value="0">Off</option>
+                    <option value="5000">5s</option>
+                    <option value="15000" selected>15s</option>
+                    <option value="30000">30s</option>
+                    <option value="60000">1m</option>
+                </select>
+                <button class="time-clear-btn" onclick="clearTimeRange()" title="Reset to default">✕ Clear</button>
+                <button class="apply-btn" onclick="applyTimeRange()">Apply</button>
             </div>
         </div>
         <!-- Collapsible filters panel -->
@@ -350,7 +365,24 @@ function initFilters() {
 }
 
 function setPreset(w) {
-    state.window = w;
+    if (w === 'all') {
+        state.window = 'all';
+        state.toNow = false;
+        state.customFrom = '';
+        state.customTo = '';
+    } else {
+        state.window = w;
+        state.toNow = true;
+        state.customFrom = '';
+        state.customTo = '';
+    }
+    state.page = 0;
+    updateFilterUI();
+    fetchData();
+}
+
+function clearTimeRange() {
+    state.window = '1h';
     state.toNow = true;
     state.customFrom = '';
     state.customTo = '';
@@ -428,7 +460,9 @@ function updateFilterUI() {
     var toInput = document.getElementById('toInput');
     var nowBtn = document.getElementById('nowBtn');
 
-    if (state.customFrom) {
+    if (state.window === 'all' && !state.customFrom) {
+        fromInput.value = '2010-01-01T00:00';
+    } else if (state.customFrom) {
         fromInput.value = isoToLocal(state.customFrom);
     } else if (state.window && state.window !== 'custom') {
         fromInput.value = isoToLocal(new Date(now.getTime() - parseWindowMs(state.window)).toISOString());
@@ -447,6 +481,8 @@ function updateFilterUI() {
     document.querySelectorAll('.preset-pill').forEach(function(btn) {
         btn.classList.toggle('active', state.toNow && !state.customFrom && btn.dataset.w === state.window);
     });
+    var moreEl = document.getElementById('presetMore');
+    if (moreEl) moreEl.value = '';
 
     var n = (state.backend ? 1 : 0) + (state.model ? 1 : 0) + (state.client ? 1 : 0) + (state.errors ? 1 : 0) + (state.hideErrors ? 1 : 0);
     var badge = document.getElementById('filterBadge');
@@ -467,8 +503,10 @@ function updateFilterUI() {
 function updateTimeSummary() {
     var el = document.getElementById('timeSummaryText');
     if (!el) return;
-    if (state.toNow && !state.customFrom) {
-        var labels = { '5m': 'Last 5m', '15m': 'Last 15m', '1h': 'Last 1h', '6h': 'Last 6h', '1d': 'Last 24h', '7d': 'Last 7d', '30d': 'Last 30d' };
+    if (state.window === 'all' && !state.customFrom) {
+        el.textContent = 'All time';
+    } else if (state.toNow && !state.customFrom) {
+        var labels = { '5m': 'Last 5m', '15m': 'Last 15m', '30m': 'Last 30m', '1h': 'Last 1h', '2h': 'Last 2h', '4h': 'Last 4h', '8h': 'Last 8h', '12h': 'Last 12h', '1d': 'Last 24h', '2d': 'Last 2d', '3d': 'Last 3d', '7d': 'Last 7d', '14d': 'Last 14d', '30d': 'Last 30d' };
         el.textContent = labels[state.window] || ('Last ' + state.window);
     } else {
         var fmtShort = function(iso) {
@@ -496,7 +534,10 @@ function populateSelect(id, values, current, placeholder) {
 
 function buildURL() {
     var p = new URLSearchParams();
-    if (state.toNow && !state.customFrom) {
+    if (state.window === 'all' && !state.customFrom) {
+        p.set('from', '2010-01-01T00:00:00.000Z');
+        p.set('to', new Date().toISOString());
+    } else if (state.toNow && !state.customFrom) {
         p.set('window', state.window || '1h');
     } else if (state.toNow && state.customFrom) {
         p.set('from', state.customFrom);
