@@ -2629,7 +2629,10 @@
         // only used as a fallback when the ModelIndex wasn't ready at page render.
         function recomputeOverlaps() {
             if (overlapBootstrap && overlapBootstrap.length > 0) {
-                return; // Server data is authoritative.
+                // Server data is authoritative, but re-normalize to pick up
+                // any routing changes made on this page (backend order, strategy).
+                setOverlapItems(normalizeOverlapEntries(overlapBootstrap));
+                return;
             }
             setOverlapItems(rebuildOverlapItemsFromModels());
         }
