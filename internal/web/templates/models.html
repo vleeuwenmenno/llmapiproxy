@@ -2623,7 +2623,14 @@
 
         // Recompute overlaps from allBackendModels and re-render the overlap section.
         // Called once all pending backend loads (success or error) have completed.
+        // If the server-rendered overlaps (from the ModelIndex) are available, we
+        // prefer those — the server applies correct canonicalization rules (e.g.
+        // Ollama tag stripping) and skips disabled backends.  JS recomputation is
+        // only used as a fallback when the ModelIndex wasn't ready at page render.
         function recomputeOverlaps() {
+            if (overlapBootstrap && overlapBootstrap.length > 0) {
+                return; // Server data is authoritative.
+            }
             setOverlapItems(rebuildOverlapItemsFromModels());
         }
 
