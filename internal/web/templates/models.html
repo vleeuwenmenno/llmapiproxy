@@ -153,7 +153,7 @@
             <div class="backend-card{{if not .Enabled}} disabled{{end}}{{if .CircuitOpen}} circuit-open{{end}}{{if .IsDynamic}} collapsed{{end}}" data-backend="{{.Name}}" data-backend-type="{{.Type}}"{{if not .Enabled}} data-disabled="true"{{end}}{{if and $oauth (not $oauth.Authenticated)}} data-oauth-unauthed="true"{{end}}>
                 <div class="backend-header" onclick="toggleCard(event, '{{.Name}}')">
                     <div class="backend-name">
-                        {{if .IconURL}}<img class="backend-icon{{if eq .Type "codex"}} backend-icon-color{{end}}" src="{{.IconURL}}" alt="{{.Name}}">{{else}}<div class="dot"></div>{{end}}
+                        {{if .IconURL}}<img class="backend-icon{{if or (eq .Type "codex") (eq .Type "gemini")}} backend-icon-color{{end}}" src="{{.IconURL}}" alt="{{.Name}}">{{else}}<div class="dot"></div>{{end}}
                         {{.Name}}
                         <span class="type-badge type-{{.Type}}">{{.Type}}</span>
                         {{if and (eq .Type "ollama") .CompatMode}}<span class="type-badge type-{{.CompatMode}}" style="font-size:0.65rem">{{.CompatMode}}</span>{{end}}
@@ -596,6 +596,11 @@
                             <div class="wizard-label">OpenAI Codex</div>
                             <div class="wizard-desc">Uses OAuth PKCE browser flow. No API key needed.</div>
                         </div>
+                        <div class="wizard-type-card" data-type="gemini" onclick="selectBackendType('gemini')">
+                            <div class="wizard-icon"><img class="backend-icon-color" style="width:28px;height:28px" src="/ui/static/icons/geminicli-color.svg" alt="Gemini"></div>
+                            <div class="wizard-label">Gemini CLI</div>
+                            <div class="wizard-desc">Google Code Assist via OAuth browser flow. No API key needed.</div>
+                        </div>
                         <div class="wizard-type-card" data-type="ollama" onclick="selectBackendType('ollama')">
                             <div class="wizard-icon"><img class="backend-icon" style="width:28px;height:28px" src="/ui/static/icons/ollama.svg" alt="Ollama"></div>
                             <div class="wizard-label">Ollama</div>
@@ -638,6 +643,23 @@
                             <input type="hidden" name="base_url" value="https://chatgpt.com/backend-api/codex">
                             <input type="hidden" name="api_key" value="">
                         </div>
+                         <div id="wizard-fields-gemini" style="display:none">
+                             <div class="wizard-form-group">
+                                 <label for="wizard-gemini-name">Backend Name</label>
+                                 <input type="text" name="name" id="wizard-gemini-name" value="gemini" autocomplete="off" spellcheck="false">
+                             </div>
+                             <div class="wizard-form-group">
+                                 <label for="wizard-gemini-client-id">OAuth Client ID</label>
+                                 <input type="text" name="oauth_client_id" id="wizard-gemini-client-id" placeholder="681255809395-….apps.googleusercontent.com" autocomplete="off" spellcheck="false">
+                                 <span style="font-size:0.7rem;color:var(--text-dim)">From the upstream <a href="https://github.com/google-gemini/gemini-cli" target="_blank" rel="noopener noreferrer">Gemini CLI</a> open-source project. See <code>config.example.yaml</code> for the public credentials.</span>
+                             </div>
+                             <div class="wizard-form-group">
+                                 <label for="wizard-gemini-client-secret">OAuth Client Secret</label>
+                                 <input type="password" name="oauth_client_secret" id="wizard-gemini-client-secret" placeholder="GOCSPX-…" autocomplete="off" spellcheck="false">
+                             </div>
+                             <input type="hidden" name="base_url" value="https://cloudcode-pa.googleapis.com/v1internal">
+                             <input type="hidden" name="api_key" value="">
+                         </div>
                         <div id="wizard-fields-ollama" style="display:none">
                             <div class="wizard-form-group">
                                 <label for="wizard-ollama-name">Backend Name</label>
@@ -676,6 +698,16 @@
                             <a id="wizard-codex-auth-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary" onclick="wizardCodexOpened()">&#x1F517; Sign in with OpenAI</a>
                         </div>
                         <div class="wizard-status-row" id="wizard-codex-status" style="display:none">
+                            <span class="wizard-spinner"></span>Waiting for authentication in the new tab&hellip;
+                        </div>
+                    </div>
+                    <!-- Gemini auth -->
+                    <div id="wizard-auth-gemini" style="display:none">
+                        <div class="wizard-auth-box">
+                            <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1rem">Your backend was added. Sign in with Google to authenticate it.</p>
+                            <a id="wizard-gemini-auth-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary" onclick="wizardGeminiOpened()">&#x1F517; Sign in with Google</a>
+                        </div>
+                        <div class="wizard-status-row" id="wizard-gemini-status" style="display:none">
                             <span class="wizard-spinner"></span>Waiting for authentication in the new tab&hellip;
                         </div>
                     </div>
@@ -1271,18 +1303,22 @@
             // Reset form fields
             var form = document.getElementById('add-backend-form');
             if (form) form.reset();
-            // Reset Copilot/Codex defaults
+            // Reset Copilot/Codex/Gemini defaults
             var cn = document.getElementById('wizard-copilot-name');
             if (cn) cn.value = 'copilot';
             var coden = document.getElementById('wizard-codex-name');
             if (coden) coden.value = 'codex';
+            var gemn = document.getElementById('wizard-gemini-name');
+            if (gemn) gemn.value = 'gemini';
             // Reset step 3 state
-            ['wizard-auth-codex','wizard-auth-copilot','wizard-auth-success','wizard-auth-error'].forEach(function(id) {
+            ['wizard-auth-codex','wizard-auth-copilot','wizard-auth-gemini','wizard-auth-success','wizard-auth-error'].forEach(function(id) {
                 var el = document.getElementById(id);
                 if (el) el.style.display = 'none';
             });
             var cs = document.getElementById('wizard-codex-status');
             if (cs) cs.style.display = 'none';
+            var gs = document.getElementById('wizard-gemini-status');
+            if (gs) gs.style.display = 'none';
             var ferr = document.getElementById('wizard-form-error');
             if (ferr) { ferr.style.display = 'none'; ferr.textContent = ''; }
         }
@@ -1673,6 +1709,7 @@
                 openai: document.getElementById('wizard-fields-openai'),
                 copilot: document.getElementById('wizard-fields-copilot'),
                 codex: document.getElementById('wizard-fields-codex'),
+                gemini: document.getElementById('wizard-fields-gemini'),
                 ollama: document.getElementById('wizard-fields-ollama')
             };
             Object.keys(sets).forEach(function(key) {
@@ -1734,6 +1771,11 @@
                     if (link) link.href = '/ui/oauth/login/' + encodeURIComponent(name);
                     var box = document.getElementById('wizard-auth-codex');
                     if (box) box.style.display = 'block';
+                } else if (type === 'gemini') {
+                    var link = document.getElementById('wizard-gemini-auth-link');
+                    if (link) link.href = '/ui/oauth/login/' + encodeURIComponent(name);
+                    var box = document.getElementById('wizard-auth-gemini');
+                    if (box) box.style.display = 'block';
                 } else if (type === 'copilot') {
                     var box = document.getElementById('wizard-auth-copilot');
                     if (box) box.style.display = 'block';
@@ -1763,8 +1805,13 @@
         }
 
         function wizardCodexOpened() {
-            // Called when the user clicks the "Sign in with OpenAI" button.
             var cs = document.getElementById('wizard-codex-status');
+            if (cs) cs.style.display = 'block';
+            wizardStartPolling(wizardAddedName);
+        }
+
+        function wizardGeminiOpened() {
+            var cs = document.getElementById('wizard-gemini-status');
             if (cs) cs.style.display = 'block';
             wizardStartPolling(wizardAddedName);
         }
@@ -1796,7 +1843,7 @@
         }
 
         function wizardAuthSuccess() {
-            ['wizard-auth-codex','wizard-auth-copilot'].forEach(function(id) {
+            ['wizard-auth-codex','wizard-auth-copilot','wizard-auth-gemini'].forEach(function(id) {
                 var el = document.getElementById(id);
                 if (el) el.style.display = 'none';
             });
@@ -2641,9 +2688,53 @@
             setOverlapItems(rebuildOverlapItemsFromModels());
         }
 
+        function setCookie(name, value, days) {
+            var expires = '';
+            if (days) {
+                var d = new Date();
+                d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
+                expires = '; expires=' + d.toUTCString();
+            }
+            document.cookie = name + '=' + encodeURIComponent(value) + expires + '; path=/; SameSite=Lax';
+        }
+
+        function getCookie(name) {
+            var prefix = name + '=';
+            var parts = document.cookie ? document.cookie.split('; ') : [];
+            for (var i = 0; i < parts.length; i++) {
+                if (parts[i].indexOf(prefix) === 0) {
+                    return decodeURIComponent(parts[i].substring(prefix.length));
+                }
+            }
+            return '';
+        }
+
+        function saveCollapsedBackends() {
+            var collapsed = [];
+            document.querySelectorAll('.backend-card[data-backend].collapsed').forEach(function(card) {
+                if (card.dataset.backend) collapsed.push(card.dataset.backend);
+            });
+            setCookie('models-collapsed-backends', JSON.stringify(collapsed), 365);
+        }
+
+        function restoreCollapsedBackends() {
+            var raw = getCookie('models-collapsed-backends');
+            if (!raw) return;
+            try {
+                var collapsed = JSON.parse(raw);
+                if (!Array.isArray(collapsed)) return;
+                collapsed.forEach(function(name) {
+                    var card = document.querySelector('.backend-card[data-backend="' + name + '"]');
+                    if (card) card.classList.add('collapsed');
+                });
+            } catch (e) {}
+        }
+
         function toggleCard(ev, name) {
             var card = document.querySelector('.backend-card[data-backend="' + name + '"]');
-            if (card) card.classList.toggle('collapsed');
+            if (!card) return;
+            card.classList.toggle('collapsed');
+            saveCollapsedBackends();
         }
 
         // ── Zed config builder ──────────────────────────────────────────
@@ -3394,7 +3485,9 @@
 
             // Auto-expand collapsed cards so the loading spinner is visible.
             var card = listEl.closest('.backend-card');
+            var wasCollapsed = false;
             if (card && card.classList.contains('collapsed')) {
+                wasCollapsed = true;
                 card.classList.remove('collapsed');
             }
 
@@ -3441,6 +3534,9 @@
                             : '<div class="model-scroll-empty">No models available.</div>';
                         scrollEl.scrollTop = 0;
                     }
+                    if (card && wasCollapsed) {
+                        card.classList.add('collapsed');
+                    }
                 })
                 .catch(function(e) {
                     allBackendModels[name] = []; // treat as empty so pending count still completes
@@ -3453,6 +3549,9 @@
                     }
                     if (scrollEl) scrollEl.innerHTML = '';
                     if (countEl) countEl.textContent = 'error';
+                    if (card && wasCollapsed) {
+                        card.classList.add('collapsed');
+                    }
                 });
         }
 
@@ -3574,6 +3673,7 @@
             initOverlapControls();
             setOverlapItems(normalizeOverlapEntries(overlapBootstrap));
             buildCurlSelector();
+            restoreCollapsedBackends();
 
             // Set the dynamic endpoint URL in the Quick Connect subtitle
             var endpointEl = document.getElementById('quick-connect-endpoint');

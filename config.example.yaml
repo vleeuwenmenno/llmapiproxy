@@ -213,6 +213,28 @@ backends:
   #     token_url: "https://auth.openai.com/oauth/token"
   #   # api_key is NOT needed — authentication uses OAuth.
 
+  # ── Gemini CLI (Google Code Assist) ──────────────────────────
+  # Uses Google OAuth 2.0 (web flow). No api_key required.
+  # Initiate auth via the web UI Add Backend wizard.
+  # You must supply the Google OAuth client credentials from the upstream
+  # Gemini CLI open-source project (github.com/google-gemini/gemini-cli).
+  # Find the credentials in packages/core/src/code_assist/oauth2.ts — look
+  # for CLIENT_ID and CLIENT_SECRET constants.
+  # - name: gemini
+  #   type: gemini
+  #   base_url: https://cloudcode-pa.googleapis.com/v1internal
+  #   oauth:
+  #     client_id: "<client_id from gemini-cli source>"
+  #     client_secret: "<client_secret from gemini-cli source>"
+  #     scopes:
+  #       - "https://www.googleapis.com/auth/cloud-platform"
+  #       - "https://www.googleapis.com/auth/userinfo.email"
+  #       - "https://www.googleapis.com/auth/userinfo.profile"
+  #     auth_url: "https://accounts.google.com/o/oauth2/v2/auth"
+  #     token_url: "https://oauth2.googleapis.com/token"
+  #     redirect_uri: "http://127.0.0.1:42857/oauth2callback"
+  #   # api_key is NOT needed — authentication uses OAuth.
+
   # ── Ollama (self-hosted models) ───────────────────────────
   # Run models locally with Ollama. Supports three compatibility modes:
   #   - openai (default): uses /v1/chat/completions — best compatibility

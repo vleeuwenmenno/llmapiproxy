@@ -297,6 +297,11 @@ var serveCmd = &cobra.Command{
 			Handler:           newCodexLoopbackHandler(registry, appBaseURL),
 			ReadHeaderTimeout: 10 * time.Second,
 		}
+		geminiLoopbackSrv := &http.Server{
+			Addr:              geminiLoopbackListenAddr,
+			Handler:           newGeminiLoopbackHandler(registry, appBaseURL),
+			ReadHeaderTimeout: 10 * time.Second,
+		}
 
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer stop()
@@ -329,6 +334,12 @@ var serveCmd = &cobra.Command{
 				log.Printf("codex loopback callback server error: %v", err)
 			}
 		}()
+		go func() {
+			log.Printf("starting Gemini OAuth loopback callback server on %s", geminiLoopbackListenAddr)
+			if err := geminiLoopbackSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Printf("gemini loopback callback server error: %v", err)
+			}
+		}()
 
 		<-ctx.Done()
 		log.Info().Msg("shutting down")
@@ -341,6 +352,9 @@ var serveCmd = &cobra.Command{
 		}
 		if err := codexLoopbackSrv.Shutdown(shutdownCtx); err != nil {
 			log.Printf("codex loopback shutdown error: %v", err)
+		}
+		if err := geminiLoopbackSrv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("gemini loopback shutdown error: %v", err)
 		}
 		if store != nil {
 			store.Close()

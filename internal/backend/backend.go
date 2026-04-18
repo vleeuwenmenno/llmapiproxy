@@ -13,7 +13,9 @@ type ChatCompletionRequest struct {
 	Messages    []Message `json:"messages"`
 	Stream      bool      `json:"stream,omitempty"`
 	Temperature *float64  `json:"temperature,omitempty"`
+	TopP        *float64  `json:"top_p,omitempty"`
 	MaxTokens   *int      `json:"max_tokens,omitempty"`
+	Stop        []string  `json:"stop,omitempty"`
 	// RawBody preserves the original request body for passthrough.
 	RawBody        []byte `json:"-"`
 	APIKeyOverride string `json:"-"`

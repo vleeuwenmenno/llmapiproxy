@@ -17,6 +17,7 @@ type Profile struct {
 	DisplayName string            // human-readable label for the UI
 	UserAgent   string            // Go text/template; empty = don't override
 	Headers     map[string]string // extra headers to set; empty = none
+	NoRequestID bool              // if true, don't auto-inject X-Request-Id
 }
 
 // ProfileVars holds runtime values available to User-Agent templates.
@@ -27,10 +28,13 @@ type ProfileVars struct {
 	OSVersion string // placeholder; set to "" for now
 	Model     string // the model being requested
 	SessionID string // stable per-process UUID
+	Version   string // CLI version string, e.g. "0.40.0"
 }
 
 // sessionID is generated once per process and reused for all requests.
 var sessionID = uuid.New().String()
+
+const geminiCLIVersion = "0.40.0"
 
 // DefaultVars returns ProfileVars populated with the current runtime environment.
 func DefaultVars(model string) ProfileVars {
@@ -41,6 +45,7 @@ func DefaultVars(model string) ProfileVars {
 		OSVersion: "",
 		Model:     model,
 		SessionID: sessionID,
+		Version:   geminiCLIVersion,
 	}
 }
 
@@ -111,8 +116,9 @@ var builtinProfiles = []Profile{
 	{
 		ID:          "gemini-cli",
 		DisplayName: "Gemini CLI",
-		UserAgent:   "GeminiCLI/0.38.1/{{.Model}} ({{.Platform}}; {{.Arch}}; terminal)",
+		UserAgent:   "GeminiCLI/{{.Version}}/{{.Model}} ({{.Platform}}; {{.Arch}}; terminal)",
 		Headers:     nil,
+		NoRequestID: true,
 	},
 	{
 		ID:          "copilot-vscode",

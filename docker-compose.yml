@@ -5,6 +5,7 @@ services:
     ports:
       - "8000:8000"
       - "1455:1455"
+      - "42857:42857"
     volumes:
       - ./data:/app/data
     restart: "no"

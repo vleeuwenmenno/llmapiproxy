@@ -42,7 +42,7 @@ func ApplyProfile(httpReq *http.Request, profile *Profile, model string) {
 	// Some profiles benefit from a per-request ID header.
 	// Only set X-Request-Id if the profile doesn't define its own request ID header
 	// and the request doesn't already have one.
-	if httpReq.Header.Get("X-Request-Id") == "" && httpReq.Header.Get("x-client-request-id") == "" {
+	if !profile.NoRequestID && httpReq.Header.Get("X-Request-Id") == "" && httpReq.Header.Get("x-client-request-id") == "" {
 		httpReq.Header.Set("X-Request-Id", uuid.New().String())
 	}
 }

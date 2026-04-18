@@ -27,6 +27,18 @@
             {{if or $oauth.Authenticated $oauth.TokenSource}}
                 <form method="POST" action="/ui/oauth/disconnect/{{.Name}}" style="display:inline"><button type="submit" class="btn-oauth-xs btn-oauth-xs-danger" onclick="return confirm('Clear token for {{.Name}}?')">Disconnect</button></form>
             {{end}}
+        {{else if eq .Type "gemini"}}
+            {{if $oauth.NeedsReauth}}
+                <a href="/ui/oauth/login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-primary" target="_blank" rel="noopener noreferrer">Re-authenticate (Browser)</a>
+            {{else if not $oauth.Authenticated}}
+                <a href="/ui/oauth/login/{{.Name}}" class="btn-oauth-xs btn-oauth-xs-primary" target="_blank" rel="noopener noreferrer">Sign in with Google</a>
+            {{end}}
+            {{if or $oauth.Authenticated $oauth.TokenSource $oauth.NeedsReauth}}
+                <button type="button" class="btn-oauth-xs btn-oauth-xs-secondary check-status-btn" hx-post="/ui/oauth/check-status/{{.Name}}?view=models" hx-target="#oauth-{{.Name}}" hx-swap="outerHTML" hx-disabled-elt="this"><span class="check-status-label">Check Status</span><span class="check-status-loading">Checking...</span></button>
+            {{end}}
+            {{if or $oauth.Authenticated $oauth.TokenSource}}
+                <form method="POST" action="/ui/oauth/disconnect/{{.Name}}" style="display:inline"><button type="submit" class="btn-oauth-xs btn-oauth-xs-danger" onclick="return confirm('Disconnect {{.Name}}?')">Disconnect</button></form>
+            {{end}}
         {{end}}
         </div>
         <div class="oauth-meta-row">

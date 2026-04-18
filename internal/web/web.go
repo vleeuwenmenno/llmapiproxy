@@ -782,6 +782,8 @@ func iconForBackend(name string) string {
 		return "/ui/static/icons/codex-color.svg"
 	case strings.Contains(n, "copilot"):
 		return "/ui/static/icons/githubcopilot.svg"
+	case strings.Contains(n, "gemini"):
+		return "/ui/static/icons/geminicli-color.svg"
 	default:
 		return ""
 	}
@@ -2371,6 +2373,29 @@ func (u *UI) AddBackendPage(w http.ResponseWriter, r *http.Request) {
 				TokenURL: "https://auth.openai.com/oauth/token",
 			}
 		}
+	case "gemini":
+		if bc.BaseURL == "" {
+			bc.BaseURL = "https://cloudcode-pa.googleapis.com/v1internal"
+		}
+		oauthClientID := r.FormValue("oauth_client_id")
+		oauthClientSecret := r.FormValue("oauth_client_secret")
+		if oauthClientID == "" || oauthClientSecret == "" {
+			sendErr("OAuth client ID and client secret are required for Gemini backends. See config.example.yaml for the public Gemini CLI credentials.")
+			return
+		}
+		if bc.OAuth == nil {
+			// ClientID and ClientSecret must be provided by the user via the
+			// wizard form. The upstream Gemini CLI credentials are documented
+			// in config.example.yaml but are not bundled in source.
+			bc.OAuth = &config.OAuthConfig{
+				ClientID:     oauthClientID,
+				ClientSecret: oauthClientSecret,
+				Scopes:       []string{"https://www.googleapis.com/auth/cloud-platform", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"},
+				AuthURL:      "https://accounts.google.com/o/oauth2/v2/auth",
+				TokenURL:     "https://oauth2.googleapis.com/token",
+				RedirectURI:  "http://127.0.0.1:42857/oauth2callback",
+			}
+		}
 	case "ollama":
 		if bc.BaseURL == "" {
 			bc.BaseURL = "http://localhost:11434"
@@ -2434,6 +2459,8 @@ func (u *UI) DeleteBackendPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui/models?msg=Error:"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
 		return
 	}
+
+	u.registry.CleanupBackend(name)
 	msg := "Backend+" + name + "+deleted."
 	if r.FormValue("wipe_stats") == "on" {
 		msg = "Backend+" + name + "+deleted+and+analytics+wiped."

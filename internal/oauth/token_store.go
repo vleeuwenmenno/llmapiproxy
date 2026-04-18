@@ -26,7 +26,7 @@ type TokenData struct {
 	ExpiresAt    time.Time `json:"expires_at"`
 	RefreshIn    int       `json:"refresh_in,omitempty"` // seconds until proactive refresh
 	ObtainedAt   time.Time `json:"obtained_at"`
-	Source       string    `json:"source,omitempty"` // e.g., "env:GH_TOKEN", "gh_cli", "hosts.yml"
+	Source       string    `json:"source,omitempty"`       // e.g., "env:GH_TOKEN", "gh_cli", "hosts.yml"
 	GitHubToken  string    `json:"github_token,omitempty"` // stored GitHub token for Copilot re-exchange
 }
 
@@ -142,6 +142,18 @@ func (ts *TokenStore) Save(token *TokenData) error {
 	ts.mu.Unlock()
 
 	return ts.persistToDisk()
+}
+
+// Delete removes the token file from disk and clears the in-memory token.
+func (ts *TokenStore) Delete() error {
+	ts.mu.Lock()
+	ts.token = nil
+	ts.mu.Unlock()
+
+	if err := os.Remove(ts.filePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("removing token file: %w", err)
+	}
+	return nil
 }
 
 // persistToDisk writes the current token to disk atomically.

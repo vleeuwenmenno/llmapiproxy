@@ -133,11 +133,13 @@ type ServerConfig struct {
 // OAuth authentication (e.g., GitHub Copilot, OpenAI Codex) instead of
 // static API keys.
 type OAuthConfig struct {
-	ClientID  string   `yaml:"client_id,omitempty"`
-	Scopes    []string `yaml:"scopes,omitempty"`
-	TokenPath string   `yaml:"token_path,omitempty"`
-	AuthURL   string   `yaml:"auth_url,omitempty"`
-	TokenURL  string   `yaml:"token_url,omitempty"`
+	ClientID     string   `yaml:"client_id,omitempty"`
+	ClientSecret string   `yaml:"client_secret,omitempty"`
+	RedirectURI  string   `yaml:"redirect_uri,omitempty"`
+	Scopes       []string `yaml:"scopes,omitempty"`
+	TokenPath    string   `yaml:"token_path,omitempty"`
+	AuthURL      string   `yaml:"auth_url,omitempty"`
+	TokenURL     string   `yaml:"token_url,omitempty"`
 }
 
 // ModelConfig specifies a single model with optional metadata overrides.
@@ -447,7 +449,7 @@ func (b *BackendConfig) IsEnabled() bool {
 // and do not require an api_key in the configuration.
 func (b *BackendConfig) IsOAuthBackend() bool {
 	switch b.Type {
-	case "copilot", "codex":
+	case "copilot", "codex", "gemini":
 		return true
 	default:
 		return false
@@ -458,7 +460,7 @@ func (b *BackendConfig) IsOAuthBackend() bool {
 // OAuth backends and local backends (like Ollama) do not need one.
 func (b *BackendConfig) RequiresAPIKey() bool {
 	switch b.Type {
-	case "copilot", "codex", "ollama":
+	case "copilot", "codex", "gemini", "ollama":
 		return false
 	default:
 		return true
@@ -1043,7 +1045,7 @@ func (m *Manager) UpdateModelCacheTTL(ttl time.Duration) error {
 func (m *Manager) AddBackend(bc BackendConfig) error {
 	// Validate type.
 	switch bc.Type {
-	case "openai", "anthropic", "copilot", "codex", "ollama", "":
+	case "openai", "anthropic", "copilot", "codex", "gemini", "ollama", "":
 		// ok
 	default:
 		return fmt.Errorf("unsupported backend type %q", bc.Type)

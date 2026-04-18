@@ -15,6 +15,7 @@ services:
     ports:
       - "8000:8000" # Used for the API and web UI
       - "1455:1455" # Used for the optional OAuth redirect server (if any backends require it)
+      - "42857:42857"
     volumes:
       - ./data:/app/data
     restart: unless-stopped

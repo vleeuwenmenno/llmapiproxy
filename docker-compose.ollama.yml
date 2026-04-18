@@ -33,6 +33,8 @@ services:
     build: .
     ports:
       - "8000:8000" # API + web UI
+      - "1455:1455"
+      - "42857:42857"
     volumes:
       - ./data:/app/data # Persist stats, tokens, caches, config
     depends_on:

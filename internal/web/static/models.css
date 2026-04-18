@@ -720,6 +720,11 @@ body:not(.light) .connect-icon.mono {
     color: var(--amber);
     border: 1px solid rgba(251, 191, 36, 0.3);
 }
+.type-badge.type-gemini {
+    background: rgba(49, 134, 255, 0.12);
+    color: #3186ff;
+    border: 1px solid rgba(49, 134, 255, 0.3);
+}
 .type-badge.type-ollama {
     background: rgba(99, 102, 241, 0.12);
     color: #818cf8;

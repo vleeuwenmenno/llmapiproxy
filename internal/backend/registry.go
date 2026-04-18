@@ -86,7 +86,6 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 			continue
 		}
 
-		// For OAuth backends, try to reuse the existing token store.
 		var existingTS *oauth.TokenStore
 		if bc.IsOAuthBackend() {
 			existingTS = r.tokenStores[bc.Name]
@@ -102,6 +101,24 @@ func (r *Registry) LoadFromConfig(cfg *config.Config) {
 			newTokenStores[bc.Name] = ts
 		}
 		log.Info().Str("backend", bc.Name).Msg("registered backend")
+	}
+
+	for name, ts := range r.tokenStores {
+		if _, stillExists := newTokenStores[name]; !stillExists {
+			if err := ts.Delete(); err != nil {
+				log.Warn().Err(err).Str("backend", name).Msg("failed to delete stale token store")
+			} else {
+				log.Info().Str("backend", name).Msg("deleted stale token store")
+			}
+		}
+	}
+	if r.modelCacheStore != nil {
+		for name := range r.backends {
+			if _, stillExists := newBackends[name]; !stillExists {
+				r.modelCacheStore.Invalidate(name)
+				log.Info().Str("backend", name).Msg("invalidated stale model cache")
+			}
+		}
 	}
 
 	r.backends = newBackends
@@ -348,6 +365,9 @@ func (r *Registry) createBackend(bc config.BackendConfig, existingTS *oauth.Toke
 	if profileID == "" {
 		profileID = cfg.IdentityProfile
 	}
+	if profileID == "" && bc.Type == "gemini" {
+		profileID = "gemini-cli"
+	}
 	var customProfiles []identity.Profile
 	for _, cp := range cfg.CustomIdentityProfiles {
 		customProfiles = append(customProfiles, identity.Profile{
@@ -368,6 +388,12 @@ func (r *Registry) createBackend(bc config.BackendConfig, existingTS *oauth.Toke
 		return b, ts, nil
 	case "codex":
 		b, ts, err := r.createCodexBackend(bc, existingTS, cacheTTL, profile)
+		if err != nil {
+			return nil, nil, err
+		}
+		return b, ts, nil
+	case "gemini":
+		b, ts, err := r.createGeminiBackend(bc, existingTS, cacheTTL, profile)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -559,6 +585,66 @@ func normalizeCodexScopes(scopes []string) []string {
 	}
 
 	return out
+}
+
+func (r *Registry) createGeminiBackend(bc config.BackendConfig, existingTS *oauth.TokenStore, cacheTTL time.Duration, profile *identity.Profile) (*GeminiBackend, *oauth.TokenStore, error) {
+	tokenPath := bc.OAuth.TokenPath
+	if tokenPath == "" {
+		tokenPath = filepath.Join("data", "tokens", bc.Name+"-token.json")
+	}
+
+	var ts *oauth.TokenStore
+	if existingTS != nil {
+		ts = existingTS
+	} else {
+		var err error
+		ts, err = oauth.NewTokenStore(tokenPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("creating Gemini token store: %w", err)
+		}
+	}
+
+	oauthCfg := oauth.DefaultGeminiOAuthConfig()
+	if bc.OAuth.ClientID != "" {
+		oauthCfg.ClientID = bc.OAuth.ClientID
+	}
+	if bc.OAuth.ClientSecret != "" {
+		oauthCfg.ClientSecret = bc.OAuth.ClientSecret
+	}
+	if bc.OAuth.RedirectURI != "" {
+		oauthCfg.RedirectURI = bc.OAuth.RedirectURI
+	}
+
+	oauthHandler := oauth.NewGeminiOAuthHandler(ts, oauthCfg)
+
+	return NewGeminiBackend(bc, oauthHandler, ts, cacheTTL, r.modelCacheStore, profile), ts, nil
+}
+
+func (r *Registry) HandleGeminiLoopbackCallback(ctx context.Context, code string, state string) (string, error) {
+	r.mu.RLock()
+	candidates := make([]*GeminiBackend, 0, len(r.backends))
+	for _, b := range r.backends {
+		geminiBackend, ok := b.(*GeminiBackend)
+		if ok {
+			candidates = append(candidates, geminiBackend)
+		}
+	}
+	r.mu.RUnlock()
+
+	for _, candidate := range candidates {
+		if candidate.GetOAuthHandler().GetPendingState(state) == nil {
+			continue
+		}
+		if err := candidate.HandleCallback(ctx, code, state); err != nil {
+			return candidate.Name(), err
+		}
+		// Reset onboarding state so the next request re-fetches the
+		// cloudAIProject from loadCodeAssist with the fresh token.
+		candidate.ResetOnboarding()
+		return candidate.Name(), nil
+	}
+
+	return "", fmt.Errorf("no pending gemini oauth flow matched the callback state")
 }
 
 // Resolve parses a model string like "openrouter/openai/gpt-5.2" and returns
@@ -813,4 +899,26 @@ func (r *Registry) ClearAllModelCaches() {
 		}
 	}
 	log.Info().Msg("cleared model caches for all backends")
+}
+
+// CleanupBackend removes persisted tokens and model caches for a backend
+// that has been removed from the configuration.
+func (r *Registry) CleanupBackend(name string) {
+	r.mu.Lock()
+	ts := r.tokenStores[name]
+	delete(r.tokenStores, name)
+	r.mu.Unlock()
+
+	if ts != nil {
+		if err := ts.Delete(); err != nil {
+			log.Warn().Err(err).Str("backend", name).Msg("failed to delete token store")
+		} else {
+			log.Info().Str("backend", name).Msg("deleted token store")
+		}
+	}
+
+	if r.modelCacheStore != nil {
+		r.modelCacheStore.Invalidate(name)
+		log.Info().Str("backend", name).Msg("invalidated model cache")
+	}
 }
