@@ -10,99 +10,7 @@
     <body>
         <div class="noise"></div>
 
-        <div
-            class="mobile-menu-overlay"
-            id="mobileMenuOverlay"
-            onclick="closeMobileMenu()"
-        ></div>
-        <div class="nav-links-mobile" id="navLinksMobile">
-            <div class="mobile-menu-header">
-                <span class="mobile-menu-title">Navigation</span>
-                <button class="mobile-menu-close" onclick="closeMobileMenu()">
-                    &times;
-                </button>
-            </div>
-            <a href="/ui/" class="active">&#128200; Dashboard</a>
-            <a href="/ui/models">&#129302; Models</a>
-            <a href="/ui/chat">&#128172; Chat</a>
-            <a href="/ui/settings">&#9881; Settings</a>
-            <button
-                class="theme-toggle-mobile"
-                onclick="
-                    toggleTheme();
-                    closeMobileMenu();
-                "
-            >
-                <span id="themeIconMobile">☀</span> Toggle Theme
-            </button>
-        </div>
-
-        <nav>
-            <div class="logo">
-                <div class="icon">⚡</div>
-                LLM API Proxy{{if appVersion}}
-                <span class="version">{{appVersion}}</span>{{end}}
-            </div>
-            <div class="links">
-                <a href="/ui/" class="active">Dashboard</a>
-                <a href="/ui/models">Models</a>
-                <a href="/ui/chat">Chat</a>
-                <a href="/ui/settings">Settings</a>
-                <button
-                    class="theme-toggle"
-                    id="themeBtn"
-                    onclick="toggleTheme()"
-                >
-                    ☀
-                </button>
-                {{if .User}}<span class="user-badge"
-                    >{{.User.Username}}
-                    <form
-                        method="POST"
-                        action="/ui/logout"
-                        style="display: inline"
-                    >
-                        <button
-                            type="submit"
-                            class="logout-btn"
-                            data-tooltip="Logout"
-                            aria-label="Logout"
-                        >
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path
-                                    d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
-                                />
-                                <polyline points="16 17 21 12 16 7" />
-                                <line x1="21" y1="12" x2="9" y2="12" />
-                            </svg>
-                        </button></form></span
-                >{{end}}
-            </div>
-            <button
-                class="mobile-menu-btn"
-                onclick="openMobileMenu()"
-                aria-label="Open menu"
-            >
-                <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <line x1="3" y1="6" x2="21" y2="6" />
-                    <line x1="3" y1="12" x2="21" y2="12" />
-                    <line x1="3" y1="18" x2="21" y2="18" />
-                </svg>
-            </button>
-        </nav>
+        {{template "navbar" .}}
 
         <main>
             <!-- ── Time Bar ── -->
@@ -1962,6 +1870,9 @@
                         fmtTime(r.timestamp) +
                         "</td><td>" +
                         esc(r.model) +
+                        (r.resolved_model && r.resolved_model !== r.model
+                            ? '<div style="font-size:0.75em;color:var(--text-dim);margin-top:2px" title="Aliased from ' + esc(r.resolved_model) + '">→ ' + esc(r.resolved_model) + '</div>'
+                            : '') +
                         "</td><td>" +
                         errDisplay +
                         "</td><td>" +
@@ -2054,7 +1965,11 @@
                             ? '<span class="fallback-icon" title="Fallback">↩</span>'
                             : "") +
                         "</td>";
-                    html += "<td>" + esc(r.model) + "</td>";
+                    html += "<td>" + esc(r.model) +
+                        (r.resolved_model && r.resolved_model !== r.model
+                            ? '<div style="font-size:0.75em;color:var(--text-dim);margin-top:2px" title="Aliased from ' + esc(r.resolved_model) + '">→ ' + esc(r.resolved_model) + '</div>'
+                            : '') +
+                        "</td>";
                     html += "<td>" + fmtNum(r.prompt_tokens) + "</td>";
                     html += "<td>" + fmtNum(r.completion_tokens) + "</td>";
                     html += "<td>" + fmtNum(totalTok) + tokExtra + "</td>";

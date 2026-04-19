@@ -1535,6 +1535,41 @@ body:not(.light) .connect-icon.mono {
     outline-offset: 2px;
 }
 
+.routing-backend-item {
+    position: relative;
+}
+
+.routing-backend-item.dragging {
+    opacity: 0.4;
+}
+
+.routing-backend-item.drag-over-top {
+    border-top: 2px solid var(--accent) !important;
+}
+
+.routing-backend-item.drag-over-bottom {
+    border-bottom: 2px solid var(--accent) !important;
+}
+
+.routing-drag-handle {
+    cursor: grab;
+    color: var(--text-dim);
+    user-select: none;
+    padding: 0 0.25rem;
+    font-size: 1rem;
+    line-height: 1;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+}
+
+.routing-drag-handle:hover {
+    opacity: 1;
+}
+
+.routing-drag-handle:active {
+    cursor: grabbing;
+}
+
 /* Fallback :checked style for browsers without :has */
 .strat-option:has(input:checked) .strat-label {
     color: var(--text);

@@ -190,8 +190,6 @@ var serveCmd = &cobra.Command{
 			r.Post("/config/save", ui.SaveConfig)
 			r.Post("/settings/model-cache-ttl", ui.UpdateModelCacheTTL)
 			r.Get("/settings", ui.SettingsPage)
-			r.Get("/playground", ui.PlaygroundPage)
-			r.Get("/playground/models", ui.PlaygroundModels)
 
 			// Chat API
 			r.Get("/chat", ui.ChatPage)

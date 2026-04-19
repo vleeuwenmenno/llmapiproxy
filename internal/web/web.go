@@ -512,6 +512,7 @@ func (u *UI) Dashboard(w http.ResponseWriter, r *http.Request) {
 	routingJSON, _ := json.Marshal(cfg.Routing)
 
 	data := map[string]any{
+		"ActivePage":  "dashboard",
 		"Backends":    backends,
 		"Models":      models,
 		"Clients":     clients,
@@ -688,8 +689,9 @@ func (u *UI) ConfigPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
-		"Config":  string(configData),
-		"Message": "",
+		"ActivePage": "config",
+		"Config":     string(configData),
+		"Message":    "",
 	}
 	injectAuth(r, data)
 
@@ -1117,6 +1119,7 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
+		"ActivePage":            "models",
 		"Backends":              entries,
 		"Overlaps":              overlaps,
 		"ExposedModels":         exposedModels,
@@ -1307,6 +1310,7 @@ func (u *UI) BackendsPage(w http.ResponseWriter, r *http.Request) {
 	allIdentityProfiles := identity.AllProfiles(customProfiles)
 
 	data := map[string]any{
+		"ActivePage":             "backends",
 		"Backends":                entries,
 		"DisplayAddr":             displayAddr,
 		"SampleModel":             sampleModel,
@@ -1575,7 +1579,7 @@ func (u *UI) BackendUpstreamModels(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
-// playgroundModel is a compact model descriptor sent to the playground JS.
+// playgroundModel is a compact model descriptor for the chat JS.
 type playgroundModel struct {
 	ID                string   `json:"id"`
 	ContextLength     *int64   `json:"context_length,omitempty"`
@@ -1583,103 +1587,6 @@ type playgroundModel struct {
 	DisplayName       string   `json:"display_name,omitempty"`
 	AvailableBackends []string `json:"available_backends,omitempty"`
 	RoutingStrategy   string   `json:"routing_strategy,omitempty"`
-}
-
-// PlaygroundModels returns a JSON list of all models from enabled backends with metadata.
-// Used by the playground JS to populate the model combobox.
-// Supports ?mode=raw (default, backend-prefixed IDs) and ?mode=flat (deduplicated with routing).
-func (u *UI) PlaygroundModels(w http.ResponseWriter, r *http.Request) {
-	mode := r.URL.Query().Get("mode")
-	if mode == "flat" {
-		u.playgroundModelsFlat(w, r)
-		return
-	}
-	u.playgroundModelsRaw(w, r)
-}
-
-func (u *UI) playgroundModelsRaw(w http.ResponseWriter, r *http.Request) {
-	var models []playgroundModel
-	for _, b := range u.registry.All() {
-		list, err := b.ListModels(r.Context())
-		if err != nil {
-			log.Warn().Err(err).Str("backend", b.Name()).Msg("playground: error listing models")
-			continue
-		}
-		for _, m := range list {
-			id := m.ID
-			if !strings.HasPrefix(id, b.Name()+"/") {
-				id = b.Name() + "/" + id
-			}
-			models = append(models, playgroundModel{
-				ID:              id,
-				ContextLength:   m.ContextLength,
-				MaxOutputTokens: m.MaxOutputTokens,
-			})
-		}
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(models)
-}
-
-func (u *UI) playgroundModelsFlat(w http.ResponseWriter, r *http.Request) {
-	routing := u.cfgMgr.Get().Routing
-	allModels := u.registry.FlatModelList(r.Context(), routing)
-
-	models := make([]playgroundModel, 0, len(allModels))
-	for _, m := range allModels {
-		models = append(models, playgroundModel{
-			ID:                m.ID,
-			ContextLength:     m.ContextLength,
-			MaxOutputTokens:   m.MaxOutputTokens,
-			DisplayName:       m.DisplayName,
-			AvailableBackends: m.AvailableBackends,
-			RoutingStrategy:   m.RoutingStrategy,
-		})
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(models)
-}
-
-// PlaygroundPage renders the interactive model playground.
-func (u *UI) PlaygroundPage(w http.ResponseWriter, r *http.Request) {
-	cfg := u.cfgMgr.Get()
-
-	// Find the API key for the playground. Prefer a named "playground"
-	// client, but fall back to the first server.api_keys entry if no
-	// playground client is configured.
-	playgroundAPIKey := ""
-	for _, c := range cfg.Clients {
-		if c.Name == "playground" && c.APIKey != "" {
-			playgroundAPIKey = c.APIKey
-			break
-		}
-	}
-	if playgroundAPIKey == "" && len(cfg.Server.APIKeys) > 0 {
-		playgroundAPIKey = cfg.Server.APIKeys[0]
-	}
-
-	// Collect all models from enabled backends (prefixed backend/model-id).
-	var models []playgroundModel
-	for _, bc := range cfg.Backends {
-		if !bc.IsEnabled() {
-			continue
-		}
-		for _, m := range bc.Models {
-			models = append(models, playgroundModel{ID: bc.Name + "/" + m.ID})
-		}
-	}
-
-	data := map[string]any{
-		"PlaygroundAPIKey": playgroundAPIKey,
-		"Models":           models,
-	}
-	injectAuth(r, data)
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := templates.ExecuteTemplate(w, "playground.html", data); err != nil {
-		log.Error().Err(err).Msg("template error")
-		http.Error(w, "template error", http.StatusInternalServerError)
-	}
 }
 
 // ── Chat API Handlers ──────────────────────────────────────────────────────
@@ -1714,6 +1621,7 @@ func (u *UI) ChatPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
+		"ActivePage":   "chat",
 		"ChatAPIKey":   playgroundAPIKey,
 		"Models":       models,
 		"TitleModel":   cfg.Server.TitleModel,
@@ -2267,6 +2175,7 @@ func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
+		"ActivePage":     "settings",
 		"LegacyKeys":     keys, // server.api_keys entries (unnamed, for migration notice only)
 		"Backends":       backends,
 		"StatsCount":     u.collector.TotalCount(),
@@ -2896,6 +2805,7 @@ func (u *UI) SetModelAlias(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	go u.registry.RebuildIndex()
 	w.WriteHeader(http.StatusNoContent)
 }
 

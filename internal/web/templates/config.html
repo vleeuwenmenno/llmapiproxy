@@ -10,20 +10,7 @@
 </head>
 <body>
     <div class="noise"></div>
-    <nav>
-        <div class="logo">
-            <div class="icon">&#9889;</div>
-            LLM API Proxy{{if appVersion}} <span class="version">{{appVersion}}</span>{{end}}
-        </div>
-        <div class="links">
-            <a href="/ui/">Dashboard</a>
-            <a href="/ui/models">Models</a>
-            <a href="/ui/chat">Chat</a>
-            <a href="/ui/config" class="active">Config</a>
-            <a href="/ui/settings">Settings</a>
-            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">&#9728;</button>
-        </div>
-    </nav>
+    {{template "navbar" .}}
     <main>
         <h1>Configuration</h1>
 

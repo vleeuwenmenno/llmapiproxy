@@ -11,49 +11,7 @@
 <body>
     <div class="noise"></div>
 
-    <!-- Mobile Menu Overlay -->
-    <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="closeMobileMenu()"></div>
-
-    <!-- Mobile Navigation Drawer -->
-    <div class="nav-links-mobile" id="navLinksMobile">
-        <div class="mobile-menu-header">
-            <span class="mobile-menu-title">Menu</span>
-            <button class="mobile-menu-close" onclick="closeMobileMenu()">&#10005;</button>
-        </div>
-        <a href="/ui/">&#128200; Dashboard</a>
-        <a href="/ui/analytics">&#128202; Analytics</a>
-        <a href="/ui/routing">&#128260; Routing</a>
-        <a href="/ui/backends">&#129302; Backends</a>
-        <a href="/ui/models" class="active">&#127918; Models</a>
-        <a href="/ui/chat">&#128172; Chat</a>
-        <a href="/ui/settings">&#9881; Settings</a>
-        <button class="theme-toggle-mobile" onclick="toggleTheme(); closeMobileMenu();" id="themeBtnMobile">
-            <span id="themeIconMobile">&#9728;</span> Toggle Theme
-        </button>
-    </div>
-
-    <nav>
-        <div class="logo">
-            <div class="icon">&#9889;</div>
-            LLM API Proxy{{if appVersion}} <span class="version">{{appVersion}}</span>{{end}}
-        </div>
-        <div class="links">
-            <a href="/ui/">Dashboard</a>
-            <a href="/ui/backends">Backends</a>
-            <a href="/ui/models" class="active">Models</a>
-            <a href="/ui/chat">Chat</a>
-            <a href="/ui/settings">Settings</a>
-            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">&#9728;</button>
-            {{if .User}}<span class="user-badge">{{.User.Username}}<form method="POST" action="/ui/logout" style="display:inline"><button type="submit" class="logout-btn" data-tooltip="Logout" aria-label="Logout"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button></form></span>{{end}}
-        </div>
-        <button class="mobile-menu-btn" onclick="openMobileMenu()" aria-label="Open menu">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="18" x2="21" y2="18"></line>
-            </svg>
-        </button>
-    </nav>
+    {{template "navbar" .}}
 
     {{if and $.GlobalIdentityProfile (ne $.GlobalIdentityProfile "none")}}
     <div class="identity-warning-banner" id="identity-warning-banner" data-profile="{{$.GlobalIdentityProfile}}">
@@ -2029,18 +1987,76 @@
             currentBackends.forEach(function(b, i) {
                 var disabled = !!currentDisabledBackends[b];
                 var li = document.createElement('li');
-                li.style.cssText = 'display:flex;align-items:center;gap:0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.5rem 0.75rem;font-family:var(--mono);font-size:0.82rem' + (disabled ? ';opacity:0.45' : '');
-                // Toggle switch
+                li.className = 'routing-backend-item';
+                li.draggable = true;
+                li.dataset.index = i;
+                li.style.cssText = 'display:flex;align-items:center;gap:0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.5rem 0.75rem;font-family:var(--mono);font-size:0.82rem;transition:border-color 0.15s' + (disabled ? ';opacity:0.45' : '');
                 var toggleHTML = '<label class="routing-backend-toggle" title="' + (disabled ? 'Enable' : 'Disable') + ' this backend for routing">'
                     + '<input type="checkbox"' + (disabled ? '' : ' checked') + ' onchange="toggleBackendDisabled(\'' + b.replace(/'/g, "\\'") + '\', this.checked)">'
                     + '<span class="routing-toggle-slider"></span>'
                     + '</label>';
-                li.innerHTML = toggleHTML
+                li.innerHTML = '<span class="routing-drag-handle" title="Drag to reorder">&#x2807;</span>'
+                    + toggleHTML
                     + '<span style="color:var(--text-dim);min-width:1.2rem">#' + (i+1) + '</span>'
-                    + '<span style="flex:1;color:var(--text)">' + b + (disabled ? ' <span style=\"color:var(--text-dim);font-size:0.7rem;font-style:italic\">(disabled)</span>' : '') + '</span>'
-                    + (i > 0 ? '<button onclick="moveBackend(' + i + ',-1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1rem" title="Move up">↑</button>' : '<span style="width:1.6rem"></span>')
-                    + (i < currentBackends.length-1 ? '<button onclick="moveBackend(' + i + ',1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1rem" title="Move down">↓</button>' : '<span style="width:1.6rem"></span>');
+                    + '<span style="flex:1;color:var(--text)">' + b + (disabled ? ' <span style=\"color:var(--text-dim);font-size:0.7rem;font-style:italic\">(disabled)</span>' : '') + '</span>';
+                li.addEventListener('dragstart', onBackendDragStart);
+                li.addEventListener('dragover', onBackendDragOver);
+                li.addEventListener('dragenter', onBackendDragEnter);
+                li.addEventListener('dragleave', onBackendDragLeave);
+                li.addEventListener('drop', onBackendDrop);
+                li.addEventListener('dragend', onBackendDragEnd);
                 ul.appendChild(li);
+            });
+        }
+
+        var _dragSrcIndex = null;
+
+        function onBackendDragStart(e) {
+            _dragSrcIndex = parseInt(this.dataset.index, 10);
+            this.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', _dragSrcIndex);
+        }
+
+        function onBackendDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        }
+
+        function onBackendDragEnter(e) {
+            e.preventDefault();
+            var rect = this.getBoundingClientRect();
+            var midY = rect.top + rect.height / 2;
+            this.classList.remove('drag-over-top', 'drag-over-bottom');
+            if (e.clientY < midY) {
+                this.classList.add('drag-over-top');
+            } else {
+                this.classList.add('drag-over-bottom');
+            }
+        }
+
+        function onBackendDragLeave(e) {
+            this.classList.remove('drag-over-top', 'drag-over-bottom');
+        }
+
+        function onBackendDrop(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var targetIndex = parseInt(this.dataset.index, 10);
+            if (_dragSrcIndex === null || _dragSrcIndex === targetIndex) return;
+            var moved = currentBackends.splice(_dragSrcIndex, 1)[0];
+            var rect = this.getBoundingClientRect();
+            var insertAt = (e.clientY < rect.top + rect.height / 2) ? targetIndex : targetIndex + 1;
+            if (_dragSrcIndex < targetIndex) insertAt--;
+            currentBackends.splice(insertAt, 0, moved);
+            _dragSrcIndex = null;
+            renderBackendList();
+        }
+
+        function onBackendDragEnd() {
+            _dragSrcIndex = null;
+            document.querySelectorAll('.routing-backend-item').forEach(function(el) {
+                el.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom');
             });
         }
 
@@ -2050,15 +2066,6 @@
             } else {
                 currentDisabledBackends[backendName] = true;
             }
-            renderBackendList();
-        }
-
-        function moveBackend(idx, dir) {
-            var newIdx = idx + dir;
-            if (newIdx < 0 || newIdx >= currentBackends.length) return;
-            var tmp = currentBackends[idx];
-            currentBackends[idx] = currentBackends[newIdx];
-            currentBackends[newIdx] = tmp;
             renderBackendList();
         }
 

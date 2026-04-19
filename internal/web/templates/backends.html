@@ -11,47 +11,7 @@
 <body>
     <div class="noise"></div>
 
-    <!-- Mobile Menu Overlay -->
-    <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="closeMobileMenu()"></div>
-
-    <!-- Mobile Navigation Drawer -->
-    <div class="nav-links-mobile" id="navLinksMobile">
-        <div class="mobile-menu-header">
-            <span class="mobile-menu-title">Menu</span>
-            <button class="mobile-menu-close" onclick="closeMobileMenu()">&#10005;</button>
-        </div>
-        <a href="/ui/">&#128200; Dashboard</a>
-        <a href="/ui/backends" class="active">&#129302; Backends</a>
-        <a href="/ui/models">&#127918; Models</a>
-        <a href="/ui/chat">&#128172; Chat</a>
-        <a href="/ui/settings">&#9881; Settings</a>
-        <button class="theme-toggle-mobile" onclick="toggleTheme(); closeMobileMenu();" id="themeBtnMobile">
-            <span id="themeIconMobile">&#9728;</span> Toggle Theme
-        </button>
-    </div>
-
-    <nav>
-        <div class="logo">
-            <div class="icon">&#9889;</div>
-            LLM API Proxy{{if appVersion}} <span class="version">{{appVersion}}</span>{{end}}
-        </div>
-        <div class="links">
-            <a href="/ui/">Dashboard</a>
-            <a href="/ui/backends" class="active">Backends</a>
-            <a href="/ui/models">Models</a>
-            <a href="/ui/chat">Chat</a>
-            <a href="/ui/settings">Settings</a>
-            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">&#9728;</button>
-            {{if .User}}<span class="user-badge">{{.User.Username}}<form method="POST" action="/ui/logout" style="display:inline"><button type="submit" class="logout-btn" data-tooltip="Logout" aria-label="Logout"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button></form></span>{{end}}
-        </div>
-        <button class="mobile-menu-btn" onclick="openMobileMenu()" aria-label="Open menu">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="18" x2="21" y2="18"></line>
-            </svg>
-        </button>
-    </nav>
+    {{template "navbar" .}}
 
     {{if and $.GlobalIdentityProfile (ne $.GlobalIdentityProfile "none")}}
     <div class="identity-warning-banner" id="identity-warning-banner" data-profile="{{$.GlobalIdentityProfile}}">
