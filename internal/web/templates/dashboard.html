@@ -138,6 +138,20 @@
                         </button>
                         <div class="control-divider"></div>
                         <button
+                            class="filter-btn export-btn"
+                            onclick="exportOverview('csv')"
+                            title="Export overview as CSV"
+                        >
+                            ⬇ CSV
+                        </button>
+                        <button
+                            class="filter-btn export-btn"
+                            onclick="exportOverview('md')"
+                            title="Export overview as Markdown"
+                        >
+                            ⬇ MD
+                        </button>
+                        <button
                             class="filter-btn"
                             onclick="fetchData()"
                             title="Refresh now"
@@ -426,7 +440,10 @@
 
             <!-- ── Request Log ── -->
             <div class="section-title">
-                Request Log <span class="badge" id="logCount"></span>
+                <span>Request Log <span class="badge" id="logCount"></span></span>
+                <button class="filter-btn export-btn export-log-btn" onclick="openLogExportDialog()" title="Export request log summary">
+                    ⬇ Export Summary
+                </button>
             </div>
             <table class="log-table">
                 <thead>
@@ -464,6 +481,48 @@
             onclick="if (event.target === this) this.classList.remove('open');"
         >
             <div class="modal-box" id="drilldownContent"></div>
+        </div>
+
+        <!-- Export Log Summary Modal -->
+        <div
+            class="modal-bg"
+            id="logExportModal"
+            onclick="if (event.target === this) closeLogExportDialog()"
+        >
+            <div class="modal-box" style="max-width:480px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem">
+                    <h3 style="margin:0;font-size:1.1rem">Export Request Log Summary</h3>
+                    <button class="modal-close-btn" onclick="closeLogExportDialog()" title="Close">&times;</button>
+                </div>
+                <div style="margin-bottom:1rem">
+                    <label style="display:block;font-size:0.8rem;color:var(--text-dim);margin-bottom:0.35rem">Group By</label>
+                    <select id="logExportGroupBy" style="width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text)">
+                        <option value="backend">Backend</option>
+                        <option value="model" selected>Model</option>
+                        <option value="client">Client</option>
+                        <option value="strategy">Strategy</option>
+                        <option value="stream">Stream (SSE vs Non-SSE)</option>
+                    </select>
+                </div>
+                <div style="margin-bottom:1.25rem">
+                    <label style="display:block;font-size:0.8rem;color:var(--text-dim);margin-bottom:0.35rem">Format</label>
+                    <div style="display:flex;gap:0.75rem">
+                        <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer">
+                            <input type="radio" name="logExportFormat" value="csv" checked> CSV
+                        </label>
+                        <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer">
+                            <input type="radio" name="logExportFormat" value="md"> Markdown
+                        </label>
+                    </div>
+                </div>
+                <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:1.25rem">
+                    Current dashboard filters (time range, backend, model, client) will be applied automatically.
+                </div>
+                <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+                    <button class="filter-btn" onclick="closeLogExportDialog()">Cancel</button>
+                    <button class="filter-btn export-btn" onclick="exportLogSummary()" style="background:var(--accent);color:#fff">Export</button>
+                </div>
+            </div>
         </div>
 
         <script>
@@ -2199,6 +2258,50 @@
                         content.innerHTML =
                             '<p class="red">Failed to load details</p>';
                     });
+            }
+
+            // ── Export helpers ──────────────────────────────────────────
+            function buildFilterParams() {
+                var p = new URLSearchParams();
+                if (state.window === "all" && !state.customFrom) {
+                    p.set("from", "2010-01-01T00:00:00.000Z");
+                    p.set("to", new Date().toISOString());
+                } else if (state.toNow && !state.customFrom) {
+                    p.set("window", state.window || "1h");
+                } else if (state.toNow && state.customFrom) {
+                    p.set("from", state.customFrom);
+                    p.set("to", new Date().toISOString());
+                } else {
+                    if (state.customFrom) p.set("from", state.customFrom);
+                    if (state.customTo) p.set("to", state.customTo);
+                }
+                if (state.backend) p.set("backend", state.backend);
+                if (state.model) p.set("model", state.model);
+                if (state.client) p.set("client", state.client);
+                if (state.errors) p.set("errors", "1");
+                return p;
+            }
+
+            function exportOverview(format) {
+                var p = buildFilterParams();
+                p.set("format", format);
+                window.open("/ui/export/overview?" + p.toString(), "_blank");
+            }
+
+            function openLogExportDialog() {
+                document.getElementById("logExportModal").classList.add("open");
+            }
+
+            function closeLogExportDialog() {
+                document.getElementById("logExportModal").classList.remove("open");
+            }
+
+            function exportLogSummary() {
+                var p = buildFilterParams();
+                p.set("format", document.querySelector('input[name="logExportFormat"]:checked').value);
+                p.set("group_by", document.getElementById("logExportGroupBy").value);
+                closeLogExportDialog();
+                window.open("/ui/export/log-summary?" + p.toString(), "_blank");
             }
 
             // ── Init ───────────────────────────────────────────────────

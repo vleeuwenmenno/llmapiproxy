@@ -1009,6 +1009,118 @@ func (s *Store) FallbacksForBackend(name string, f StatsFilter, limit int) ([]Re
 	return records, rows.Err()
 }
 
+// AggregateBy groups records by the given dimension and returns full aggregated stats per group.
+// dim must be one of: "backend", "model", "client", "strategy", "stream".
+func (s *Store) AggregateBy(f StatsFilter, dim string) ([]AggregateRow, error) {
+	if s == nil {
+		return nil, nil
+	}
+	allowed := map[string]string{"backend": "1", "model": "1", "client": "1", "strategy": "1", "stream": "1"}
+	if _, ok := allowed[dim]; !ok {
+		return nil, fmt.Errorf("stats: aggregate by: invalid dimension %q", dim)
+	}
+	where, args := buildWhere(f)
+
+	col := dim
+	if dim == "strategy" {
+		col = "strategy"
+	}
+
+	query := fmt.Sprintf(`SELECT %s,
+	       COUNT(*),
+	       COALESCE(SUM(prompt_tokens), 0),
+	       COALESCE(SUM(completion_tokens), 0),
+	       COALESCE(SUM(total_tokens), 0),
+	       COALESCE(SUM(cached_tokens), 0),
+	       COALESCE(SUM(reasoning_tokens), 0),
+	       SUM(CASE WHEN error != '' THEN 1 ELSE 0 END),
+	       COALESCE(AVG(latency_ms), 0),
+	       SUM(CASE WHEN stream = 1 THEN 1 ELSE 0 END),
+	       SUM(CASE WHEN stream = 0 OR stream IS NULL THEN 1 ELSE 0 END),
+	       COALESCE(AVG(CASE WHEN ttft_ms > 0 THEN ttft_ms END), 0),
+	       COALESCE(AVG(CASE WHEN generation_ms > 0 THEN generation_ms END), 0),
+	       COALESCE(SUM(CASE WHEN tps > 0 THEN tps * completion_tokens ELSE 0 END), 0),
+	       COALESCE(SUM(CASE WHEN tps > 0 THEN completion_tokens ELSE 0 END), 0)
+	FROM requests %s
+	GROUP BY %s
+	ORDER BY COUNT(*) DESC`, col, where, col)
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("stats: aggregate by %s: %w", dim, err)
+	}
+	defer rows.Close()
+
+	var out []AggregateRow
+	for rows.Next() {
+		var ar AggregateRow
+		var avgLat float64
+		var avgTTFT, avgGen float64
+		var tpsWSum float64
+		var tpsWCount int
+		if err := rows.Scan(&ar.Name, &ar.Requests, &ar.PromptTokens, &ar.CompletionTokens,
+			&ar.TotalTokens, &ar.CachedTokens, &ar.ReasoningTokens, &ar.Errors,
+			&avgLat, &ar.StreamCount, &ar.NonStreamCount, &avgTTFT, &avgGen,
+			&tpsWSum, &tpsWCount); err != nil {
+			return nil, err
+		}
+		ar.AvgLatMs = int64(avgLat)
+		if ar.Requests > 0 {
+			ar.ErrorPct = float64(ar.Errors) / float64(ar.Requests) * 100
+		}
+		if avgTTFT > 0 {
+			ar.AvgTTFTMs = int64(avgTTFT)
+		}
+		if avgGen > 0 {
+			ar.AvgGenerationMs = int64(avgGen)
+		}
+		if tpsWCount > 0 {
+			ar.AvgTPS = tpsWSum / float64(tpsWCount)
+		}
+		out = append(out, ar)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if dim == "stream" {
+		return out, nil
+	}
+
+	for i := range out {
+		extra := where
+		if extra == "" {
+			extra = "WHERE " + col + " = ?"
+		} else {
+			extra += " AND " + col + " = ?"
+		}
+		lArgs := append(append([]any(nil), args...), out[i].Name)
+		latRows, err := s.db.Query(
+			`SELECT latency_ms FROM requests `+extra+` ORDER BY latency_ms`, lArgs...)
+		if err != nil {
+			continue
+		}
+		var lats []int64
+		for latRows.Next() {
+			var l int64
+			if latRows.Scan(&l) != nil {
+				break
+			}
+			lats = append(lats, l)
+		}
+		latRows.Close()
+		n := len(lats)
+		if n > 0 {
+			pct := func(p float64) int64 { return lats[int(float64(n-1)*p)] }
+			out[i].P50 = pct(0.50)
+			out[i].P90 = pct(0.90)
+			out[i].P99 = pct(0.99)
+		}
+	}
+
+	return out, nil
+}
+
 // AttemptErrorStats returns per-backend attempt statistics from the request_attempts table.
 // It counts how many times each backend was tried (across all routing strategies) and how
 // many of those attempts failed (error != ”). This reveals backends that frequently fail

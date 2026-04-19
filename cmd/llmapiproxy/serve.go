@@ -222,6 +222,8 @@ var serveCmd = &cobra.Command{
 			r.Post("/analytics/wipe", ui.WipeAnalytics)
 			r.Get("/stats/cards", ui.StatsCards)
 			r.Get("/stats/detail", ui.RequestDetail)
+			r.Get("/export/overview", ui.ExportOverview)
+			r.Get("/export/log-summary", ui.ExportLogSummary)
 			r.Get("/analytics", http.RedirectHandler("/ui/", http.StatusSeeOther).ServeHTTP)
 			r.Get("/routing", http.RedirectHandler("/ui/", http.StatusSeeOther).ServeHTTP)
 			r.Get("/routing/config", ui.RoutingConfigJSON)

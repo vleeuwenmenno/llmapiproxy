@@ -65,8 +65,8 @@ type TimePoint struct {
 	Errors          int       `json:"err"`
 	AvgLatencyMs    int64     `json:"lat"`
 	AvgTPS          float64   `json:"tps"`
-	AvgTTFTMs       int64     `json:"ttft,omitempty"`       // Avg time-to-first-token (streaming requests only)
-	AvgGenerationMs int64     `json:"gen,omitempty"`       // Avg generation phase duration (streaming requests only)
+	AvgTTFTMs       int64     `json:"ttft,omitempty"` // Avg time-to-first-token (streaming requests only)
+	AvgGenerationMs int64     `json:"gen,omitempty"`  // Avg generation phase duration (streaming requests only)
 }
 
 // Percentiles holds latency distribution values.
@@ -87,8 +87,8 @@ type RankRow struct {
 	P50               int64   `json:"p50"`
 	P90               int64   `json:"p90"`
 	P99               int64   `json:"p99"`
-	AvgTTFTMs         int64   `json:"ttft,omitempty"`       // Avg TTFT for streaming requests
-	AvgGenerationMs   int64   `json:"gen,omitempty"`       // Avg generation phase for streaming requests
+	AvgTTFTMs         int64   `json:"ttft,omitempty"` // Avg TTFT for streaming requests
+	AvgGenerationMs   int64   `json:"gen,omitempty"`  // Avg generation phase for streaming requests
 	TTFTP50           int64   `json:"ttft_p50,omitempty"`
 	TTFTP90           int64   `json:"ttft_p90,omitempty"`
 	TTFTP99           int64   `json:"ttft_p99,omitempty"`
@@ -401,6 +401,28 @@ func (c *Collector) Summarize(since time.Duration) Summary {
 		s.AvgGenerationMs = genSum / int64(streamCount)
 	}
 	return s
+}
+
+// AggregateRow holds aggregated stats for one GROUP BY bucket.
+type AggregateRow struct {
+	Name             string  `json:"name"`
+	Requests         int     `json:"requests"`
+	PromptTokens     int     `json:"prompt_tokens"`
+	CompletionTokens int     `json:"completion_tokens"`
+	TotalTokens      int     `json:"total_tokens"`
+	CachedTokens     int     `json:"cached_tokens"`
+	ReasoningTokens  int     `json:"reasoning_tokens"`
+	Errors           int     `json:"errors"`
+	ErrorPct         float64 `json:"error_pct"`
+	AvgLatMs         int64   `json:"avg_lat_ms"`
+	P50              int64   `json:"p50"`
+	P90              int64   `json:"p90"`
+	P99              int64   `json:"p99"`
+	StreamCount      int     `json:"stream_count"`
+	NonStreamCount   int     `json:"non_stream_count"`
+	AvgTTFTMs        int64   `json:"avg_ttft_ms"`
+	AvgGenerationMs  int64   `json:"avg_gen_ms"`
+	AvgTPS           float64 `json:"avg_tps"`
 }
 
 // AttemptStats holds per-backend attempt statistics aggregated from the request_attempts table.

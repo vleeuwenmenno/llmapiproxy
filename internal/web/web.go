@@ -2018,6 +2018,279 @@ func (u *UI) ToggleStats(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/ui/settings?msg=Stats+logging+"+status+".+Restart+the+proxy+for+changes+to+take+full+effect.", http.StatusSeeOther)
 }
 
+func (u *UI) ExportOverview(w http.ResponseWriter, r *http.Request) {
+	f := parseStatsFilter(r)
+	format := r.URL.Query().Get("format")
+	if format != "md" {
+		format = "csv"
+	}
+
+	summary, err := u.store.FilteredSummary(f)
+	if err != nil {
+		log.Error().Err(err).Msg("export overview: summary error")
+	}
+	pcts, err := u.store.FilteredPercentiles(f)
+	if err != nil {
+		log.Error().Err(err).Msg("export overview: percentiles error")
+	}
+	topModels, _ := u.store.RankByWithPercentiles(f, "model", 20)
+	topBackends, _ := u.store.RankByWithPercentiles(f, "backend", 20)
+	topClients, _ := u.store.RankByWithPercentiles(f, "client", 20)
+
+	filterDesc := describeFilter(f)
+	now := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+
+	var body string
+	if format == "md" {
+		body = buildOverviewMarkdown(summary, pcts, topModels, topBackends, topClients, filterDesc, now)
+	} else {
+		body = buildOverviewCSV(summary, pcts, topModels, topBackends, topClients, filterDesc, now)
+	}
+
+	ext := "." + format
+	if format == "csv" {
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	} else {
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	}
+	w.Header().Set("Content-Disposition", "attachment; filename=dashboard-overview-"+time.Now().Format("2006-01-02")+ext)
+	w.Write([]byte(body))
+}
+
+func (u *UI) ExportLogSummary(w http.ResponseWriter, r *http.Request) {
+	f := parseStatsFilter(r)
+	format := r.URL.Query().Get("format")
+	if format != "md" {
+		format = "csv"
+	}
+	groupBy := r.URL.Query().Get("group_by")
+	if groupBy == "" {
+		groupBy = "model"
+	}
+
+	rows, err := u.store.AggregateBy(f, groupBy)
+	if err != nil {
+		log.Error().Err(err).Str("group_by", groupBy).Msg("export log summary: aggregate error")
+		http.Error(w, "aggregation error", http.StatusInternalServerError)
+		return
+	}
+
+	filterDesc := describeFilter(f)
+	now := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+
+	var body string
+	if format == "md" {
+		body = buildLogSummaryMarkdown(rows, groupBy, filterDesc, now)
+	} else {
+		body = buildLogSummaryCSV(rows, groupBy, filterDesc, now)
+	}
+
+	ext := "." + format
+	if format == "csv" {
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	} else {
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	}
+	w.Header().Set("Content-Disposition", "attachment; filename=log-summary-"+groupBy+"-"+time.Now().Format("2006-01-02")+ext)
+	w.Write([]byte(body))
+}
+
+func describeFilter(f stats.StatsFilter) string {
+	var parts []string
+	if !f.From.IsZero() {
+		parts = append(parts, "From: "+f.From.UTC().Format("2006-01-02 15:04 UTC"))
+	}
+	if !f.To.IsZero() {
+		parts = append(parts, "To: "+f.To.UTC().Format("2006-01-02 15:04 UTC"))
+	}
+	if f.Backend != "" {
+		parts = append(parts, "Backend: "+f.Backend)
+	}
+	if f.Model != "" {
+		parts = append(parts, "Model: "+f.Model)
+	}
+	if f.Client != "" {
+		parts = append(parts, "Client: "+f.Client)
+	}
+	if f.ErrOnly {
+		parts = append(parts, "Errors only")
+	}
+	if len(parts) == 0 {
+		return "All time"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func buildOverviewCSV(s stats.Summary, p stats.Percentiles, models, backends, clients []stats.RankRow, filterDesc, ts string) string {
+	var b strings.Builder
+	b.WriteString("LLM API Proxy - Dashboard Export\r\n")
+	b.WriteString("Generated," + ts + "\r\n")
+	b.WriteString("Filters," + csvEsc(filterDesc) + "\r\n")
+	b.WriteString("\r\n")
+
+	b.WriteString("## Summary\r\n")
+	b.WriteString("Metric,Value\r\n")
+	b.WriteString(fmt.Sprintf("Requests,%d\r\n", s.TotalRequests))
+	b.WriteString(fmt.Sprintf("Total Tokens,%d\r\n", s.TotalTokens))
+	b.WriteString(fmt.Sprintf("Avg Latency,%dms\r\n", s.AvgLatencyMs))
+	b.WriteString(fmt.Sprintf("P50 Latency,%dms\r\n", p.P50))
+	b.WriteString(fmt.Sprintf("P90 Latency,%dms\r\n", p.P90))
+	b.WriteString(fmt.Sprintf("P99 Latency,%dms\r\n", p.P99))
+	b.WriteString(fmt.Sprintf("Errors,%d\r\n", s.TotalErrors))
+	if s.TotalRequests > 0 {
+		b.WriteString(fmt.Sprintf("Error %%,%.1f%%\r\n", float64(s.TotalErrors)/float64(s.TotalRequests)*100))
+	}
+	b.WriteString(fmt.Sprintf("Cached Tokens,%d\r\n", s.TotalCached))
+	b.WriteString(fmt.Sprintf("Reasoning Tokens,%d\r\n", s.TotalReasoning))
+	if s.AvgTPS > 0 {
+		b.WriteString(fmt.Sprintf("Avg TPS,%.1f tok/s\r\n", s.AvgTPS))
+	}
+	if s.AvgTTFTMs > 0 {
+		b.WriteString(fmt.Sprintf("Avg TTFT,%dms\r\n", s.AvgTTFTMs))
+	}
+	if s.AvgGenerationMs > 0 {
+		b.WriteString(fmt.Sprintf("Avg Generation,%dms\r\n", s.AvgGenerationMs))
+	}
+	b.WriteString("\r\n")
+
+	b.WriteString("## Models Ranking\r\n")
+	writeRankCSV(&b, models)
+	b.WriteString("\r\n")
+
+	b.WriteString("## Backends Ranking\r\n")
+	writeRankCSV(&b, backends)
+	b.WriteString("\r\n")
+
+	b.WriteString("## Clients Ranking\r\n")
+	writeRankCSV(&b, clients)
+
+	return b.String()
+}
+
+func writeRankCSV(b *strings.Builder, rows []stats.RankRow) {
+	b.WriteString("Name,Requests,Tokens,Errors,Error %,Avg Latency (ms),P50 (ms),P90 (ms),P99 (ms),Avg TTFT (ms),Avg Gen (ms)\r\n")
+	for _, r := range rows {
+		b.WriteString(fmt.Sprintf("%s,%d,%d,%d,%.1f,%d,%d,%d,%d,%d,%d\r\n",
+			csvEsc(r.Name), r.Requests, r.Tokens, r.Errors, r.ErrPct,
+			r.AvgLatMs, r.P50, r.P90, r.P99, r.AvgTTFTMs, r.AvgGenerationMs))
+	}
+}
+
+func buildOverviewMarkdown(s stats.Summary, p stats.Percentiles, models, backends, clients []stats.RankRow, filterDesc, ts string) string {
+	var b strings.Builder
+	b.WriteString("# LLM API Proxy — Dashboard Export\n\n")
+	b.WriteString(fmt.Sprintf("**Generated**: %s  \n", ts))
+	b.WriteString(fmt.Sprintf("**Filters**: %s\n\n", filterDesc))
+
+	b.WriteString("## Summary\n\n")
+	b.WriteString("| Metric | Value |\n|--------|-------|\n")
+	b.WriteString(fmt.Sprintf("| Requests | %s |\n", humanInt(s.TotalRequests)))
+	b.WriteString(fmt.Sprintf("| Total Tokens | %s |\n", humanInt(s.TotalTokens)))
+	b.WriteString(fmt.Sprintf("| Avg Latency | %dms |\n", s.AvgLatencyMs))
+	b.WriteString(fmt.Sprintf("| P50 Latency | %dms |\n", p.P50))
+	b.WriteString(fmt.Sprintf("| P90 Latency | %dms |\n", p.P90))
+	b.WriteString(fmt.Sprintf("| P99 Latency | %dms |\n", p.P99))
+	b.WriteString(fmt.Sprintf("| Errors | %s |\n", humanInt(s.TotalErrors)))
+	if s.TotalRequests > 0 {
+		b.WriteString(fmt.Sprintf("| Error %% | %.1f%% |\n", float64(s.TotalErrors)/float64(s.TotalRequests)*100))
+	}
+	b.WriteString(fmt.Sprintf("| Cached Tokens | %s |\n", humanInt(s.TotalCached)))
+	b.WriteString(fmt.Sprintf("| Reasoning Tokens | %s |\n", humanInt(s.TotalReasoning)))
+	if s.AvgTPS > 0 {
+		b.WriteString(fmt.Sprintf("| Avg TPS | %.1f tok/s |\n", s.AvgTPS))
+	}
+	if s.AvgTTFTMs > 0 {
+		b.WriteString(fmt.Sprintf("| Avg TTFT | %dms |\n", s.AvgTTFTMs))
+	}
+	if s.AvgGenerationMs > 0 {
+		b.WriteString(fmt.Sprintf("| Avg Generation | %dms |\n", s.AvgGenerationMs))
+	}
+	b.WriteString("\n")
+
+	b.WriteString("## Models Ranking\n\n")
+	writeRankMarkdown(&b, models)
+	b.WriteString("\n")
+
+	b.WriteString("## Backends Ranking\n\n")
+	writeRankMarkdown(&b, backends)
+	b.WriteString("\n")
+
+	b.WriteString("## Clients Ranking\n\n")
+	writeRankMarkdown(&b, clients)
+
+	return b.String()
+}
+
+func writeRankMarkdown(b *strings.Builder, rows []stats.RankRow) {
+	b.WriteString("| Name | Requests | Tokens | Errors | Error % | Avg Latency | P50 | P90 | P99 | TTFT | Gen |\n")
+	b.WriteString("|------|----------|--------|--------|---------|-------------|-----|-----|-----|------|-----|\n")
+	for _, r := range rows {
+		b.WriteString(fmt.Sprintf("| %s | %s | %s | %d | %.1f%% | %dms | %dms | %dms | %dms | %dms | %dms |\n",
+			r.Name, humanInt(r.Requests), humanInt(r.Tokens), r.Errors, r.ErrPct,
+			r.AvgLatMs, r.P50, r.P90, r.P99, r.AvgTTFTMs, r.AvgGenerationMs))
+	}
+}
+
+func buildLogSummaryCSV(rows []stats.AggregateRow, groupBy, filterDesc, ts string) string {
+	var b strings.Builder
+	b.WriteString("LLM API Proxy - Request Log Summary\r\n")
+	b.WriteString("Generated," + ts + "\r\n")
+	b.WriteString("Filters," + csvEsc(filterDesc) + "\r\n")
+	b.WriteString("Group By," + groupBy + "\r\n")
+	b.WriteString("\r\n")
+
+	b.WriteString("Name,Requests,Prompt Tokens,Completion Tokens,Total Tokens,Cached Tokens,Reasoning Tokens,Errors,Error %,Avg Latency (ms),P50 (ms),P90 (ms),P99 (ms),Stream,Non-Stream,Avg TTFT (ms),Avg Gen (ms),Avg TPS\r\n")
+	for _, r := range rows {
+		b.WriteString(fmt.Sprintf("%s,%d,%d,%d,%d,%d,%d,%d,%.1f,%d,%d,%d,%d,%d,%d,%d,%d,%.1f\r\n",
+			csvEsc(r.Name), r.Requests, r.PromptTokens, r.CompletionTokens,
+			r.TotalTokens, r.CachedTokens, r.ReasoningTokens, r.Errors, r.ErrorPct,
+			r.AvgLatMs, r.P50, r.P90, r.P99, r.StreamCount, r.NonStreamCount,
+			r.AvgTTFTMs, r.AvgGenerationMs, r.AvgTPS))
+	}
+	return b.String()
+}
+
+func buildLogSummaryMarkdown(rows []stats.AggregateRow, groupBy, filterDesc, ts string) string {
+	var b strings.Builder
+	b.WriteString("# LLM API Proxy — Request Log Summary\n\n")
+	b.WriteString(fmt.Sprintf("**Generated**: %s  \n", ts))
+	b.WriteString(fmt.Sprintf("**Filters**: %s  \n", filterDesc))
+	b.WriteString(fmt.Sprintf("**Group By**: %s\n\n", groupBy))
+
+	b.WriteString("| Name | Requests | Prompt | Completion | Total | Cached | Reasoning | Errors | Error % | Avg Latency | P50 | P90 | P99 | Stream | Non-Stream | Avg TTFT | Avg Gen | Avg TPS |\n")
+	b.WriteString("|------|----------|--------|------------|-------|--------|-----------|--------|---------|-------------|-----|-----|-----|--------|------------|----------|---------|--------|\n")
+	for _, r := range rows {
+		b.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %s | %s | %d | %.1f%% | %dms | %dms | %dms | %dms | %d | %d | %dms | %dms | %.1f |\n",
+			r.Name, humanInt(r.Requests), humanInt(r.PromptTokens), humanInt(r.CompletionTokens),
+			humanInt(r.TotalTokens), humanInt(r.CachedTokens), humanInt(r.ReasoningTokens),
+			r.Errors, r.ErrorPct, r.AvgLatMs, r.P50, r.P90, r.P99,
+			r.StreamCount, r.NonStreamCount, r.AvgTTFTMs, r.AvgGenerationMs, r.AvgTPS))
+	}
+	return b.String()
+}
+
+func csvEsc(s string) string {
+	if strings.ContainsAny(s, "\",\n\r") {
+		return `"` + strings.ReplaceAll(strings.ReplaceAll(s, `"`, `""`), "\r\n", "\n") + `"`
+	}
+	return s
+}
+
+func humanInt(n int) string {
+	s := strconv.FormatInt(int64(n), 10)
+	if len(s) <= 3 {
+		return s
+	}
+	var out []byte
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			out = append(out, ',')
+		}
+		out = append(out, byte(c))
+	}
+	return string(out)
+}
+
 func (u *UI) AddAPIKey(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Redirect(w, r, "/ui/settings?msg=Failed+to+parse+form.", http.StatusSeeOther)

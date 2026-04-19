@@ -1052,3 +1052,25 @@ body.light .log-table td {
     border-radius: 12px;
     padding: 2rem;
 }
+
+/* ── Export Buttons ── */
+.export-btn {
+    font-size: 0.72rem !important;
+    padding: 0.3rem 0.55rem !important;
+    white-space: nowrap;
+}
+.export-log-btn {
+    margin-left: auto;
+}
+.modal-close-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 1.4rem;
+    cursor: pointer;
+    padding: 0 0.25rem;
+    line-height: 1;
+}
+.modal-close-btn:hover {
+    color: var(--text);
+}
