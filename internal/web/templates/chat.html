@@ -2,8 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM API Proxy — Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>AI Chat</title>
+    <meta name="description" content="AI Chat powered by LLM API Proxy">
+    <meta name="theme-color" content="#22d3ee">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="AI Chat">
+    <link rel="manifest" href="/ui/manifest.json">
     <link rel="stylesheet" href="/ui/static/main.css">
     <link rel="stylesheet" href="/ui/static/chat.css">
 </head>
@@ -927,7 +933,11 @@ async function generateTitle() {
 // === SEND MESSAGE ===
 async function sendMessage() {
     var text = userInput.value.trim();
-    if (!text || isLoading || !currentSessionId) return;
+    if (!text || isLoading) return;
+
+    if (!currentSessionId) {
+        await newChat();
+    }
 
     hideError();
     emptyState.style.display = 'none';
@@ -1454,6 +1464,13 @@ function updateTokenStats() {
 
 // === INIT ===
 loadSessions();
+
+// === PWA Service Worker ===
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/ui/sw.js').catch(function(err) {
+        console.log('SW registration failed:', err);
+    });
+}
 </script>
 </body>
 </html>
