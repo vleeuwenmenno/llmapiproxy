@@ -64,11 +64,12 @@ func OpenStore(path string, c *Collector) (*Store, error) {
 func (s *Store) Save(r Record) {
 	res, err := s.db.Exec(
 		`INSERT INTO requests
-		    (timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,cached_tokens,reasoning_tokens,latency_ms,ttft_ms,generation_ms,tps,status_code,error,stream,response_body,request_body,client,strategy,attempted_backends,fallback)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		    (timestamp,backend,model,resolved_model,prompt_tokens,completion_tokens,total_tokens,cached_tokens,reasoning_tokens,latency_ms,ttft_ms,generation_ms,tps,status_code,error,stream,response_body,request_body,client,strategy,attempted_backends,fallback)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		r.Timestamp.UnixMilli(),
 		r.Backend,
 		r.Model,
+		r.ResolvedModel,
 		r.PromptTokens,
 		r.CompletionTokens,
 		r.TotalTokens,
@@ -148,7 +149,7 @@ func (s *Store) Close() error {
 
 func (s *Store) loadInto(c *Collector) error {
 	rows, err := s.db.Query(
-		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
+		`SELECT id,timestamp,backend,model,resolved_model,prompt_tokens,completion_tokens,total_tokens,
 		        cached_tokens,reasoning_tokens,
 		        latency_ms,ttft_ms,generation_ms,tps,
 		        status_code,error,stream,response_body,request_body,client,
@@ -168,6 +169,7 @@ func (s *Store) loadInto(c *Collector) error {
 			&tsMillis,
 			&r.Backend,
 			&r.Model,
+			&r.ResolvedModel,
 			&r.PromptTokens,
 			&r.CompletionTokens,
 			&r.TotalTokens,
@@ -274,13 +276,18 @@ func (s *Store) migrate() error {
 			return fmt.Errorf("migration 9c: %w", err)
 		}
 	}
-	_, err := s.db.Exec("PRAGMA user_version = 9")
+	if version < 10 {
+		if _, err := s.db.Exec("ALTER TABLE requests ADD COLUMN resolved_model TEXT NOT NULL DEFAULT ''"); err != nil {
+			return fmt.Errorf("migration 10: %w", err)
+		}
+	}
+	_, err := s.db.Exec("PRAGMA user_version = 10")
 	return err
 }
 
 func (s *Store) GetByID(id int64) (*Record, error) {
 	row := s.db.QueryRow(
-		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
+		`SELECT id,timestamp,backend,model,resolved_model,prompt_tokens,completion_tokens,total_tokens,
 		        cached_tokens,reasoning_tokens,
 		        latency_ms,ttft_ms,generation_ms,tps,
 		        status_code,error,stream,response_body,request_body,client,
@@ -294,6 +301,7 @@ func (s *Store) GetByID(id int64) (*Record, error) {
 		&tsMillis,
 		&r.Backend,
 		&r.Model,
+		&r.ResolvedModel,
 		&r.PromptTokens,
 		&r.CompletionTokens,
 		&r.TotalTokens,
@@ -800,7 +808,7 @@ func (s *Store) FilteredRecords(f StatsFilter, page, pageSize int) ([]Record, in
 	offset := page * pageSize
 	queryArgs := append(append([]any(nil), args...), pageSize, offset)
 	rows, err := s.db.Query(
-		`SELECT id,timestamp,backend,model,prompt_tokens,completion_tokens,total_tokens,
+		`SELECT id,timestamp,backend,model,resolved_model,prompt_tokens,completion_tokens,total_tokens,
 		        latency_ms,ttft_ms,generation_ms,tps,
 		        status_code,error,stream,response_body,request_body,client,
 		        strategy,attempted_backends,fallback,cached_tokens,reasoning_tokens
@@ -819,7 +827,7 @@ func (s *Store) FilteredRecords(f StatsFilter, page, pageSize int) ([]Record, in
 		var tsMs int64
 		var stream, fallback int
 		if err := rows.Scan(
-			&r.ID, &tsMs, &r.Backend, &r.Model,
+			&r.ID, &tsMs, &r.Backend, &r.Model, &r.ResolvedModel,
 			&r.PromptTokens, &r.CompletionTokens, &r.TotalTokens,
 			&r.LatencyMs, &r.TTFTMs, &r.GenerationMs, &r.TPS,
 			&r.StatusCode, &r.Error, &stream,

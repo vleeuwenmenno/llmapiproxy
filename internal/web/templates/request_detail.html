@@ -3,7 +3,7 @@
   <table style="width:100%;border-collapse:collapse;font-size:0.8rem">
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem;width:140px">Time</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{formatTime .Timestamp}}</td></tr>
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Backend</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.Backend}}</td></tr>
-    <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Model</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.Model}}</td></tr>
+    <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Model</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.Model}}{{if and .ResolvedModel (ne .ResolvedModel .Model)}} <span style="font-size:0.75em;color:var(--text-dim,#64748b)" title="Client requested {{.Model}}, resolved to {{.ResolvedModel}} via alias">→ {{.ResolvedModel}}</span>{{end}}</td></tr>
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Client</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{if .Client}}{{.Client}}{{else}}(anonymous){{end}}</td></tr>
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Status</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{.StatusCode}}</td></tr>
     <tr><td style="color:var(--text-dim,#64748b);padding:0.3rem 0.5rem">Latency</td><td style="font-family:monospace;padding:0.3rem 0.5rem">{{formatDuration .LatencyMs}}</td></tr>

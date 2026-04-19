@@ -32,6 +32,10 @@ type Record struct {
 	AttemptedBackends string `json:"attempted_backends,omitempty"` // comma-separated, e.g. "zai-coding,zen"
 	Fallback          bool   `json:"fallback,omitempty"`           // true if winning backend was not the first attempted
 
+	// ResolvedModel is the actual backend model ID used for the upstream call.
+	// Set only when it differs from Model (i.e. an alias was applied).
+	ResolvedModel string `json:"resolved_model,omitempty"`
+
 	// Attempts holds per-backend attempt details for fallback tracing.
 	// Transient: populated by the handler, persisted to request_attempts table by Save(), not loaded back into Record.
 	Attempts []Attempt `json:"-"`
