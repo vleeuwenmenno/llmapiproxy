@@ -83,6 +83,78 @@ func NewModelIndex(rules []CanonicalizeRule) *ModelIndex {
 	}
 }
 
+// autoMergePrefixes scans for canonical IDs that contain "/" and checks
+// if stripping the leftmost path segment(s) reveals a match with another
+// canonical model. When found, the prefixed model is merged into the
+// non-prefixed one.
+//
+// This handles backends that prepend a fixed prefix to upstream model IDs
+// (e.g. "route/" from routing.run producing "route/minimax-m2.5" when the
+// canonical form should be "minimax-m2.5"). The RawModelID is preserved
+// so the proxy still sends the correct upstream ID.
+func autoMergePrefixes(models map[string]*IndexedModel, order *[]string) {
+	var prefixed []string
+	for cid := range models {
+		if strings.Contains(cid, "/") {
+			prefixed = append(prefixed, cid)
+		}
+	}
+
+	for _, cid := range prefixed {
+		src, ok := models[cid]
+		if !ok {
+			continue
+		}
+		candidate := cid
+		for strings.Contains(candidate, "/") {
+			slash := strings.Index(candidate, "/")
+			candidate = candidate[slash+1:]
+			if tgt, found := models[candidate]; found {
+				tgt.Backends = append(tgt.Backends, src.Backends...)
+				mergeIndexedMetadata(tgt, src)
+				delete(models, cid)
+				for i, id := range *order {
+					if id == cid {
+						*order = append((*order)[:i], (*order)[i+1:]...)
+						break
+					}
+				}
+				log.Debug().
+					Str("prefixed", cid).
+					Str("canonical", candidate).
+					Msg("model index: auto-merged prefixed model")
+				break
+			}
+		}
+	}
+}
+
+func mergeIndexedMetadata(tgt, src *IndexedModel) {
+	if src.ContextLength != nil {
+		if tgt.ContextLength == nil || *src.ContextLength > *tgt.ContextLength {
+			tgt.ContextLength = src.ContextLength
+		}
+	}
+	if src.MaxOutputTokens != nil {
+		if tgt.MaxOutputTokens == nil || *src.MaxOutputTokens > *tgt.MaxOutputTokens {
+			tgt.MaxOutputTokens = src.MaxOutputTokens
+		}
+	}
+	if tgt.DisplayName == "" && src.DisplayName != "" {
+		tgt.DisplayName = src.DisplayName
+	}
+	capSet := make(map[string]bool, len(tgt.Capabilities))
+	for _, c := range tgt.Capabilities {
+		capSet[c] = true
+	}
+	for _, c := range src.Capabilities {
+		if !capSet[c] {
+			tgt.Capabilities = append(tgt.Capabilities, c)
+			capSet[c] = true
+		}
+	}
+}
+
 // ── Build ───────────────────────────────────────────────────
 
 // Build populates the index from live backend data. It calls ListModels on
@@ -166,6 +238,12 @@ func (idx *ModelIndex) Build(ctx context.Context, backends map[string]Backend, b
 			idx.mergeMetadata(existing, &m)
 		}
 	}
+
+	// Auto-merge models that differ only by a path prefix.
+	// Handles backends that prepend a fixed prefix to upstream model IDs
+	// (e.g. "route/" from routing.run producing "route/minimax-m2.5"
+	// when the canonical form should be "minimax-m2.5").
+	autoMergePrefixes(newModels, &newOrder)
 
 	// Sort the order and each model's backend list.
 	sort.Strings(newOrder)
