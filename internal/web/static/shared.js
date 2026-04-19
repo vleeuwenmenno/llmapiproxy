@@ -120,10 +120,65 @@ function fmtNum(n) {
     return n.toString();
 }
 
+function fmtRelative(ms) {
+    var sec = Math.floor(ms / 1000);
+    if (sec < 60) return sec + "s ago";
+    var min = Math.floor(sec / 60);
+    if (min < 60) return min + "m ago";
+    var hr = Math.floor(min / 60);
+    if (hr < 24) return hr + "h ago";
+    var days = Math.floor(hr / 24);
+    return days + "d ago";
+}
+
 function fmtTime(iso) {
     if (!iso) return "";
     var d = new Date(iso);
-    return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    var now = new Date();
+    var diffMs = now - d;
+    var diffDays = Math.floor(diffMs / 86400000);
+    if (diffDays < 90) {
+        return (
+            '<span title="' +
+            d.toLocaleString() +
+            '">' +
+            fmtRelative(diffMs) +
+            "</span>"
+        );
+    }
+    var isToday = d.toDateString() === now.toDateString();
+    if (isToday) {
+        return d.toLocaleTimeString(undefined, {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+        });
+    }
+    var pad = function (n) {
+        return n < 10 ? "0" + n : n;
+    };
+    return (
+        pad(d.getMonth() + 1) +
+        "/" +
+        pad(d.getDate()) +
+        " " +
+        pad(d.getHours()) +
+        ":" +
+        pad(d.getMinutes())
+    );
+}
+
+function fmtDateTime(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    return d.toLocaleString(undefined, {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+    });
 }
 
 function fmtCtx(n) {

@@ -353,25 +353,27 @@
                     ⬇ Export Summary
                 </button>
             </div>
-            <table class="log-table">
-                <thead>
-                    <tr>
-                        <th></th>
-                        <th>Time</th>
-                        <th>Backend</th>
-                        <th>Model</th>
-                        <th>Prompt</th>
-                        <th>Compl.</th>
-                        <th>Total</th>
-                        <th>Latency</th>
-                        <th>TPS</th>
-                        <th>Stream</th>
-                        <th>Route</th>
-                        <th>Client</th>
-                    </tr>
-                </thead>
-                <tbody id="logBody"></tbody>
-            </table>
+            <div class="table-scroll-wrapper">
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Time</th>
+                            <th>Backend</th>
+                            <th>Model</th>
+                            <th>Prompt</th>
+                            <th>Compl.</th>
+                            <th>Total</th>
+                            <th>Latency</th>
+                            <th>TPS</th>
+                            <th>Stream</th>
+                            <th>Route</th>
+                            <th>Client</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logBody"></tbody>
+                </table>
+            </div>
             <div class="pagination" id="logPagination"></div>
         </main>
 
@@ -1468,7 +1470,7 @@
                 var arrow = function (col) {
                     return ss.col === col ? (ss.asc ? " ▲" : " ▼") : "";
                 };
-                var html = '<table class="rank-table"><thead><tr>';
+                var html = '<div class="table-scroll-wrapper"><table class="rank-table"><thead><tr>';
                 html +=
                     "<th onclick=\"sortRank('" +
                     tab +
@@ -1622,7 +1624,7 @@
                         html += "</tr>";
                     });
                 }
-                html += "</tbody></table>";
+                html += "</tbody></table></div>";
                 document.getElementById("rankContainer").innerHTML = html;
             }
 
@@ -1694,7 +1696,7 @@
                         "% fallback</span>";
                     html += "</div>";
                     html +=
-                        '<table class="backend-table"><thead><tr><th>Backend</th><th>Avg Latency</th><th>Share</th><th>Error %</th><th>Attempt Fail %</th><th>Fallbacks</th><th>Requests</th></tr></thead><tbody>';
+                        '<div class="table-scroll-wrapper"><table class="backend-table"><thead><tr><th>Backend</th><th>Avg Latency</th><th>Share</th><th>Error %</th><th>Attempt Fail %</th><th>Fallbacks</th><th>Requests</th></tr></thead><tbody>';
                     (m.backends || []).forEach(function (b) {
                         var errPct =
                             b.requests > 0 ? (b.errors / b.requests) * 100 : 0;
@@ -1761,7 +1763,7 @@
                         html += "<td>" + fmtNum(b.requests) + "</td>";
                         html += "</tr>";
                     });
-                    html += "</tbody></table></div>";
+                    html += "</tbody></table></div></div>";
                 });
                 document.getElementById("routingContent").innerHTML = html;
             }
@@ -1830,7 +1832,7 @@
                     "</span></h3>";
                 html += summaryHtml;
                 html +=
-                    '<table class="backend-table"><thead><tr><th>Time</th><th>Model</th><th>Attempt Error</th><th>Attempt Status</th><th>Latency</th><th>Won By</th></tr></thead><tbody>';
+                    '<div class="table-scroll-wrapper"><table class="backend-table"><thead><tr><th>Time</th><th>Model</th><th>Attempt Error</th><th>Attempt Status</th><th>Latency</th><th>Won By</th></tr></thead><tbody>';
                 items.forEach(function (r) {
                     // Extract this backend's attempt error from attempts array
                     var attemptError = "—";
@@ -1867,7 +1869,7 @@
                             : '<span style="color:var(--text-dim)">—</span>';
                     html +=
                         "<tr><td>" +
-                        fmtTime(r.timestamp) +
+                        fmtDateTime(r.timestamp) +
                         "</td><td>" +
                         esc(r.model) +
                         (r.resolved_model && r.resolved_model !== r.model
@@ -1885,7 +1887,7 @@
                         esc(r.backend) +
                         "</td></tr>";
                 });
-                html += "</tbody></table>";
+                html += "</tbody></table></div>";
                 c.innerHTML = html;
             }
 
