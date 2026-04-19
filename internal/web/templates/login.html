@@ -36,27 +36,6 @@
         </form>
     </div>
 
-    <script>
-    (function() {
-        const saved = localStorage.getItem('theme') || 'dark';
-        applyTheme(saved);
-    })();
-
-    function applyTheme(theme) {
-        if (theme === 'system') {
-            document.body.classList.toggle('light', !window.matchMedia('(prefers-color-scheme: dark)').matches);
-        } else {
-            document.body.classList.toggle('light', theme === 'light');
-        }
-        document.getElementById('themeBtn').textContent = document.body.classList.contains('light') ? '\uD83C\uDF19' : '\u2600';
-    }
-
-    function toggleTheme() {
-        var current = localStorage.getItem('theme') || 'dark';
-        var next = current === 'light' ? 'dark' : 'light';
-        localStorage.setItem('theme', next);
-        applyTheme(next);
-    }
-    </script>
+    <script src="/ui/static/shared.js"></script>
 </body>
 </html>

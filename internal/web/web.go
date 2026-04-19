@@ -46,6 +46,21 @@ func init() {
 	templates = template.Must(template.New("").Funcs(template.FuncMap{
 		"appVersion": func() string { return appVersion },
 		"maskKey":    maskKey,
+		// ctxBadge formats a context-length *int64 as a human-readable string (e.g. "128K", "1M").
+		"ctxBadge": func(n *int64) string {
+			if n == nil {
+				return ""
+			}
+			v := *n
+			switch {
+			case v >= 1_000_000:
+				return fmt.Sprintf("%gM", float64(v)/1_000_000)
+			case v >= 1_000:
+				return fmt.Sprintf("%gK", float64(v)/1_000)
+			default:
+				return fmt.Sprintf("%d", v)
+			}
+		},
 		"json": func(v any) template.JS {
 			b, _ := json.Marshal(v)
 			return template.JS(b)
@@ -760,6 +775,7 @@ type ModelEntry struct {
 	Capabilities    []string `json:"capabilities,omitempty"`
 	DataSource      string   `json:"data_source,omitempty"` // "upstream", "config", "builtin", or ""
 	Disabled        bool     `json:"disabled,omitempty"`    // true when this model is in the backend's disabled_models list
+	Alias           string   `json:"alias,omitempty"`       // non-empty when this model is aliased to another name
 }
 
 // iconForBackend maps a backend name to a static icon URL.
@@ -851,10 +867,15 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				seenModelIDs[mc.ID] = true
+				alias := ""
+				if bc.ModelAliases != nil {
+					alias = bc.ModelAliases[mc.ID]
+				}
 				modelEntries = append(modelEntries, ModelEntry{
 					FullID:   bc.Name + "/" + mc.ID,
 					BareID:   mc.ID,
 					Disabled: disabledSet[mc.ID],
+					Alias:    alias,
 				})
 			}
 		}
@@ -971,6 +992,20 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	disabledModelsJSON, _ := json.Marshal(disabledModelsByBackend)
 
+	modelAliasesByBackend := make(map[string]map[string]string)
+	for _, bc := range cfg.Backends {
+		if len(bc.ModelAliases) > 0 {
+			modelAliasesByBackend[bc.Name] = bc.ModelAliases
+		}
+	}
+	modelAliasesJSON, _ := json.Marshal(modelAliasesByBackend)
+
+	var aliasCollisions []backend.AliasCollision
+	if u.registry != nil {
+		aliasCollisions = u.registry.ModelIndex().Collisions()
+	}
+	aliasCollisionsJSON, _ := json.Marshal(aliasCollisions)
+
 	// Build API key entries for the curl modal (masked for display, full for copy).
 	apiKeyEntries := make([]keyEntry, len(cfg.Server.APIKeys))
 	for i, k := range cfg.Server.APIKeys {
@@ -1012,15 +1047,88 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	allIdentityProfiles := identity.AllProfiles(customProfiles)
 
+	// Build the exposed models table from FlatModelList.
+	var exposedModels []ExposedModelEntry
+	if u.registry != nil {
+		flatModels := u.registry.FlatModelList(r.Context(), cfg.Routing)
+		exposedModels = make([]ExposedModelEntry, 0, len(flatModels))
+		for _, m := range flatModels {
+			caps := m.Capabilities
+			if caps == nil {
+				caps = []string{}
+			}
+			// Build rawIDs map: for each serving backend, look up the raw model ID from index.
+			rawIDs := make(map[string]string)
+			if idx := u.registry.ModelIndex(); idx != nil {
+				for _, im := range idx.FlatModels() {
+					if im.CanonicalID == m.ID {
+						for _, ref := range im.Backends {
+							rawIDs[ref.BackendName] = ref.RawModelID
+						}
+						break
+					}
+				}
+			}
+			// Fall back to canonical ID for backends without index data.
+			for _, bn := range m.AvailableBackends {
+				if _, ok := rawIDs[bn]; !ok {
+					rawIDs[bn] = m.ID
+				}
+			}
+			displayStrat := m.RoutingStrategy
+			if displayStrat == "" {
+				displayStrat = cfg.Routing.Strategy
+			}
+			if displayStrat == "" {
+				displayStrat = "priority"
+			}
+		// Collect any aliases applied to this model across all backends.
+		var aliases []string
+		var originalIDs []string
+		seenAlias := make(map[string]bool)
+		seenOrig := make(map[string]bool)
+		for _, bn := range m.AvailableBackends {
+			rawID := rawIDs[bn]
+			if aliasMap, ok := modelAliasesByBackend[bn]; ok {
+				if a, ok := aliasMap[rawID]; ok && a != "" && !seenAlias[a] {
+					aliases = append(aliases, a)
+					seenAlias[a] = true
+					// Track original raw ID so the template can show it as a badge.
+					if rawID != a && !seenOrig[rawID] {
+						originalIDs = append(originalIDs, rawID)
+						seenOrig[rawID] = true
+					}
+				}
+			}
+		}
+			exposedModels = append(exposedModels, ExposedModelEntry{
+				CanonicalID:     m.ID,
+				DisplayName:     m.DisplayName,
+				Backends:        m.AvailableBackends,
+				RawIDs:          rawIDs,
+				Aliases:         aliases,
+				OriginalIDs:     originalIDs,
+				ContextLength:   m.ContextLength,
+				MaxOutputTokens: m.MaxOutputTokens,
+				Capabilities:    caps,
+				RoutingStrategy: displayStrat,
+			})
+		}
+	}
+
 	data := map[string]any{
 		"Backends":              entries,
 		"Overlaps":              overlaps,
+		"ExposedModels":         exposedModels,
 		"DisplayAddr":           displayAddr,
 		"SampleModel":           sampleModel,
 		"Message":               r.URL.Query().Get("msg"),
 		"RoutingJSON":           template.JS(routingJSON),
 		"GlobalStrategy":        cfg.Routing.Strategy,
 		"DisabledModelsJSON":    template.JS(disabledModelsJSON),
+		"ModelAliasesJSON":      template.JS(modelAliasesJSON),
+		"AliasCollisionsJSON":   template.JS(aliasCollisionsJSON),
+		"AliasCollisions":       aliasCollisions,
 		"ServerAPIKeys":         apiKeyEntries,
 		"CurlModels":            curlModels,
 		"OAuthByBackend":        oauthByBackend,
@@ -1032,6 +1140,195 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.ExecuteTemplate(w, "models.html", data); err != nil {
+		log.Error().Err(err).Msg("template error")
+		http.Error(w, "template error", http.StatusInternalServerError)
+	}
+}
+
+// ExposedModelEntry is a row in the "Exposed Models" table on the models page.
+// It represents one canonical model ID as returned by /v1/models.
+type ExposedModelEntry struct {
+	CanonicalID     string            // model ID as exposed via /v1/models
+	DisplayName     string
+	Backends        []string          // backend names that serve this model, in routing priority order
+	RawIDs          map[string]string // backend → raw model ID
+	Aliases         []string          // alias names applied to this model (may come from multiple backends)
+	OriginalIDs     []string          // original raw model IDs before aliasing (deduplicated)
+	ContextLength   *int64
+	MaxOutputTokens *int64
+	Capabilities    []string
+	RoutingStrategy string // effective strategy (per-model override or global)
+}
+
+// BackendsPage renders the backends management page (backend cards + quick connect).
+func (u *UI) BackendsPage(w http.ResponseWriter, r *http.Request) {
+	cfg := u.cfgMgr.Get()
+
+	entries := make([]BackendEntry, 0, len(cfg.Backends))
+	for _, bc := range cfg.Backends {
+		isDynamic := len(bc.Models) == 0
+		var modelEntries []ModelEntry
+		if !isDynamic {
+			seenModelIDs := make(map[string]bool, len(bc.Models))
+			disabledSet := make(map[string]bool, len(bc.DisabledModels))
+			for _, dm := range bc.DisabledModels {
+				disabledSet[dm] = true
+			}
+			for _, mc := range bc.Models {
+				if seenModelIDs[mc.ID] {
+					continue
+				}
+				seenModelIDs[mc.ID] = true
+				alias := ""
+				if bc.ModelAliases != nil {
+					alias = bc.ModelAliases[mc.ID]
+				}
+				modelEntries = append(modelEntries, ModelEntry{
+					FullID:   bc.Name + "/" + mc.ID,
+					BareID:   mc.ID,
+					Disabled: disabledSet[mc.ID],
+					Alias:    alias,
+				})
+			}
+		}
+		entries = append(entries, BackendEntry{
+			Name:            bc.Name,
+			Type:            bc.Type,
+			BaseURL:         bc.BaseURL,
+			APIKey:          maskKey(bc.APIKey),
+			Models:          modelEntries,
+			IsDynamic:       isDynamic,
+			IconURL:         iconForBackend(bc.Name),
+			Enabled:         bc.IsEnabled(),
+			StaticCount:     len(modelEntries),
+			DisabledModels:  bc.DisabledModels,
+			IdentityProfile: bc.IdentityProfile,
+			CircuitOpen:     u.circuit != nil && u.circuit.Enabled() && u.circuit.State(bc.Name).State == "open",
+			CompatMode:      bc.CompatMode,
+		})
+	}
+
+	listen := cfg.Server.Listen
+	displayAddr := "localhost" + listen
+	if strings.HasPrefix(listen, "0.0.0.0") {
+		displayAddr = "localhost" + listen[len("0.0.0.0"):]
+	} else if !strings.Contains(listen, ":") {
+		displayAddr = listen
+	}
+
+	sampleModel := "backend/model-id"
+	for _, e := range entries {
+		if e.Enabled && len(e.Models) > 0 {
+			sampleModel = e.Models[0].FullID
+			break
+		}
+	}
+
+	type routingModelData struct {
+		Backends         []string `json:"backends"`
+		Strategy         string   `json:"strategy"`
+		DisabledBackends []string `json:"disabled_backends,omitempty"`
+	}
+	routingByModel := make(map[string]routingModelData)
+	for _, mr := range cfg.Routing.Models {
+		routingByModel[mr.Model] = routingModelData{Backends: mr.Backends, Strategy: mr.Strategy, DisabledBackends: mr.DisabledBackends}
+	}
+	routingJSON, _ := json.Marshal(routingByModel)
+
+	disabledModelsByBackend := make(map[string]map[string]bool)
+	for _, bc := range cfg.Backends {
+		if len(bc.DisabledModels) > 0 {
+			m := make(map[string]bool, len(bc.DisabledModels))
+			for _, dm := range bc.DisabledModels {
+				m[dm] = true
+			}
+			disabledModelsByBackend[bc.Name] = m
+		}
+	}
+	disabledModelsJSON, _ := json.Marshal(disabledModelsByBackend)
+
+	modelAliasesByBackend := make(map[string]map[string]string)
+	for _, bc := range cfg.Backends {
+		if len(bc.ModelAliases) > 0 {
+			modelAliasesByBackend[bc.Name] = bc.ModelAliases
+		}
+	}
+	modelAliasesJSON, _ := json.Marshal(modelAliasesByBackend)
+
+	// Pre-seed allBackendModels for non-dynamic backends so aliases show
+	// immediately on page load without waiting for the async API fetch.
+	staticBackendModels := make(map[string][]ModelEntry)
+	for _, e := range entries {
+		if !e.IsDynamic && len(e.Models) > 0 {
+			staticBackendModels[e.Name] = e.Models
+		}
+	}
+	staticBackendModelsJSON, _ := json.Marshal(staticBackendModels)
+
+	var aliasCollisions []backend.AliasCollision
+	if u.registry != nil {
+		aliasCollisions = u.registry.ModelIndex().Collisions()
+	}
+	aliasCollisionsJSON, _ := json.Marshal(aliasCollisions)
+
+	apiKeyEntries := make([]keyEntry, len(cfg.Server.APIKeys))
+	for i, k := range cfg.Server.APIKeys {
+		apiKeyEntries[i] = keyEntry{Index: i, Masked: maskKey(k), Full: k}
+	}
+
+	var curlModels []string
+	for _, bc := range cfg.Backends {
+		if !bc.IsEnabled() {
+			continue
+		}
+		for _, m := range bc.Models {
+			if bc.IsModelDisabled(m.ID) {
+				continue
+			}
+			curlModels = append(curlModels, bc.Name+"/"+m.ID)
+		}
+	}
+
+	oauthStatuses := u.registry.OAuthStatuses()
+	oauthByBackend := make(map[string]*backend.OAuthStatus, len(oauthStatuses))
+	for i := range oauthStatuses {
+		oauthByBackend[oauthStatuses[i].BackendName] = &oauthStatuses[i]
+	}
+
+	var customProfiles []identity.Profile
+	for _, cp := range cfg.CustomIdentityProfiles {
+		customProfiles = append(customProfiles, identity.Profile{
+			ID:          cp.ID,
+			DisplayName: cp.DisplayName,
+			UserAgent:   cp.UserAgent,
+			Headers:     cp.Headers,
+		})
+	}
+	allIdentityProfiles := identity.AllProfiles(customProfiles)
+
+	data := map[string]any{
+		"Backends":                entries,
+		"DisplayAddr":             displayAddr,
+		"SampleModel":             sampleModel,
+		"Message":                 r.URL.Query().Get("msg"),
+		"RoutingJSON":             template.JS(routingJSON),
+		"GlobalStrategy":          cfg.Routing.Strategy,
+		"DisabledModelsJSON":      template.JS(disabledModelsJSON),
+		"ModelAliasesJSON":        template.JS(modelAliasesJSON),
+		"StaticBackendModelsJSON": template.JS(staticBackendModelsJSON),
+		"AliasCollisionsJSON":     template.JS(aliasCollisionsJSON),
+		"AliasCollisions":         aliasCollisions,
+		"ServerAPIKeys":           apiKeyEntries,
+		"CurlModels":              curlModels,
+		"OAuthByBackend":          oauthByBackend,
+		"IdentityProfiles":        allIdentityProfiles,
+		"GlobalIdentityProfile":   cfg.IdentityProfile,
+		"CircuitByBackend":        u.circuitStatesByBackend(cfg),
+	}
+	injectAuth(r, data)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.ExecuteTemplate(w, "backends.html", data); err != nil {
 		log.Error().Err(err).Msg("template error")
 		http.Error(w, "template error", http.StatusInternalServerError)
 	}
@@ -1090,6 +1387,10 @@ func (u *UI) BackendModels(w http.ResponseWriter, r *http.Request) {
 
 	if isDynamic {
 		for _, m := range liveModels {
+			alias := ""
+			if bc.ModelAliases != nil {
+				alias = bc.ModelAliases[m.ID]
+			}
 			entries = append(entries, ModelEntry{
 				FullID:          bc.Name + "/" + m.ID,
 				BareID:          m.ID,
@@ -1098,6 +1399,7 @@ func (u *UI) BackendModels(w http.ResponseWriter, r *http.Request) {
 				Capabilities:    m.Capabilities,
 				DataSource:      "upstream",
 				Disabled:        m.Disabled || disabledSet[m.ID],
+				Alias:           alias,
 			})
 		}
 	} else {
@@ -1106,6 +1408,9 @@ func (u *UI) BackendModels(w http.ResponseWriter, r *http.Request) {
 				FullID:   bc.Name + "/" + mc.ID,
 				BareID:   mc.ID,
 				Disabled: disabledSet[mc.ID],
+			}
+			if bc.ModelAliases != nil {
+				entry.Alias = bc.ModelAliases[mc.ID]
 			}
 			if live, ok := liveByID[mc.ID]; ok {
 				entry.ContextLength = live.ContextLength
@@ -1181,6 +1486,16 @@ func (u *UI) RefreshBackendModels(w http.ResponseWriter, r *http.Request) {
 	// routing reflect the refreshed model list immediately.
 	go u.registry.RebuildIndex()
 
+	// Look up alias map for this backend from config.
+	cfg := u.cfgMgr.Get()
+	var aliasMap map[string]string
+	for _, bc := range cfg.Backends {
+		if bc.Name == name {
+			aliasMap = bc.ModelAliases
+			break
+		}
+	}
+
 	type modelResp struct {
 		ID              string   `json:"id"`
 		DisplayName     string   `json:"display_name,omitempty"`
@@ -1188,10 +1503,15 @@ func (u *UI) RefreshBackendModels(w http.ResponseWriter, r *http.Request) {
 		MaxOutputTokens *int64   `json:"max_output_tokens,omitempty"`
 		Capabilities    []string `json:"capabilities,omitempty"`
 		Disabled        bool     `json:"disabled,omitempty"`
+		Alias           string   `json:"alias,omitempty"`
 	}
 
 	resp := make([]modelResp, len(models))
 	for i, m := range models {
+		alias := ""
+		if aliasMap != nil {
+			alias = aliasMap[m.ID]
+		}
 		resp[i] = modelResp{
 			ID:              name + "/" + m.ID,
 			DisplayName:     m.DisplayName,
@@ -1199,6 +1519,7 @@ func (u *UI) RefreshBackendModels(w http.ResponseWriter, r *http.Request) {
 			MaxOutputTokens: m.MaxOutputTokens,
 			Capabilities:    m.Capabilities,
 			Disabled:        m.Disabled,
+			Alias:           alias,
 		}
 	}
 
@@ -2554,11 +2875,35 @@ func (u *UI) BulkToggleDisabledModels(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// SetModelAlias sets or clears a model alias for a backend. When alias is
+// non-empty the model is aliased to that name in the model index; when empty
+// the alias is removed.
+func (u *UI) SetModelAlias(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Backend string `json:"backend"`
+		Model   string `json:"model"`
+		Alias   string `json:"alias"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if payload.Backend == "" || payload.Model == "" {
+		http.Error(w, "backend and model are required", http.StatusBadRequest)
+		return
+	}
+	if err := u.cfgMgr.SetModelAlias(payload.Backend, payload.Model, payload.Alias); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // SwitchBackendType changes a backend's type between openai and anthropic,
 // updating its base URL and API key. Only openai ↔ anthropic is supported.
 func (u *UI) SwitchBackendType(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/ui/models?msg=Failed+to+parse+form.", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/backends?msg=Failed+to+parse+form.", http.StatusSeeOther)
 		return
 	}
 	name := r.FormValue("name")
@@ -2568,7 +2913,7 @@ func (u *UI) SwitchBackendType(w http.ResponseWriter, r *http.Request) {
 
 	redirectTo := r.FormValue("redirect")
 	if redirectTo == "" {
-		redirectTo = "/ui/models"
+		redirectTo = "/ui/backends"
 	}
 
 	if err := u.cfgMgr.SwitchBackendType(name, newType, baseURL, apiKey); err != nil {
@@ -2593,7 +2938,7 @@ func (u *UI) AddBackendPage(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": msg})
 		} else {
-			http.Redirect(w, r, "/ui/models?msg=Error:+"+strings.ReplaceAll(msg, " ", "+"), http.StatusSeeOther)
+			http.Redirect(w, r, "/ui/backends?msg=Error:+"+strings.ReplaceAll(msg, " ", "+"), http.StatusSeeOther)
 		}
 	}
 
@@ -2701,7 +3046,7 @@ func (u *UI) AddBackendPage(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"ok": true, "name": name, "type": bc.Type})
 		return
 	}
-	http.Redirect(w, r, "/ui/models?msg=Backend+"+name+"+added.", http.StatusSeeOther)
+	http.Redirect(w, r, "/ui/backends?msg=Backend+"+name+"+added.", http.StatusSeeOther)
 }
 
 // DeleteBackendPage removes a backend from the Models page.
@@ -2709,12 +3054,12 @@ func (u *UI) AddBackendPage(w http.ResponseWriter, r *http.Request) {
 // deletes all analytics data associated with the backend.
 func (u *UI) DeleteBackendPage(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/ui/models?msg=Error:+failed+to+parse+form.", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/backends?msg=Error:+failed+to+parse+form.", http.StatusSeeOther)
 		return
 	}
 	name := r.FormValue("name")
 	if name == "" {
-		http.Redirect(w, r, "/ui/models?msg=Error:+backend+name+is+required.", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/backends?msg=Error:+backend+name+is+required.", http.StatusSeeOther)
 		return
 	}
 
@@ -2729,7 +3074,7 @@ func (u *UI) DeleteBackendPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := u.cfgMgr.DeleteBackend(name); err != nil {
-		http.Redirect(w, r, "/ui/models?msg=Error:"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/backends?msg=Error:"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
 		return
 	}
 
@@ -2738,7 +3083,7 @@ func (u *UI) DeleteBackendPage(w http.ResponseWriter, r *http.Request) {
 	if r.FormValue("wipe_stats") == "on" {
 		msg = "Backend+" + name + "+deleted+and+analytics+wiped."
 	}
-	http.Redirect(w, r, "/ui/models?msg="+msg, http.StatusSeeOther)
+	http.Redirect(w, r, "/ui/backends?msg="+msg, http.StatusSeeOther)
 }
 
 // WipeAnalytics deletes analytics records matching the given filters.
@@ -2950,7 +3295,7 @@ func (u *UI) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 	if errParam != "" {
 		errDesc := r.URL.Query().Get("error_description")
 		log.Printf("oauth callback error for %s: %s: %s", backendName, errParam, errDesc)
-		http.Redirect(w, r, "/ui/models?msg=OAuth+authentication+failed:+"+errParam, http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/backends?msg=OAuth+authentication+failed:+"+errParam, http.StatusSeeOther)
 		return
 	}
 
@@ -2973,12 +3318,12 @@ func (u *UI) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 
 	if err := callbackHandler.HandleCallback(r.Context(), code, state); err != nil {
 		log.Printf("oauth callback error for %s: %v", backendName, err)
-		http.Redirect(w, r, "/ui/models?msg=OAuth+callback+failed:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/backends?msg=OAuth+callback+failed:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
 		return
 	}
 
 	log.Printf("oauth: successfully authenticated backend %s", backendName)
-	http.Redirect(w, r, "/ui/models?msg="+backendName+"+authentication+successful!", http.StatusSeeOther)
+	http.Redirect(w, r, "/ui/backends?msg="+backendName+"+authentication+successful!", http.StatusSeeOther)
 }
 
 // OAuthDeviceLogin initiates the device code flow for the specified backend.
@@ -3107,12 +3452,12 @@ func (u *UI) OAuthDisconnect(w http.ResponseWriter, r *http.Request) {
 
 	if err := disconnectHandler.Disconnect(); err != nil {
 		log.Printf("oauth disconnect error for %s: %v", backendName, err)
-		http.Redirect(w, r, "/ui/models?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/backends?msg=Error:+"+strings.ReplaceAll(err.Error(), " ", "+"), http.StatusSeeOther)
 		return
 	}
 
 	log.Printf("oauth: disconnected backend %s", backendName)
-	http.Redirect(w, r, "/ui/models?msg="+backendName+"+disconnected+successfully.", http.StatusSeeOther)
+	http.Redirect(w, r, "/ui/backends?msg="+backendName+"+disconnected+successfully.", http.StatusSeeOther)
 }
 
 // RoutingConfigJSON returns the current routing configuration as JSON (used by
@@ -3250,7 +3595,7 @@ func (u *UI) SetGlobalIdentityProfile(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	http.Redirect(w, r, "/ui/models?msg=Global+identity+profile+set+to+"+profileID, http.StatusSeeOther)
+	http.Redirect(w, r, "/ui/backends?msg=Global+identity+profile+set+to+"+profileID, http.StatusSeeOther)
 }
 
 // SetBackendIdentityProfile sets the identity profile for a specific backend.
@@ -3313,7 +3658,7 @@ func (u *UI) SetBackendIdentityProfile(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	http.Redirect(w, r, "/ui/models?msg=Identity+profile+for+"+backendName+"+set+to+"+profileID, http.StatusSeeOther)
+	http.Redirect(w, r, "/ui/backends?msg=Identity+profile+for+"+backendName+"+set+to+"+profileID, http.StatusSeeOther)
 }
 
 // ── Circuit Breaker Handlers ────────────────────────────
@@ -3551,7 +3896,7 @@ func (u *UI) OllamaPullModel(w http.ResponseWriter, r *http.Request) {
 
 	redirect := r.URL.Query().Get("redirect")
 	if redirect == "" {
-		redirect = "/ui/models"
+		redirect = "/ui/backends"
 	}
 	http.Redirect(w, r, redirect+"?msg=Pulling+"+req.Model+"+on+"+backendName, http.StatusSeeOther)
 }
@@ -3642,7 +3987,7 @@ func (u *UI) OllamaDeleteModel(w http.ResponseWriter, r *http.Request) {
 	}
 	redirect := r.URL.Query().Get("redirect")
 	if redirect == "" {
-		redirect = "/ui/models"
+		redirect = "/ui/backends"
 	}
 	http.Redirect(w, r, redirect+"?msg=Model+"+modelName+"+deleted+from+"+backendName, http.StatusSeeOther)
 }

@@ -179,6 +179,8 @@ backends:
     # disabled_models:          # Optional: models to never route through this backend.
     #   - claude-opus-4-6        # These models won't appear in /v1/models or the web UI
     #   - claude-sonnet-4-6      # for this backend. Other backends are unaffected.
+    # model_aliases:             # Optional: rename models before canonicalization.
+    #   glm-5.1-precision: glm-5.1  # Makes "glm-5.1-precision" appear as "glm-5.1"
 
   # ── GitHub Copilot ────────────────────────────────────────
   # Uses GitHub Device Code Flow for authentication.

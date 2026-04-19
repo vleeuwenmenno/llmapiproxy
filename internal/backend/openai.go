@@ -213,7 +213,7 @@ func (b *OpenAIBackend) ChatCompletion(ctx context.Context, req *ChatCompletionR
 }
 
 func (b *OpenAIBackend) ChatCompletionStream(ctx context.Context, req *ChatCompletionRequest) (io.ReadCloser, error) {
-	body := b.rewriteBody(req)
+	body := b.rewriteBodyStreaming(req)
 	// For streaming, don't use the client timeout — the stream can last a long time.
 	client := &http.Client{}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, b.baseURL+"/chat/completions", bytes.NewReader(body))
@@ -544,22 +544,54 @@ func (b *OpenAIBackend) setHeaders(httpReq *http.Request, apiKeyOverride string)
 }
 
 func (b *OpenAIBackend) rewriteBody(req *ChatCompletionRequest) []byte {
+	return b.rewriteBodyWithStreamOptions(req, false)
+}
+
+func (b *OpenAIBackend) rewriteBodyStreaming(req *ChatCompletionRequest) []byte {
+	return b.rewriteBodyWithStreamOptions(req, true)
+}
+
+func (b *OpenAIBackend) rewriteBodyWithStreamOptions(req *ChatCompletionRequest, streaming bool) []byte {
 	if len(req.RawBody) == 0 {
 		data, _ := json.Marshal(req)
+		if streaming {
+			data = injectStreamOptions(data)
+		}
 		return data
 	}
 
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(req.RawBody, &m); err != nil {
 		data, _ := json.Marshal(req)
+		if streaming {
+			data = injectStreamOptions(data)
+		}
 		return data
 	}
 
 	modelBytes, _ := json.Marshal(req.Model)
 	m["model"] = modelBytes
+	if streaming {
+		streamOpts, _ := json.Marshal(map[string]any{"include_usage": true})
+		m["stream_options"] = streamOpts
+	}
 	fixToolParameters(m)
 	data, _ := json.Marshal(m)
 	return data
+}
+
+func injectStreamOptions(data []byte) []byte {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(data, &m); err != nil {
+		return data
+	}
+	streamOpts, _ := json.Marshal(map[string]any{"include_usage": true})
+	m["stream_options"] = streamOpts
+	out, err := json.Marshal(m)
+	if err != nil {
+		return data
+	}
+	return out
 }
 
 // fixToolParameters ensures every tool definition has a "parameters" field.

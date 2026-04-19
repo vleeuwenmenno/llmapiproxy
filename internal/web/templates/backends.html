@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM API Proxy — Models</title>
+    <title>LLM API Proxy — Backends</title>
     <script src="/ui/static/htmx.min.js"></script>
     <link rel="stylesheet" href="/ui/static/main.css">
     <link rel="stylesheet" href="/ui/static/models.css">
@@ -21,10 +21,8 @@
             <button class="mobile-menu-close" onclick="closeMobileMenu()">&#10005;</button>
         </div>
         <a href="/ui/">&#128200; Dashboard</a>
-        <a href="/ui/analytics">&#128202; Analytics</a>
-        <a href="/ui/routing">&#128260; Routing</a>
-        <a href="/ui/backends">&#129302; Backends</a>
-        <a href="/ui/models" class="active">&#127918; Models</a>
+        <a href="/ui/backends" class="active">&#129302; Backends</a>
+        <a href="/ui/models">&#127918; Models</a>
         <a href="/ui/chat">&#128172; Chat</a>
         <a href="/ui/settings">&#9881; Settings</a>
         <button class="theme-toggle-mobile" onclick="toggleTheme(); closeMobileMenu();" id="themeBtnMobile">
@@ -39,8 +37,8 @@
         </div>
         <div class="links">
             <a href="/ui/">Dashboard</a>
-            <a href="/ui/backends">Backends</a>
-            <a href="/ui/models" class="active">Models</a>
+            <a href="/ui/backends" class="active">Backends</a>
+            <a href="/ui/models">Models</a>
             <a href="/ui/chat">Chat</a>
             <a href="/ui/settings">Settings</a>
             <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">&#9728;</button>
@@ -71,200 +69,207 @@
     {{end}}
 
     <main>
-        <h1>Models</h1>
-        <p class="subtitle">All models exposed via <code style="font-family:var(--mono);font-size:0.85em;background:var(--surface-2);padding:0.1rem 0.4rem;border-radius:3px">/v1/models</code>, their routing configuration, and any alias conflicts.</p>
+        <h1>Backends</h1>
+        <p class="subtitle">Manage your configured LLM provider backends. Each backend can serve one or more models.</p>
 
         {{if .Message}}
         <div style="padding:0.65rem 1rem;border-radius:6px;margin-bottom:1.5rem;font-size:0.875rem;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:var(--green)">{{.Message}}</div>
         {{end}}
 
-        <!-- ── Alias Collisions ──────────────────────────────────────── -->
-        {{if .AliasCollisions}}
-        <div class="overlap-section" style="margin-bottom:1.5rem">
-            <div class="section-title" style="color:var(--amber)">&#x26A0; Alias Collisions</div>
-            <p class="overlap-description">
-                The following model aliases collide with existing model IDs on the same backend. This means requests targeting the alias may route to the wrong model.
-            </p>
-            <div style="display:flex;flex-direction:column;gap:0.5rem">
-            {{range .AliasCollisions}}
-                <div style="padding:0.5rem 0.75rem;border-radius:6px;font-size:0.82rem;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);color:var(--text)">
-                    <strong style="color:var(--amber)">{{.BackendName}}</strong>:
-                    model <code style="font-family:var(--mono);font-size:0.8em;background:var(--surface-2);padding:0.1rem 0.4rem;border-radius:3px">{{.RawModelID}}</code>
-                    aliased as <code style="font-family:var(--mono);font-size:0.8em;background:var(--surface-2);padding:0.1rem 0.4rem;border-radius:3px">{{.Alias}}</code>
-                    collides with <code style="font-family:var(--mono);font-size:0.8em;background:var(--surface-2);padding:0.1rem 0.4rem;border-radius:3px">{{.CollidesWith}}</code>
-                </div>
-            {{end}}
-            </div>
-        </div>
-        {{end}}
-
-        <!-- ── Overlapping Models ────────────────────────────────────── -->
-        <div id="overlap-section" class="overlap-section" style="margin-bottom:1.5rem"{{if not .Overlaps}} hidden{{end}}>
-            <div class="section-title">Overlapping Models</div>
-            <p class="overlap-description">
-                These model IDs appear in more than one backend. Click a chip to configure which backend is tried first and what happens on failure.
-            </p>
-            <div class="filter-bar overlap-filter-bar collapsed" id="overlap-toolbar">
-                <div class="overlap-filter-primary">
-                    <div class="filter-group overlap-search-group">
-                        <input type="search" id="overlap-search" class="filter-input" placeholder="Model IDs, backends, aliases">
+        <div class="section-title">Backends<span class="section-title-line"></span>
+            <div class="section-title-actions" id="global-identity-dropdown">
+                {{if and $.GlobalIdentityProfile (ne $.GlobalIdentityProfile "none")}}
+                <button type="button" class="section-title-profile-pill" onclick="toggleGlobalIdentityMenu(event)" title="Global identity profile active">
+                    &#x1F576; {{$.GlobalIdentityProfile}}
+                </button>
+                {{end}}
+                <button type="button" class="section-title-trigger{{if and $.GlobalIdentityProfile (ne $.GlobalIdentityProfile "none")}} has-profile{{end}}" title="Identity profile" onclick="toggleGlobalIdentityMenu(event)">&#x22EE;</button>
+                <div class="section-title-menu">
+                    <div class="section-title-menu-header">&#x1F576; Global Identity Profile</div>
+                    <div class="backend-submenu-panel open">
+                        {{range $.IdentityProfiles}}
+                        <button type="button" class="backend-submenu-option{{if eq .ID $.GlobalIdentityProfile}} active{{end}}" data-profile-id="{{.ID}}" onclick="setGlobalIdentityProfile('{{.ID}}')">
+                            <span class="submenu-check">{{if eq .ID $.GlobalIdentityProfile}}&#x2713;{{end}}</span>
+                            <span>{{.DisplayName}}</span>
+                        </button>
+                        {{end}}
                     </div>
-                    <div class="window-pills" id="overlap-view-toggle">
-                        <button type="button" class="pill active" data-view="cards">Cards</button>
-                        <button type="button" class="pill" data-view="list">List</button>
-                    </div>
-                    <button type="button" class="overlap-toggle-filters" id="overlap-toggle-filters">Filters<span class="toggle-arrow">&#x25BE;</span></button>
-                    <button type="button" class="overlap-clear-btn" id="overlap-clear-filters">Clear</button>
-                </div>
-                <div class="overlap-filter-secondary" id="overlap-filter-secondary">
-                    <div class="filter-group">
-                        <select id="overlap-backend-filter" class="filter-select">
-                            <option value="">All backends</option>
-                            {{range .Backends}}<option value="{{.Name}}">{{.Name}}</option>{{end}}
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <select id="overlap-status-filter" class="filter-select">
-                            <option value="">All statuses</option>
-                            <option value="routing-configured">Routing configured</option>
-                            <option value="no-routing">No routing set</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <select id="overlap-strategy-filter" class="filter-select">
-                            <option value="">All strategies</option>
-                            <option value="priority">Priority</option>
-                            <option value="round-robin">Round-robin</option>
-                            <option value="race">Race</option>
-                            <option value="staggered-race">Staggered race</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <select id="overlap-sort" class="filter-select">
-                            <option value="alpha">A–Z</option>
-                            <option value="backends-desc">Most backends</option>
-                            <option value="configured-first">Configured first</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="overlap-meta-row">
-                <span class="overlap-results-count" id="overlap-results-count"></span>
-            </div>
-            <div id="overlap-results"></div>
-        </div>
-
-        <!-- ── Exposed Models Table ──────────────────────────────────── -->
-        <div class="section-title">Exposed Models<span class="section-title-line"></span></div>
-        <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1rem;line-height:1.6">
-            All model IDs returned by <code style="font-family:var(--mono);font-size:0.85em;background:var(--surface-2);padding:0.1rem 0.4rem;border-radius:3px">/v1/models</code>.
-            Use the <strong>Exposed ID</strong> column value when calling the API.
-        </p>
-
-        <!-- Filter bar -->
-        <div class="filter-bar" id="exposed-filter-bar">
-            <!-- Control row: always visible -->
-            <div class="control-row">
-                <div style="display:flex;align-items:center;gap:0.5rem;flex:1">
-                    <button class="filter-toggle-btn" id="exposedFiltersBtn" onclick="toggleExposedFilters()" title="Toggle filters">
-                        ⚙ Filters
-                        <span class="filter-badge" id="exposedFilterBadge" style="display:none">0</span>
+                    <div class="backend-menu-separator"></div>
+                    <button type="button" class="backend-submenu-option" onclick="toggleGlobalDisabledVisibility()">
+                        <span class="submenu-check">&#x1F441;</span>
+                        <span id="global-hide-disabled-label">Hide disabled models</span>
                     </button>
-                    <input type="search" id="exposed-search" class="filter-input" placeholder="Search model ID, backend…" style="flex:1;max-width:280px">
-                </div>
-                <div class="control-right">
-                    <span class="exposed-count" id="exposed-count" style="font-size:0.78rem;color:var(--text-dim);white-space:nowrap"></span>
-                </div>
-            </div>
-            <!-- Collapsible filters panel -->
-            <div class="filters-panel" id="exposedFiltersPanel">
-                <div class="filters-row">
-                    <select class="filter-select" id="exposed-filter-backend" title="Backend" onchange="applyExposedFilter()">
-                        <option value="">All Backends</option>
-                    </select>
-                    <select class="filter-select" id="exposed-filter-strategy" title="Routing Strategy" onchange="applyExposedFilter()">
-                        <option value="">All Strategies</option>
-                        <option value="priority">Priority</option>
-                        <option value="round-robin">Round-Robin</option>
-                        <option value="race">Race</option>
-                        <option value="staggered-race">Staggered Race</option>
-                        <option value="global">Global (default)</option>
-                    </select>
-                    <select class="filter-select" id="exposed-filter-cap" title="Capability" onchange="applyExposedFilter()">
-                        <option value="">All Capabilities</option>
-                        <option value="vision">Vision</option>
-                        <option value="tools">Tools</option>
-                        <option value="reasoning">Reasoning</option>
-                    </select>
-                    <div class="filter-sep"></div>
-                    <button class="clear-filters-btn" onclick="clearExposedFilters()" title="Clear all filters">✕ Clear filters</button>
                 </div>
             </div>
         </div>
+        <div class="backend-grid">
+        {{range .Backends}}
+        {{$oauth := index $.OAuthByBackend .Name}}
+            <div class="backend-card{{if not .Enabled}} disabled{{end}}{{if .CircuitOpen}} circuit-open{{end}}{{if .IsDynamic}} collapsed{{end}}" data-backend="{{.Name}}" data-backend-type="{{.Type}}"{{if not .Enabled}} data-disabled="true"{{end}}{{if and $oauth (not $oauth.Authenticated)}} data-oauth-unauthed="true"{{end}}{{if .IsDynamic}} data-dynamic="true"{{end}}>
+                <div class="backend-header" onclick="toggleCard(event, '{{.Name}}')">
+                    <div class="backend-name">
+                        {{if .IconURL}}<img class="backend-icon{{if or (eq .Type "codex") (eq .Type "gemini")}} backend-icon-color{{end}}" src="{{.IconURL}}" alt="{{.Name}}">{{else}}<div class="dot"></div>{{end}}
+                        {{.Name}}
+                        <span class="type-badge type-{{.Type}}">{{.Type}}</span>
+                        {{if and (eq .Type "ollama") .CompatMode}}<span class="type-badge type-{{.CompatMode}}" style="font-size:0.65rem">{{.CompatMode}}</span>{{end}}
+                        {{if .CircuitOpen}}<span class="type-badge" style="background:rgba(248,113,113,0.15);color:var(--red);cursor:help" title="Circuit breaker tripped — requests are being routed to other backends. Click the ⋮ menu to reset.">CIRCUIT OPEN</span>{{end}}
+                        <span class="collapse-chevron">&#x25BE;</span>
+                    </div>
+                    <div class="backend-actions" onclick="event.stopPropagation()">
+                    <span class="model-count" id="count-{{.Name}}">{{if not .Enabled}}disabled{{else if .StaticCount}}{{.StaticCount}} models{{if .DisabledModels}} ({{len .DisabledModels}} disabled){{end}}{{else}}&hellip;{{end}}</span>
+                    <div class="backend-dropdown-container" id="backend-dropdown-{{.Name}}">
+                        <button type="button" class="backend-menu-trigger" aria-expanded="false" aria-controls="backend-menu-{{.Name}}" title="Backend actions" onclick="toggleBackendDropdown(event, '{{.Name}}')">&#x22EE;</button>
+                        <div class="backend-dropdown-menu" id="backend-menu-{{.Name}}">
+                            {{if or (eq .Type "openai") (eq .Type "anthropic")}}
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); openSwitchTypeModal('{{.Name}}', '{{.Type}}', '{{.BaseURL}}', '{{.APIKey}}')">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x21C4;</span><span>Switch API format</span></span>
+                                <span class="backend-menu-meta">{{if eq .Type "openai"}}Anthropic{{else}}OpenAI{{end}}</span>
+                            </button>
+                            {{end}}
+                            {{if eq .Type "ollama"}}
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); openOllamaPullModal('{{.Name}}')">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x2B07;</span><span>Pull model</span></span>
+                                <span class="backend-menu-meta">download</span>
+                            </button>
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); openOllamaRunningModal('{{.Name}}')">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x25B6;</span><span>Running models</span></span>
+                                <span class="backend-menu-meta">loaded in memory</span>
+                            </button>
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); openOllamaAccountModal('{{.Name}}')">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x1F464;</span><span>Account</span></span>
+                                <span class="backend-menu-meta">ollama.com</span>
+                            </button>
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); openSwitchTypeModal('{{.Name}}', '{{.Type}}', '{{.BaseURL}}', '{{.APIKey}}')">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x21C4;</span><span>Switch compat mode</span></span>
+                                <span class="backend-menu-meta">openai/anthropic/native</span>
+                            </button>
+                            {{end}}
+                            {{if and .IsDynamic .Enabled}}
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); refreshBackendModels(event, '{{.Name}}')">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x21BB;</span><span>Refresh models</span></span>
+                                <span class="backend-menu-meta">live</span>
+                            </button>
+                            {{end}}
+                            {{if .Enabled}}
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); bulkToggleModels('{{.Name}}', true)">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x23F9;</span><span>Disable all models</span></span>
+                                <span class="backend-menu-meta">bulk</span>
+                            </button>
+                            <button type="button" class="backend-menu-item" onclick="closeBackendDropdown(); bulkToggleModels('{{.Name}}', false)">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x25B6;</span><span>Enable all models</span></span>
+                                <span class="backend-menu-meta">bulk</span>
+                            </button>
 
-        {{if .ExposedModels}}
-        <div class="exposed-table-wrap">
-        <table id="exposed-models-table" class="exposed-table">
-            <thead>
-                <tr>
-                    <th onclick="sortExposed('id')" id="th-id">Exposed ID <span class="sort-arrow">↕</span></th>
-                    <th>Raw ID (per backend)</th>
-                    <th onclick="sortExposed('backends')" id="th-backends">Backends <span class="sort-arrow">↕</span></th>
-                    <th onclick="sortExposed('ctx')" id="th-ctx">Context <span class="sort-arrow">↕</span></th>
-                    <th>Capabilities</th>
-                    <th onclick="sortExposed('strategy')" id="th-strategy">Routing <span class="sort-arrow">↕</span></th>
-                </tr>
-            </thead>
-            <tbody id="exposed-tbody">
-            {{range .ExposedModels}}
-            {{$row := .}}
-            <tr class="exposed-row" data-id="{{.CanonicalID}}" data-backends="{{range .Backends}}{{.}} {{end}}" data-strategy="{{.RoutingStrategy}}" data-caps="{{range .Capabilities}}{{.}} {{end}}" data-ctx="{{if .ContextLength}}{{.ContextLength}}{{else}}0{{end}}">
-                <td style="font-family:var(--mono)">
-                    <span style="font-size:0.8rem;color:var(--text)">{{.CanonicalID}}</span>
-                    {{if .DisplayName}}<div style="font-size:0.72rem;color:var(--text-dim);margin-top:0.1rem">{{.DisplayName}}</div>{{end}}
-                    {{if .OriginalIDs}}<div style="margin-top:0.25rem;display:flex;flex-wrap:wrap;gap:0.2rem">{{range .OriginalIDs}}<span title="Original model ID — aliased to {{$row.CanonicalID}}" style="display:inline-flex;align-items:center;gap:0.25rem;padding:0.1rem 0.45rem;border-radius:4px;font-size:0.68rem;font-family:var(--mono);background:rgba(156,163,175,0.1);border:1px solid rgba(156,163,175,0.3);color:var(--text-dim);cursor:default"><span style="font-size:0.6rem;opacity:0.7">was</span>{{.}}</span>{{end}}</div>{{end}}
-                </td>
-                <td>
-                    {{if gt (len .Backends) 1}}
-                    <div style="display:flex;flex-direction:column;gap:0.2rem">
-                    {{range .Backends}}
-                        <span style="font-family:var(--mono);font-size:0.75rem;color:var(--text-dim)"><span style="color:var(--accent)">{{.}}</span>/{{index $row.RawIDs .}}</span>
+                            {{end}}
+                            {{if .CircuitOpen}}
+                            <form method="POST" action="/ui/circuit/reset/{{.Name}}?redirect=/ui/backends" class="backend-dropdown-form">
+                                <button type="submit" class="backend-menu-item" onclick="closeBackendDropdown()" style="color:var(--amber)">
+                                    <span class="backend-menu-label"><span class="backend-menu-icon">&#x26A1;</span><span>Reset circuit breaker</span></span>
+                                    <span class="backend-menu-meta" style="color:var(--red)">tripped</span>
+                                </button>
+                            </form>
+                            {{end}}
+                            <form method="POST" action="/ui/settings/backends/toggle" class="backend-dropdown-form">
+                                <input type="hidden" name="name" value="{{.Name}}">
+                                <input type="hidden" name="enabled" value="{{if .Enabled}}false{{else}}true{{end}}">
+                                <input type="hidden" name="redirect" value="/ui/backends">
+                                <button type="submit" class="backend-menu-item" onclick="closeBackendDropdown()">
+                                    <span class="backend-menu-label"><span class="backend-menu-icon">{{if .Enabled}}&#x23FB;{{else}}&#x25B6;{{end}}</span><span>{{if .Enabled}}Disable backend{{else}}Enable backend{{end}}</span></span>
+                                    <span class="backend-menu-meta">{{if .Enabled}}on{{else}}off{{end}}</span>
+                                </button>
+                            </form>
+                            <form method="POST" action="/ui/settings/backends/delete" id="delete-form-{{.Name}}" class="backend-dropdown-form">
+                                <input type="hidden" name="name" value="{{.Name}}">
+                                <input type="hidden" name="wipe_stats" id="delete-wipe-{{.Name}}" value="">
+                                <button type="button" class="backend-menu-item danger" onclick="closeBackendDropdown(); openDeleteBackendModal('{{.Name}}')">
+                                    <span class="backend-menu-label"><span class="backend-menu-icon">&#x2715;</span><span>Delete backend</span></span>
+                                    <span class="backend-menu-meta">danger</span>
+                                </button>
+                            </form>
+                            <div class="backend-menu-separator"></div>
+                            {{$backendProfile := .IdentityProfile}}
+                            {{$backendName := .Name}}
+                            <button type="button" class="backend-menu-submenu-trigger" onclick="toggleIdentitySubmenu(event, '{{$backendName}}')">
+                                <span class="backend-menu-label"><span class="backend-menu-icon">&#x1F576;</span><span>Identity profile</span></span>
+                                <span style="display:flex;align-items:center;gap:0.4rem">
+                                    <span class="backend-menu-meta">{{if $backendProfile}}{{$backendProfile}}{{else}}global{{end}}</span>
+                                    <span class="submenu-arrow">&#x25BE;</span>
+                                </span>
+                            </button>
+                            <div class="backend-submenu-panel" id="identity-submenu-{{$backendName}}">
+                                <button type="button" class="backend-submenu-option{{if not $backendProfile}} active{{end}}" data-profile-id="" onclick="setBackendIdentityProfile('{{$backendName}}', '')">
+                                    <span class="submenu-check">{{if not $backendProfile}}&#x2713;{{end}}</span>
+                                    <span>Use global default</span>
+                                </button>
+                                {{range $.IdentityProfiles}}
+                                <button type="button" class="backend-submenu-option{{if eq .ID $backendProfile}} active{{end}}" data-profile-id="{{.ID}}" onclick="setBackendIdentityProfile('{{$backendName}}', '{{.ID}}')">
+                                    <span class="submenu-check">{{if eq .ID $backendProfile}}&#x2713;{{end}}</span>
+                                    <span>{{.DisplayName}}</span>
+                                </button>
+                                {{end}}
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+                <div class="model-list" id="models-{{.Name}}">
+                    <div class="model-list-meta">
+                        <div class="model-list-base-url">{{.BaseURL}}</div>
+                        <div class="model-list-status" id="models-status-{{.Name}}">
+                            {{if and $oauth (not $oauth.Authenticated) .Enabled}}
+                            <div style="font-size:0.8rem;color:var(--text-dim);font-style:italic">Authentication required — connect below to load models.</div>
+                            {{else if .IsDynamic}}
+                            <span class="dynamic-badge">&#x221E; dynamic &#x2014; uses /v1/models from upstream</span>
+                            {{if .Enabled}}<div class="model-loading"><div class="spinner"></div><span>Loading models&#x2026;</span></div>{{else}}<div class="model-scroll-empty">Enable this backend to load models.</div>{{end}}
+                            {{end}}
+                        </div>
+                        {{if eq .Type "ollama"}}<div id="ollama-pulls-active-{{.Name}}" style="display:none"></div>{{end}}
+                    </div>
+                    <div class="model-scroll" id="models-scroll-{{.Name}}">
+                    {{if and (not (and $oauth (not $oauth.Authenticated) .Enabled)) (not .IsDynamic)}}
+                    {{$backendName := .Name}}
+                    {{$backendType := .Type}}
+                    {{range .Models}}
+                    <div class="model-item{{if .Disabled}} model-disabled{{end}}">
+                        <span class="model-id">{{.BareID}}</span>
+                        {{if .Alias}}<span class="alias-badge">&rarr; {{.Alias}}</span>{{end}}
+                        <div class="model-menu-container">
+                            <button type="button" class="model-menu-trigger" onclick="toggleModelDropdown(event, this)" title="Model actions">&#x22EE;</button>
+                            <div class="model-dropdown-menu">
+                                <button type="button" class="model-menu-item" onclick="closeModelDropdown(); toggleModelDisabled(this, '{{$backendName}}', '{{.BareID}}', {{.Disabled}})">
+                                    <span class="model-menu-icon">{{if .Disabled}}&#x25B6;{{else}}&#x23FB;{{end}}</span>
+                                    <span>{{if .Disabled}}Enable{{else}}Disable{{end}}</span>
+                                </button>
+                                {{if eq $backendType "ollama"}}
+                                <button type="button" class="model-menu-item danger" onclick="closeModelDropdown(); ollamaDeleteModel('{{$backendName}}', '{{.BareID}}', this)">
+                                    <span class="model-menu-icon">&#x2715;</span>
+                                    <span>Delete</span>
+                                </button>
+                                {{end}}
+                                <button type="button" class="model-menu-item" onclick="closeModelDropdown(); modelCopyText(this, '{{.FullID}}')">
+                                    <span class="model-menu-icon">&#x2398;</span>
+                                    <span>Copy ID</span>
+                                </button>
+                                <button type="button" class="model-menu-item" onclick="closeModelDropdown(); setModelAlias('{{$backendName}}', '{{.BareID}}', {{if .Alias}}'{{.Alias}}'{{else}}''{{end}})">
+                                    <span class="model-menu-icon">&#x270F;</span>
+                                    <span>{{if .Alias}}Clear Alias{{else}}Set Alias{{end}}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {{end}}
                     {{end}}
                     </div>
-                    {{else if .Backends}}
-                    <span style="font-family:var(--mono);font-size:0.78rem;color:var(--text-dim)">{{index .RawIDs (index .Backends 0)}}</span>
-                    {{end}}
-                </td>
-                <td>
-                    <div style="display:flex;flex-wrap:wrap;gap:0.25rem">
-                    {{range .Backends}}
-                        <span class="exposed-backend-pill" data-filter-backend="{{.}}" onclick="setExposedBackendFilter('{{.}}')" title="Filter to {{.}}">{{.}}</span>
-                    {{end}}
-                    </div>
-                </td>
-                <td style="white-space:nowrap;font-size:0.78rem;color:var(--text-dim)">
-                    {{if .ContextLength}}<span class="ctx-badge">{{ctxBadge .ContextLength}}</span>{{else}}&mdash;{{end}}
-                </td>
-                <td>
-                    <div style="display:flex;flex-wrap:wrap;gap:0.25rem">
-                    {{range .Capabilities}}
-                        <span class="cap-badge">{{.}}</span>
-                    {{end}}
-                    </div>
-                </td>
-                <td style="white-space:nowrap">
-                    <span class="strategy-badge strategy-{{.RoutingStrategy}}">{{.RoutingStrategy}}</span>
-                </td>
-            </tr>
+                </div>
+                {{if and $oauth .Enabled}}
+                {{template "models_oauth_card" (dict "Name" .Name "Type" .Type "OAuth" $oauth)}}
+                {{end}}
+            </div>
             {{end}}
-            </tbody>
-        </table>
+            <button class="add-backend-btn" onclick="openModal('modal-add-backend')">
+                &#43; Add Backend
+            </button>
         </div>
-        {{else}}
-        <p style="font-size:0.85rem;color:var(--text-dim);padding:2rem 0;text-align:center">
-            No models found. <a href="/ui/backends" style="color:var(--accent)">Configure a backend</a> to get started.
-        </p>
-        {{end}}
 
     </main>
 
@@ -1846,6 +1851,12 @@
                 } else {
                     delete allBackendAliases[backendName][modelID];
                 }
+                // Keep allBackendModels in sync so overlap/selector logic sees the updated alias.
+                if (allBackendModels[backendName]) {
+                    allBackendModels[backendName].forEach(function(m) {
+                        if (m.BareID === modelID) m.alias = alias;
+                    });
+                }
             }).catch(function(e) { alert('Error: ' + e); });
         }
 
@@ -2177,7 +2188,20 @@
         });
 
         // ── Lazy-load per-backend model lists ──────────────────────────
-        var allBackendModels = {}; // backendName → model array (populated as each backend loads)
+        var allBackendModels = (function() {
+            // Pre-seed non-dynamic backends from server-rendered data so aliases
+            // are available immediately and don't depend on the async API fetch.
+            var seed = {{.StaticBackendModelsJSON}};
+            var out = {};
+            if (seed) {
+                Object.keys(seed).forEach(function(name) {
+                    out[name] = (seed[name] || []).map(function(m) {
+                        return { FullID: m.full_id || '', BareID: m.bare_id || '', ContextLength: m.context_length || null, MaxOutputTokens: m.max_output_tokens || null, Capabilities: m.capabilities || [], Disabled: !!m.disabled, alias: m.alias || '' };
+                    });
+                });
+            }
+            return out;
+        })();
         var allBackendTypes = {}; // backendName → type string (e.g. "ollama", "openai")
         var pendingLoads = 0;      // counts outstanding loadBackendModels calls
 
@@ -2317,7 +2341,7 @@
 
         function syncOverlapViewButtons(effectiveView) {
             var view = effectiveView || overlapState.view;
-            document.querySelectorAll('#overlap-view-toggle .pill').forEach(function(btn) {
+            document.querySelectorAll('#overlap-view-toggle .overlap-view-btn').forEach(function(btn) {
                 btn.classList.toggle('active', btn.dataset.view === view);
             });
         }
@@ -2520,7 +2544,7 @@
             }
             if (viewToggle) {
                 viewToggle.addEventListener('click', function(e) {
-                    var btn = e.target.closest('.pill[data-view]');
+                    var btn = e.target.closest('.overlap-view-btn[data-view]');
                     if (!btn) return;
                     overlapState.view = btn.dataset.view === 'list' ? 'list' : 'grid';
                     localStorage.setItem(overlapViewStorageKey, overlapState.view);
@@ -3303,12 +3327,11 @@
                 .then(function(models) {
                     models = models || [];
                     // Normalize to PascalCase ModelEntry shape so recomputeOverlaps works.
-                    var disabledMap = allBackendDisabledModels[name] || {};
-                    var aliasMap = allBackendAliases[name] || {};
-                    var normalized = models.map(function(m) {
-                        var bareID = m.id ? m.id.split('/').pop() : '';
-                        return { FullID: m.id, BareID: bareID, ContextLength: m.context_length, MaxOutputTokens: m.max_output_tokens, Capabilities: m.capabilities || [], Disabled: !!(m.disabled || disabledMap[bareID]), alias: aliasMap[bareID] || '' };
-                    });
+                     var disabledMap = allBackendDisabledModels[name] || {};
+                     var normalized = models.map(function(m) {
+                         var bareID = m.BareID || m.bare_id || (m.id ? m.id.split('/').pop() : '');
+                         return { FullID: m.FullID || m.full_id || m.id || '', BareID: bareID, ContextLength: m.ContextLength || m.context_length || null, MaxOutputTokens: m.MaxOutputTokens || m.max_output_tokens || null, Capabilities: m.Capabilities || m.capabilities || [], Disabled: !!(m.Disabled || m.disabled || disabledMap[bareID]), alias: m.Alias || m.alias || '' };
+                     });
                     allBackendModels[name] = normalized;
                     zedConfigBuilt = false;
                     opencodeConfigBuilt = false;
@@ -3370,19 +3393,20 @@
                 .then(function(models) {
                     models = models || [];
 
-                    var disabledMap = allBackendDisabledModels[name] || {};
-                    models = models.map(function(m) {
-                        var bareID = m.BareID || m.bare_id || '';
-                        return {
-                            FullID: m.FullID || m.full_id || '',
-                            BareID: bareID,
-                            ContextLength: m.ContextLength || m.context_length || null,
-                            MaxOutputTokens: m.MaxOutputTokens || m.max_output_tokens || null,
-                            Capabilities: m.Capabilities || m.capabilities || [],
-                            DataSource: m.DataSource || m.data_source || '',
-                            Disabled: !!(m.Disabled || m.disabled || disabledMap[bareID])
-                        };
-                    });
+                     var disabledMap = allBackendDisabledModels[name] || {};
+                     models = models.map(function(m) {
+                         var bareID = m.BareID || m.bare_id || '';
+                         return {
+                             FullID: m.FullID || m.full_id || '',
+                             BareID: bareID,
+                             ContextLength: m.ContextLength || m.context_length || null,
+                             MaxOutputTokens: m.MaxOutputTokens || m.max_output_tokens || null,
+                             Capabilities: m.Capabilities || m.capabilities || [],
+                             DataSource: m.DataSource || m.data_source || '',
+                             Disabled: !!(m.Disabled || m.disabled || disabledMap[bareID]),
+                             alias: m.Alias || m.alias || ''
+                         };
+                     });
 
                     // Track for client-side overlap recomputation.
                     allBackendModels[name] = models;
@@ -3552,7 +3576,10 @@
                 // Skip disabled backends and OAuth backends that are not yet authenticated.
                 if (!c.dataset.disabled && !c.dataset.oauthUnauthed) cards.push(c);
             });
-            pendingLoads = cards.length;
+            // Non-dynamic backends are pre-seeded in allBackendModels from server data.
+            // Only dynamic backends need an async fetch to load their model lists.
+            var dynamicCards = cards.filter(function(c) { return !!c.dataset.dynamic; });
+            pendingLoads = dynamicCards.length;
             // For ollama backends, start polling for active pulls immediately
             // so progress shows on page load (survives refresh).
             allCards.forEach(function(c) {
@@ -3561,7 +3588,7 @@
                 }
             });
             if (pendingLoads === 0) { recomputeOverlaps(); buildZedConfig(); buildOpenCodeConfig(); buildDroidConfig(); buildCurlSelector(); return; }
-            cards.forEach(function(card) {
+            dynamicCards.forEach(function(card) {
                 loadBackendModels(card.dataset.backend);
             });
         });
@@ -3689,184 +3716,6 @@
                 banner.remove();
             });
         }
-
-        // ── Exposed Models table: search, filter pills, sort ─────────────────
-        (function() {
-            var searchInput = document.getElementById('exposed-search');
-            var countEl     = document.getElementById('exposed-count');
-            var tbody       = document.getElementById('exposed-tbody');
-            if (!tbody) return;
-
-             var state = { q: '', backend: '', strategy: '', cap: '', sortKey: '', sortDir: 1 };
-
-            // Populate backend dropdown from actual table data
-            (function populateBackendSelect() {
-                var sel = document.getElementById('exposed-filter-backend');
-                if (!sel) return;
-                var seen = {};
-                tbody.querySelectorAll('tr.exposed-row').forEach(function(row) {
-                    (row.getAttribute('data-backends') || '').trim().split(/\s+/).filter(Boolean).forEach(function(b) { seen[b] = true; });
-                });
-                Object.keys(seen).sort().forEach(function(n) {
-                    var opt = document.createElement('option');
-                    opt.value = n; opt.textContent = n;
-                    sel.appendChild(opt);
-                });
-            })();
-
-            function updateFilterBadge() {
-                var active = [state.backend, state.strategy, state.cap].filter(Boolean).length;
-                var badge = document.getElementById('exposedFilterBadge');
-                var btn = document.getElementById('exposedFiltersBtn');
-                if (!badge || !btn) return;
-                if (active > 0) {
-                    badge.textContent = active;
-                    badge.style.display = '';
-                    btn.classList.add('active');
-                } else {
-                    badge.style.display = 'none';
-                    btn.classList.remove('active');
-                }
-            }
-
-            window.toggleExposedFilters = function() {
-                var panel = document.getElementById('exposedFiltersPanel');
-                var btn = document.getElementById('exposedFiltersBtn');
-                if (!panel) return;
-                panel.classList.toggle('open');
-                if (btn) btn.classList.toggle('active', panel.classList.contains('open') || state.backend || state.strategy || state.cap);
-            };
-
-            window.applyExposedFilter = function() {
-                state.backend = document.getElementById('exposed-filter-backend').value;
-                state.strategy = document.getElementById('exposed-filter-strategy').value;
-                state.cap = document.getElementById('exposed-filter-cap').value;
-                updateFilterBadge();
-                // Highlight backend pills in table when backend filter active
-                document.querySelectorAll('.exposed-backend-pill').forEach(function(b) {
-                    b.classList.toggle('active', state.backend !== '' && b.dataset.filterBackend === state.backend);
-                });
-                applyFilter();
-            };
-
-            window.clearExposedFilters = function() {
-                state.backend = ''; state.strategy = ''; state.cap = ''; state.q = '';
-                document.getElementById('exposed-filter-backend').value = '';
-                document.getElementById('exposed-filter-strategy').value = '';
-                document.getElementById('exposed-filter-cap').value = '';
-                document.getElementById('exposed-search').value = '';
-                document.querySelectorAll('.exposed-backend-pill').forEach(function(b) { b.classList.remove('active'); });
-                updateFilterBadge();
-                applyFilter();
-            };
-
-            // Exposed from global (for onclick on backend badges in table)
-            window.setExposedBackendFilter = function(backend) {
-                var next = state.backend === backend ? '' : backend;
-                state.backend = next;
-                var sel = document.getElementById('exposed-filter-backend');
-                if (sel) sel.value = next;
-                // Open the filter panel so user sees the active filter
-                var panel = document.getElementById('exposedFiltersPanel');
-                if (panel && next) panel.classList.add('open');
-                document.querySelectorAll('.exposed-backend-pill').forEach(function(b) {
-                    b.classList.toggle('active', next !== '' && b.dataset.filterBackend === next);
-                });
-                updateFilterBadge();
-                applyFilter();
-            };
-
-            function allRows() {
-                return Array.prototype.slice.call(tbody.querySelectorAll('tr.exposed-row'));
-            }
-
-            function updateCount(visible, total) {
-                if (!countEl) return;
-                countEl.textContent = visible === total ? total + ' models' : visible + ' / ' + total + ' models';
-            }
-
-            function applyFilter() {
-                var q = state.q.trim().toLowerCase();
-                var rows = allRows();
-                var visible = 0;
-                rows.forEach(function(row) {
-                    var id       = (row.getAttribute('data-id') || '').toLowerCase();
-                    var backends = (row.getAttribute('data-backends') || '').toLowerCase();
-                    var caps     = (row.getAttribute('data-caps') || '').toLowerCase();
-                    var strategy = (row.getAttribute('data-strategy') || '').toLowerCase();
-
-                    var show = true;
-                    if (q && (id + ' ' + backends + ' ' + caps + ' ' + strategy).indexOf(q) === -1) show = false;
-                    if (state.backend && backends.split(/\s+/).filter(Boolean).indexOf(state.backend) === -1) show = false;
-                    if (state.strategy) {
-                        if (state.strategy === 'global') {
-                            show = show && (!strategy || strategy === 'global');
-                        } else {
-                            show = show && strategy === state.strategy;
-                        }
-                    }
-                    if (state.cap && caps.split(/\s+/).filter(Boolean).indexOf(state.cap) === -1) show = false;
-
-                    row.style.display = show ? '' : 'none';
-                    if (show) visible++;
-                });
-                updateCount(visible, rows.length);
-            }
-
-            function applySort(key) {
-                if (state.sortKey === key) {
-                    state.sortDir = -state.sortDir;
-                } else {
-                    state.sortKey = key;
-                    state.sortDir = 1;
-                }
-                // Update column header arrows
-                var colMap = { id: 'th-id', backends: 'th-backends', ctx: 'th-ctx', strategy: 'th-strategy' };
-                Object.keys(colMap).forEach(function(k) {
-                    var th = document.getElementById(colMap[k]);
-                    if (!th) return;
-                    th.classList.toggle('sorted', k === state.sortKey);
-                    var arrow = th.querySelector('.sort-arrow');
-                    if (arrow) arrow.textContent = k === state.sortKey ? (state.sortDir === 1 ? '↑' : '↓') : '↕';
-                });
-
-                var rows = allRows();
-                rows.sort(function(a, b) {
-                    var av, bv;
-                    if (key === 'id') {
-                        av = (a.getAttribute('data-id') || '').toLowerCase();
-                        bv = (b.getAttribute('data-id') || '').toLowerCase();
-                        return state.sortDir * av.localeCompare(bv);
-                    } else if (key === 'backends') {
-                        av = (a.getAttribute('data-backends') || '').trim().split(/\s+/).filter(Boolean).length;
-                        bv = (b.getAttribute('data-backends') || '').trim().split(/\s+/).filter(Boolean).length;
-                        return state.sortDir * (av - bv);
-                    } else if (key === 'ctx') {
-                        av = parseInt(a.getAttribute('data-ctx') || '0', 10) || 0;
-                        bv = parseInt(b.getAttribute('data-ctx') || '0', 10) || 0;
-                        return state.sortDir * (av - bv);
-                    } else if (key === 'strategy') {
-                        av = (a.getAttribute('data-strategy') || '').toLowerCase();
-                        bv = (b.getAttribute('data-strategy') || '').toLowerCase();
-                        return state.sortDir * av.localeCompare(bv);
-                    }
-                    return 0;
-                });
-                rows.forEach(function(row) { tbody.appendChild(row); });
-                applyFilter();
-            }
-
-            window.sortExposed = applySort;
-
-            if (searchInput) {
-                searchInput.addEventListener('input', function() {
-                    state.q = searchInput.value;
-                    applyFilter();
-                });
-            }
-
-            applyFilter();
-        })();
     </script>
 </body>
 </html>

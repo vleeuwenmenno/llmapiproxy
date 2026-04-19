@@ -114,19 +114,8 @@
         </div>
     </div>
 
+<script src="/ui/static/shared.js"></script>
 <script>
-// === THEME ===
-function toggleTheme() {
-    var b = document.body, btn = document.getElementById('themeBtn');
-    b.classList.toggle('light');
-    btn.textContent = b.classList.contains('light') ? '☾' : '☀';
-    localStorage.setItem('theme', b.classList.contains('light') ? 'light' : 'dark');
-}
-(function() {
-    var saved = localStorage.getItem('theme') || 'dark';
-    if (saved === 'light') { document.body.classList.add('light'); document.getElementById('themeBtn').textContent = '☾'; }
-})();
-
 // === STATE ===
 var chatHistory = [];
 var isLoading = false;
@@ -145,26 +134,6 @@ var statusText  = document.getElementById('status-text');
 // === MODEL COMBOBOX ===
 var allModels = {{json .Models}};
 var activeIdx = -1;
-
-function fmtCtx(n) {
-    if (!n) return '';
-    if (n >= 1000000) return Math.round(n/1000000) + 'M';
-    if (n >= 1000)    return Math.round(n/1000) + 'K';
-    return String(n);
-}
-
-function modelLabel(m) {
-    if (typeof m === 'string') return m;
-    var label = m.id;
-    var tags = [];
-    if (m.context_length)   tags.push(fmtCtx(m.context_length) + ' ctx');
-    if (m.max_output_tokens) tags.push(fmtCtx(m.max_output_tokens) + ' out');
-    return label + (tags.length ? '  (' + tags.join(', ') + ')' : '');
-}
-
-function modelID(m) {
-    return (typeof m === 'string') ? m : m.id;
-}
 
 function renderList(items) {
     var list = document.getElementById('model-list');
@@ -275,23 +244,6 @@ async function fetchModels() {
 
 // Fetch models on page load
 fetchModels();
-
-// === TOKEN SLIDER HELPERS ===
-function posToTokens(pos) {
-    var minLog = Math.log(512);
-    var maxLog = Math.log(1000000);
-    var val = Math.exp(minLog + (pos / 100) * (maxLog - minLog));
-    if (val < 2048)   return Math.round(val / 128)   * 128;
-    if (val < 8192)   return Math.round(val / 512)   * 512;
-    if (val < 65536)  return Math.round(val / 4096)  * 4096;
-    if (val < 524288) return Math.round(val / 16384) * 16384;
-    return Math.round(val / 65536) * 65536;
-}
-function formatTokens(n) {
-    if (n >= 1000000) return Math.round(n / 1000000) + ' M';
-    if (n >= 1000)    return Math.round(n / 1000) + ' K';
-    return String(n);
-}
 
 // === RANGE DISPLAY ===
 document.getElementById('temperature').addEventListener('input', function() {

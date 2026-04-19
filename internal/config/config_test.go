@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func boolPtr(b bool) *bool { return &b }
@@ -1010,5 +1012,94 @@ backends:
 	err = mgr.SwitchBackendType("nonexistent", "anthropic", "", "")
 	if err == nil {
 		t.Fatal("expected error for nonexistent backend")
+	}
+}
+
+func TestParse_ModelAliases(t *testing.T) {
+	yaml := `
+server:
+  api_keys: ["test-key"]
+backends:
+  - name: openrouter
+    type: openai
+    base_url: https://openrouter.ai/api/v1
+    api_key: "sk-or-key"
+    model_aliases:
+      glm-5.1-precision: glm-5.1
+      glm-5.1-speed: glm-5.1
+`
+	cfg, err := Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if len(cfg.Backends) != 1 {
+		t.Fatalf("expected 1 backend, got %d", len(cfg.Backends))
+	}
+	bc := cfg.Backends[0]
+	if len(bc.ModelAliases) != 2 {
+		t.Fatalf("expected 2 model aliases, got %d", len(bc.ModelAliases))
+	}
+	if bc.ModelAliases["glm-5.1-precision"] != "glm-5.1" {
+		t.Errorf("alias for glm-5.1-precision = %q, want %q", bc.ModelAliases["glm-5.1-precision"], "glm-5.1")
+	}
+	if bc.ModelAliases["glm-5.1-speed"] != "glm-5.1" {
+		t.Errorf("alias for glm-5.1-speed = %q, want %q", bc.ModelAliases["glm-5.1-speed"], "glm-5.1")
+	}
+}
+
+func TestParse_ModelAliases_EmptyOmitted(t *testing.T) {
+	yaml := `
+server:
+  api_keys: ["test-key"]
+backends:
+  - name: openrouter
+    type: openai
+    base_url: https://openrouter.ai/api/v1
+    api_key: "sk-or-key"
+`
+	cfg, err := Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if cfg.Backends[0].ModelAliases != nil {
+		t.Errorf("expected nil ModelAliases, got %v", cfg.Backends[0].ModelAliases)
+	}
+}
+
+func TestModelAliases_RoundTrip(t *testing.T) {
+	original := `
+server:
+  api_keys: ["test-key"]
+backends:
+  - name: openrouter
+    type: openai
+    base_url: https://openrouter.ai/api/v1
+    api_key: "sk-or-key"
+    disabled_models:
+      - foo
+    model_aliases:
+      glm-5.1-precision: glm-5.1
+`
+	cfg, err := Parse([]byte(original))
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+
+	cfg2, err := Parse(data)
+	if err != nil {
+		t.Fatalf("Re-parse failed: %v", err)
+	}
+
+	bc := cfg2.Backends[0]
+	if bc.ModelAliases["glm-5.1-precision"] != "glm-5.1" {
+		t.Errorf("alias not preserved after round-trip: %v", bc.ModelAliases)
+	}
+	if len(bc.DisabledModels) != 1 || bc.DisabledModels[0] != "foo" {
+		t.Errorf("disabled_models not preserved: %v", bc.DisabledModels)
 	}
 }

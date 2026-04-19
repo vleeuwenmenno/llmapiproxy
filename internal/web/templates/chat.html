@@ -200,40 +200,8 @@
     </div>
 
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="/ui/static/shared.js"></script>
 <script>
-// === THEME ===
-function toggleTheme() {
-    var b = document.body;
-    var isLight = b.classList.toggle('light');
-    var icon = isLight ? '☾' : '☀';
-    document.getElementById('themeBtn').textContent = icon;
-    var themeIconMobile = document.getElementById('themeIconMobile');
-    if (themeIconMobile) themeIconMobile.textContent = icon;
-    localStorage.setItem('theme', isLight ? 'light' : 'dark');
-}
-(function() {
-    var saved = localStorage.getItem('theme') || 'dark';
-    if (saved === 'light') {
-        document.body.classList.add('light');
-        document.getElementById('themeBtn').textContent = '☾';
-        var themeIconMobile = document.getElementById('themeIconMobile');
-        if (themeIconMobile) themeIconMobile.textContent = '☾';
-    }
-})();
-
-// === MOBILE MENU ===
-function openMobileMenu() {
-    document.getElementById('navLinksMobile').classList.add('open');
-    document.getElementById('mobileMenuOverlay').classList.add('open');
-    document.body.style.overflow = 'hidden';
-}
-
-function closeMobileMenu() {
-    document.getElementById('navLinksMobile').classList.remove('open');
-    document.getElementById('mobileMenuOverlay').classList.remove('open');
-    document.body.style.overflow = '';
-}
-
 // === MOBILE SIDEBAR ===
 function openSidebar() {
     document.querySelector('.sessions-sidebar').classList.add('open');
@@ -290,23 +258,6 @@ var statusText  = document.getElementById('status-text');
 var sessionsList = document.getElementById('sessions-list');
 var sessionsEmpty = document.getElementById('sessions-empty');
 var modelPillText = document.getElementById('model-pill-text');
-
-// === MODEL HELPERS ===
-function fmtCtx(n) {
-    if (!n) return '';
-    if (n >= 1000000) return Math.round(n/1000000) + 'M';
-    if (n >= 1000)    return Math.round(n/1000) + 'K';
-    return String(n);
-}
-
-function modelLabel(m) {
-    if (typeof m === 'string') return m;
-    return m.id;
-}
-
-function modelID(m) {
-    return (typeof m === 'string') ? m : m.id;
-}
 
 // === MODEL POPOVER ===
 var modelPopoverActive = false;
@@ -593,22 +544,6 @@ document.addEventListener('click', function(e) {
 // === PARAMS DRAWER ===
 function toggleParams() {
     document.getElementById('params-drawer').classList.toggle('open');
-}
-
-function posToTokens(pos) {
-    var minLog = Math.log(512);
-    var maxLog = Math.log(1000000);
-    var val = Math.exp(minLog + (pos / 100) * (maxLog - minLog));
-    if (val < 2048)   return Math.round(val / 128)   * 128;
-    if (val < 8192)   return Math.round(val / 512)   * 512;
-    if (val < 65536)  return Math.round(val / 4096)  * 4096;
-    if (val < 524288) return Math.round(val / 16384) * 16384;
-    return Math.round(val / 65536) * 65536;
-}
-function formatTokens(n) {
-    if (n >= 1000000) return Math.round(n / 1000000) + ' M';
-    if (n >= 1000)    return Math.round(n / 1000) + ' K';
-    return String(n);
 }
 
 document.getElementById('temperature').addEventListener('input', function() {

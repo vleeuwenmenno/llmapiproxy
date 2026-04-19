@@ -282,6 +282,7 @@
         </div>
     </div>
 
+    <script src="/ui/static/shared.js"></script>
     <script>
     // ── Theme ────────────────────────────────────────────
     (function() {
@@ -294,23 +295,6 @@
         });
     })();
 
-    function applyTheme(theme) {
-        if (theme === 'system') {
-            var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            document.body.classList.toggle('light', !isDark);
-        } else {
-            document.body.classList.toggle('light', theme === 'light');
-        }
-        // Update highlight.js theme
-        var link = document.getElementById('hljs-theme');
-        if (link) {
-            var isLight = document.body.classList.contains('light');
-            link.href = isLight
-                ? 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css'
-                : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css';
-        }
-    }
-
     function setTheme(theme) {
         localStorage.setItem('theme', theme);
         applyTheme(theme);
@@ -318,11 +302,6 @@
         ['dark','light','system'].forEach(function(t) {
             document.getElementById('opt-' + t).classList.toggle('selected', t === theme);
         });
-    }
-
-    function toggleTheme() {
-        var current = localStorage.getItem('theme') || 'dark';
-        setTheme(current === 'light' ? 'dark' : 'light');
     }
 
     // ── Config Modal ─────────────────────────────────────
@@ -479,18 +458,6 @@
                 btn.textContent = '⎘';
             }, 1500);
         });
-    }
-
-    function openMobileMenu() {
-        document.getElementById('navLinksMobile').classList.add('open');
-        document.getElementById('mobileMenuOverlay').classList.add('open');
-        document.body.style.overflow = 'hidden';
-    }
-
-    function closeMobileMenu() {
-        document.getElementById('navLinksMobile').classList.remove('open');
-        document.getElementById('mobileMenuOverlay').classList.remove('open');
-        document.body.style.overflow = '';
     }
 
     document.addEventListener('keydown', function(e) {

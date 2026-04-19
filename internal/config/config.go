@@ -189,6 +189,15 @@ type BackendConfig struct {
 	//   - "ollama" → "openai"
 	// All other types ignore this field.
 	CompatMode string `yaml:"compat_mode,omitempty"`
+
+	// ModelAliases maps raw upstream model IDs to alternative canonical names.
+	// During model index building, the aliased name replaces the raw ID as the
+	// canonical model ID, while the raw ID is preserved for upstream routing.
+	// This allows variant models (e.g. "glm-5.1-precision") to appear under a
+	// shorter name (e.g. "glm-5.1") and naturally overlap with other backends.
+	// If an alias collides with another enabled model on the same backend the
+	// aliased model is skipped and a warning is logged.
+	ModelAliases map[string]string `yaml:"model_aliases,omitempty"`
 }
 
 // ModelIDs returns the list of model IDs as plain strings (backward compat).
@@ -341,6 +350,7 @@ func (bc *BackendConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 		DisabledModels  []string          `yaml:"disabled_models,omitempty"`
 		IdentityProfile string            `yaml:"identity_profile,omitempty"`
 		CompatMode      string            `yaml:"compat_mode,omitempty"`
+		ModelAliases    map[string]string `yaml:"model_aliases,omitempty"`
 	}
 	var r raw
 	if err := unmarshal(&r); err != nil {
@@ -357,6 +367,7 @@ func (bc *BackendConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	bc.DisabledModels = r.DisabledModels
 	bc.IdentityProfile = r.IdentityProfile
 	bc.CompatMode = r.CompatMode
+	bc.ModelAliases = r.ModelAliases
 
 	if r.ModelsRaw != nil {
 		models, err := parseModelsField(r.ModelsRaw)
@@ -385,6 +396,7 @@ func (bc BackendConfig) MarshalYAML() (interface{}, error) {
 		DisabledModels  []string          `yaml:"disabled_models,omitempty"`
 		IdentityProfile string            `yaml:"identity_profile,omitempty"`
 		CompatMode      string            `yaml:"compat_mode,omitempty"`
+		ModelAliases    map[string]string `yaml:"model_aliases,omitempty"`
 	}
 
 	return raw{
@@ -400,6 +412,7 @@ func (bc BackendConfig) MarshalYAML() (interface{}, error) {
 		DisabledModels:  bc.DisabledModels,
 		IdentityProfile: bc.IdentityProfile,
 		CompatMode:      bc.CompatMode,
+		ModelAliases:    bc.ModelAliases,
 	}, nil
 }
 
@@ -970,6 +983,56 @@ func (m *Manager) ReplaceDisabledModels(backendName string, models []string) err
 	if !found {
 		return fmt.Errorf("backend %q not found", backendName)
 	}
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	m.markSelfWrite()
+	if err := os.WriteFile(m.path, data, 0600); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return m.Reload()
+}
+
+// SetModelAlias sets or clears a model alias for a backend. When alias is
+// non-empty, the model is aliased to that name. When alias is empty, any
+// existing alias for the model is removed. Persists the config file and reloads.
+func (m *Manager) SetModelAlias(backendName, modelID, alias string) error {
+	m.mu.Lock()
+	found := false
+	for i, b := range m.current.Backends {
+		if b.Name == backendName {
+			if alias == "" {
+				if m.current.Backends[i].ModelAliases != nil {
+					delete(m.current.Backends[i].ModelAliases, modelID)
+					if len(m.current.Backends[i].ModelAliases) == 0 {
+						m.current.Backends[i].ModelAliases = nil
+					}
+				}
+			} else {
+				if m.current.Backends[i].ModelAliases == nil {
+					m.current.Backends[i].ModelAliases = make(map[string]string)
+				}
+				m.current.Backends[i].ModelAliases[modelID] = alias
+			}
+			found = true
+			break
+		}
+	}
+	cfg := m.current
+	m.mu.Unlock()
+
+	if !found {
+		return fmt.Errorf("backend %q not found", backendName)
+	}
+
+	log.Debug().
+		Str("path", m.path).
+		Str("backend", backendName).
+		Str("model", modelID).
+		Str("alias", alias).
+		Msg("persisting model alias change")
 
 	data, err := yaml.Marshal(cfg)
 	if err != nil {

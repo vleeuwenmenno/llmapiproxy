@@ -52,17 +52,5 @@
         </div>
     </main>
 </body>
-<script>
-(function() {
-    var saved = localStorage.getItem('theme') || 'dark';
-    if (saved === 'light') document.body.classList.add('light');
-    else if (saved === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches) document.body.classList.add('light');
-    document.getElementById('themeBtn').textContent = document.body.classList.contains('light') ? '\uD83C\uDF19' : '\u2600';
-})();
-function toggleTheme() {
-    var isLight = document.body.classList.toggle('light');
-    localStorage.setItem('theme', isLight ? 'light' : 'dark');
-    document.getElementById('themeBtn').textContent = isLight ? '\uD83C\uDF19' : '\u2600';
-}
-</script>
+<script src="/ui/static/shared.js"></script>
 </html>

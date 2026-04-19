@@ -525,45 +525,8 @@
             </div>
         </div>
 
+        <script src="/ui/static/shared.js"></script>
         <script>
-            // ── Theme ──────────────────────────────────────────────────
-            (function () {
-                var saved = localStorage.getItem("theme") || "dark";
-                if (saved === "light") document.body.classList.add("light");
-                document.getElementById("themeBtn").textContent =
-                    document.body.classList.contains("light") ? "🌙" : "☀";
-                var m = document.getElementById("themeIconMobile");
-                if (m)
-                    m.textContent = document.body.classList.contains("light")
-                        ? "🌙"
-                        : "☀";
-            })();
-            function toggleTheme() {
-                var isLight = document.body.classList.toggle("light");
-                localStorage.setItem("theme", isLight ? "light" : "dark");
-                var icon = isLight ? "🌙" : "☀";
-                document.getElementById("themeBtn").textContent = icon;
-                var m = document.getElementById("themeIconMobile");
-                if (m) m.textContent = icon;
-            }
-
-            // ── Mobile Menu ────────────────────────────────────────────
-            function openMobileMenu() {
-                document.getElementById("navLinksMobile").classList.add("open");
-                document
-                    .getElementById("mobileMenuOverlay")
-                    .classList.add("open");
-                document.body.style.overflow = "hidden";
-            }
-            function closeMobileMenu() {
-                document
-                    .getElementById("navLinksMobile")
-                    .classList.remove("open");
-                document
-                    .getElementById("mobileMenuOverlay")
-                    .classList.remove("open");
-                document.body.style.overflow = "";
-            }
             document.addEventListener("keydown", function (e) {
                 if (e.key === "Escape") {
                     closeMobileMenu();
@@ -575,39 +538,6 @@
                         .classList.remove("open");
                 }
             });
-
-            // ── Formatting helpers ─────────────────────────────────────
-            function fmtDur(ms) {
-                if (!ms) return "0ms";
-                if (ms < 1000) return ms + "ms";
-                return (ms / 1000).toFixed(2) + "s";
-            }
-            function fmtNum(n) {
-                if (n === undefined || n === null) return "—";
-                if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
-                if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
-                if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
-                return n.toString();
-            }
-            function fmtTime(iso) {
-                return new Date(iso).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                });
-            }
-            function esc(s) {
-                return String(s || "")
-                    .replace(/&/g, "&amp;")
-                    .replace(/</g, "&lt;")
-                    .replace(/>/g, "&gt;")
-                    .replace(/"/g, "&quot;");
-            }
-            function latClass(ms) {
-                if (ms < 500) return "lat-good";
-                if (ms < 2000) return "lat-ok";
-                return "lat-bad";
-            }
 
             // ── State ──────────────────────────────────────────────────
             var state = {
@@ -633,68 +563,7 @@
             var autoTimer = null;
             var lastData = null;
 
-            // ── Time helpers ───────────────────────────────────────────
-            function parseWindowMs(w) {
-                var m = w ? w.match(/^(\d+)(m|h|d)$/) : null;
-                if (!m) return 3600000;
-                var n = parseInt(m[1]);
-                if (m[2] === "m") return n * 60000;
-                if (m[2] === "h") return n * 3600000;
-                return n * 86400000;
-            }
-            function isoToLocal(iso) {
-                var d = new Date(iso);
-                var pad = function (n) {
-                    return n < 10 ? "0" + n : "" + n;
-                };
-                return (
-                    d.getFullYear() +
-                    "-" +
-                    pad(d.getMonth() + 1) +
-                    "-" +
-                    pad(d.getDate()) +
-                    "T" +
-                    pad(d.getHours()) +
-                    ":" +
-                    pad(d.getMinutes())
-                );
-            }
-
             // ── Filters ────────────────────────────────────────────────
-            function setCookie(name, value, days) {
-                var expires = "";
-                if (days) {
-                    var d = new Date();
-                    d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
-                    expires = "; expires=" + d.toUTCString();
-                }
-                document.cookie =
-                    name +
-                    "=" +
-                    encodeURIComponent(value) +
-                    expires +
-                    "; path=/; SameSite=Lax";
-            }
-
-            function getCookie(name) {
-                var prefix = name + "=";
-                var parts = document.cookie ? document.cookie.split("; ") : [];
-                for (var i = 0; i < parts.length; i++) {
-                    if (parts[i].indexOf(prefix) === 0) {
-                        return decodeURIComponent(
-                            parts[i].substring(prefix.length),
-                        );
-                    }
-                }
-                return "";
-            }
-
-            function deleteCookie(name) {
-                document.cookie =
-                    name +
-                    "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax";
-            }
-
             function applyTodayDefault() {
                 var now = new Date();
                 state.window = "custom";

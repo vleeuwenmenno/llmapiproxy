@@ -64,15 +64,26 @@ type IndexedModel struct {
 	Capabilities    []string
 }
 
+// AliasCollision records a case where a model alias produces the same canonical
+// ID as another enabled model on the same backend. The aliased model is excluded
+// from the index and a warning is logged.
+type AliasCollision struct {
+	BackendName  string // backend that has the collision
+	RawModelID   string // the aliased model's original upstream ID
+	Alias        string // the alias target (what it maps to)
+	CollidesWith string // the other raw model ID that already claimed this canonical
+}
+
 // ModelIndex is the single source of truth for canonical model identity and
 // cross-backend overlap detection. Built from live backend data, it maps
 // canonical model IDs to the set of backends that serve them.
 type ModelIndex struct {
-	mu      sync.RWMutex
-	models  map[string]*IndexedModel // canonical ID → indexed model
-	order   []string                 // sorted canonical IDs for deterministic iteration
-	rules   []CanonicalizeRule
-	builtAt time.Time
+	mu          sync.RWMutex
+	models      map[string]*IndexedModel // canonical ID → indexed model
+	order       []string                 // sorted canonical IDs for deterministic iteration
+	rules       []CanonicalizeRule
+	collisions  []AliasCollision
+	builtAt     time.Time
 }
 
 // NewModelIndex creates an empty ModelIndex with the given canonicalization rules.
@@ -172,6 +183,14 @@ func (idx *ModelIndex) Build(ctx context.Context, backends map[string]Backend, b
 
 	newModels := make(map[string]*IndexedModel)
 	var newOrder []string
+	var newCollisions []AliasCollision
+
+	backendAliases := make(map[string]map[string]string, len(backendConfigs))
+	for _, bc := range backendConfigs {
+		if len(bc.ModelAliases) > 0 {
+			backendAliases[bc.Name] = bc.ModelAliases
+		}
+	}
 
 	// Sort backend names for deterministic build order.
 	sortedNames := make([]string, 0, len(backends))
@@ -201,7 +220,48 @@ func (idx *ModelIndex) Build(ctx context.Context, backends map[string]Backend, b
 				continue
 			}
 
-			canonicalID := idx.Canonicalize(bName, bType, m.ID)
+			rawID := m.ID
+			canonicalID := idx.Canonicalize(bName, bType, rawID)
+
+			resolvedAlias := ""
+			if aliases, ok := backendAliases[bName]; ok {
+				if alias, ok := aliases[rawID]; ok {
+					resolvedAlias = alias
+					canonicalID = alias
+				}
+			}
+
+			// Check for alias collision: only when this model has an explicit alias
+			// that maps to a canonical ID already claimed by another model from the
+			// same backend. Natural canonicalization overlaps (e.g. Ollama tag
+			// stripping) are handled by the existing dedup logic below.
+			collisionDetected := false
+			if resolvedAlias != "" {
+				if existing, ok := newModels[canonicalID]; ok {
+					for _, ref := range existing.Backends {
+						if ref.BackendName == bName && ref.RawModelID != rawID {
+							log.Warn().
+								Str("backend", bName).
+								Str("raw_model", rawID).
+								Str("alias", resolvedAlias).
+								Str("canonical", canonicalID).
+								Str("collides_with", ref.RawModelID).
+								Msg("model index: alias collision — skipping aliased model")
+							newCollisions = append(newCollisions, AliasCollision{
+								BackendName:  bName,
+								RawModelID:   rawID,
+								Alias:        resolvedAlias,
+								CollidesWith: ref.RawModelID,
+							})
+							collisionDetected = true
+							break
+						}
+					}
+				}
+			}
+			if collisionDetected {
+				continue
+			}
 
 			existing, ok := newModels[canonicalID]
 			if !ok {
@@ -256,6 +316,7 @@ func (idx *ModelIndex) Build(ctx context.Context, backends map[string]Backend, b
 	idx.mu.Lock()
 	idx.models = newModels
 	idx.order = newOrder
+	idx.collisions = newCollisions
 	idx.builtAt = time.Now()
 	idx.mu.Unlock()
 
@@ -398,6 +459,25 @@ func (idx *ModelIndex) Lookup(canonicalID string) *IndexedModel {
 		return &cp
 	}
 	return nil
+}
+
+// Collisions returns the list of alias collisions detected during the last
+// index build. Each collision represents a model whose alias produced a
+// canonical ID that was already claimed by another model on the same backend.
+// Safe to call on a nil ModelIndex (returns nil).
+func (idx *ModelIndex) Collisions() []AliasCollision {
+	if idx == nil {
+		return nil
+	}
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
+	if len(idx.collisions) == 0 {
+		return nil
+	}
+	cp := make([]AliasCollision, len(idx.collisions))
+	copy(cp, idx.collisions)
+	return cp
 }
 
 // Canonicalize applies the canonicalization rules to a raw model ID from
