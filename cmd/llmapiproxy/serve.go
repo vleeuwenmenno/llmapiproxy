@@ -164,6 +164,15 @@ var serveCmd = &cobra.Command{
 		}
 		r.Handle("/ui/static/*", http.StripPrefix("/ui/static/", http.FileServer(http.FS(staticSub))))
 
+		// PWA files
+		r.Get("/ui/manifest.json", func(w http.ResponseWriter, r *http.Request) {
+			http.ServeFile(w, r, "internal/web/manifest.json")
+		})
+		r.Get("/ui/sw.js", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/javascript")
+			http.ServeFile(w, r, "internal/web/sw.js")
+		})
+
 		// Auth-exempt routes: login, setup, logout.
 		r.Get("/ui/login", ui.LoginPage)
 		r.Post("/ui/login", ui.LoginPost)
