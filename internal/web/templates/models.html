@@ -656,12 +656,26 @@
 
                 <div class="step">Step 2 — Set your API key</div>
                 <p>Zed reads the key from the environment variable <strong>LLM_API_PROXY_API_KEY</strong>. Set it in your shell profile:</p>
+                <div class="curl-config">
+                    <div class="curl-field">
+                        <label for="zed-key-select">API Key</label>
+                        <select class="connect-select" id="zed-key-select" onchange="updateZedEnv()">
+                            {{if .ServerAPIKeys}}
+                            {{range .ServerAPIKeys}}
+                            <option value="{{.Full}}">{{.Name}}: {{.Masked}}</option>
+                            {{end}}
+                            {{else}}
+                            <option value="your-proxy-api-key">No keys configured</option>
+                            {{end}}
+                        </select>
+                    </div>
+                </div>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>~/.zshrc or ~/.bashrc</span>
                         <button class="copy-block-btn" onclick="copyBlock(this, 'zed-env')">copy</button>
                     </div>
-                    <pre id="zed-env">export LLM_API_PROXY_API_KEY="your-proxy-api-key"</pre>
+                    <pre id="zed-env" data-copy-text='export LLM_API_PROXY_API_KEY="your-proxy-api-key"'>export LLM_API_PROXY_API_KEY="your-proxy-api-key"</pre>
                 </div>
 
                 <p>Reload Zed after saving. The generated config uses flattened model IDs, so the proxy decides which backend should serve each request.</p>
@@ -691,12 +705,26 @@
 
                 <div class="step">Step 2 — Set your API key</div>
                 <p>OpenCode should read the key from the environment variable <strong>LLM_API_PROXY_API_KEY</strong>. Set it in your shell profile:</p>
+                <div class="curl-config">
+                    <div class="curl-field">
+                        <label for="opencode-key-select">API Key</label>
+                        <select class="connect-select" id="opencode-key-select" onchange="updateOpenCodeEnv()">
+                            {{if .ServerAPIKeys}}
+                            {{range .ServerAPIKeys}}
+                            <option value="{{.Full}}">{{.Name}}: {{.Masked}}</option>
+                            {{end}}
+                            {{else}}
+                            <option value="your-proxy-api-key">No keys configured</option>
+                            {{end}}
+                        </select>
+                    </div>
+                </div>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>~/.zshrc or ~/.bashrc</span>
                         <button class="copy-block-btn" onclick="copyBlock(this, 'opencode-env')">copy</button>
                     </div>
-                    <pre id="opencode-env">export LLM_API_PROXY_API_KEY="your-proxy-api-key"</pre>
+                    <pre id="opencode-env" data-copy-text='export LLM_API_PROXY_API_KEY="your-proxy-api-key"'>export LLM_API_PROXY_API_KEY="your-proxy-api-key"</pre>
                 </div>
 
                 <div class="step">Step 3 — Reload OpenCode</div>
@@ -727,12 +755,26 @@
 
                 <div class="step">Step 2 — Set your API key</div>
                 <p>Droid supports environment variable interpolation in <strong>settings.json</strong>. Set <strong>LLM_API_PROXY_API_KEY</strong> in your shell profile:</p>
+                <div class="curl-config">
+                    <div class="curl-field">
+                        <label for="droid-key-select">API Key</label>
+                        <select class="connect-select" id="droid-key-select" onchange="updateDroidEnv()">
+                            {{if .ServerAPIKeys}}
+                            {{range .ServerAPIKeys}}
+                            <option value="{{.Full}}">{{.Name}}: {{.Masked}}</option>
+                            {{end}}
+                            {{else}}
+                            <option value="your-proxy-api-key">No keys configured</option>
+                            {{end}}
+                        </select>
+                    </div>
+                </div>
                 <div class="code-block">
                     <div class="code-block-header">
                         <span>~/.zshrc or ~/.bashrc</span>
                         <button class="copy-block-btn" onclick="copyBlock(this, 'droid-env')">copy</button>
                     </div>
-                    <pre id="droid-env">export LLM_API_PROXY_API_KEY="your-proxy-api-key"</pre>
+                    <pre id="droid-env" data-copy-text='export LLM_API_PROXY_API_KEY="your-proxy-api-key"'>export LLM_API_PROXY_API_KEY="your-proxy-api-key"</pre>
                 </div>
 
                 <div class="step">Step 3 — Refresh Droid</div>
@@ -749,23 +791,21 @@
                 <button class="modal-close" onclick="closeModal('modal-curl')">&#x2715;</button>
             </div>
             <div class="modal-body">
-                <div class="curl-config">
-                    <div class="curl-field">
-                        <label>Flattened model selector</label>
-                        <div class="connect-configurator" id="curl-selector" style="margin-bottom:0"></div>
-                    </div>
-                    <div class="curl-field">
-                        <label for="curl-key-select">API Key</label>
-                        <select class="curl-key-select" id="curl-key-select">
-                            {{if .ServerAPIKeys}}
-                            {{range .ServerAPIKeys}}
-                            <option value="{{.Full}}">{{.Masked}}</option>
-                            {{end}}
-                            {{else}}
-                            <option value="your-proxy-api-key">No keys configured</option>
-                            {{end}}
-                        </select>
-                    </div>
+                <div class="curl-field" style="margin-bottom:1rem">
+                    <label>Flattened model selector</label>
+                    <div class="connect-configurator" id="curl-selector" style="margin-bottom:0"></div>
+                </div>
+                <div class="curl-field" style="margin-bottom:1rem">
+                    <label for="curl-key-select">API Key</label>
+                    <select class="connect-select" id="curl-key-select">
+                        {{if .ServerAPIKeys}}
+                        {{range .ServerAPIKeys}}
+                        <option value="{{.Full}}">{{.Name}}: {{.Masked}}</option>
+                        {{end}}
+                        {{else}}
+                        <option value="your-proxy-api-key">No keys configured</option>
+                        {{end}}
+                    </select>
                 </div>
                 <div class="step">List all models</div>
                 <div class="code-block">
@@ -861,13 +901,59 @@
 
     <script src="/ui/static/shared.js"></script>
     <script>
+        function syncAllSelectorsToSharedState() {
+            var saved = loadConnectSelectorState('zed');
+            if (!saved) return;
+            var keys = ['zed', 'opencode', 'droid', 'curl'];
+            keys.forEach(function(key) {
+                var state = connectSelectors[key];
+                if (state) {
+                    state.selectedModels = saved.selectedModels || [];
+                    state.defaultModel = saved.defaultModel || '';
+                    state.selectedBackends = saved.selectedBackends ? new Set(saved.selectedBackends) : new Set(selectableBackends());
+                    refreshSelectorState(state);
+                    renderSelector(key);
+                    rebuildSelectorConfig(key);
+                }
+            });
+        }
+
         function openModal(id) {
             document.getElementById(id).classList.add('open');
             document.body.style.overflow = 'hidden';
             if (id === 'modal-zed' && !zedConfigBuilt) buildZedConfig();
             if (id === 'modal-opencode' && !opencodeConfigBuilt) buildOpenCodeConfig();
             if (id === 'modal-droid' && !droidConfigBuilt) buildDroidConfig();
+            if (id === 'modal-curl' && !curlConfigBuilt) buildCurlSelector();
             if (id === 'modal-add-backend') resetWizard();
+            // Sync all selectors to shared state
+            syncAllSelectorsToSharedState();
+            // Auto-select matching API key
+            var keyMap = {
+                'modal-zed': 'zed',
+                'modal-opencode': 'opencode',
+                'modal-droid': 'droid',
+                'modal-factory': 'factory'
+            };
+            var keyName = keyMap[id];
+            if (keyName) {
+                var sel = document.getElementById(id.replace('modal-', '') + '-key-select');
+                if (sel) {
+                    for (var i = 0; i < sel.options.length; i++) {
+                        if (sel.options[i].text.toLowerCase().startsWith(keyName + ':')) {
+                            sel.selectedIndex = i;
+                            break;
+                        }
+                    }
+                    // Trigger update for the env block
+                    var updateFn = {
+                        'modal-zed': updateZedEnv,
+                        'modal-opencode': updateOpenCodeEnv,
+                        'modal-droid': updateDroidEnv
+                    }[id];
+                    if (updateFn) updateFn();
+                }
+            }
         }
         var openBackendDropdown = null;
         var openModelDropdown = null;
@@ -1893,7 +1979,8 @@
         })();
 
         function copyBlock(btn, id) {
-            var text = document.getElementById(id).textContent;
+            var el = document.getElementById(id);
+            var text = el.dataset.copyText || el.textContent;
             copyToClipboard(text).then(() => copyFeedback(btn, true)).catch(() => copyFeedback(btn, false));
         }
 
@@ -2611,6 +2698,7 @@
         var zedConfigBuilt = false;
         var opencodeConfigBuilt = false;
         var droidConfigBuilt = false;
+        var curlConfigBuilt = false;
         var connectSelectors = {};
 
         function selectableBackends() {
@@ -2673,16 +2761,37 @@
             }
         }
 
+        function saveConnectSelectorState(key) {
+            var state = connectSelectors[key];
+            if (!state) return;
+            try {
+                localStorage.setItem('connect-shared', JSON.stringify({
+                    selectedModels: state.selectedModels,
+                    defaultModel: state.defaultModel,
+                    selectedBackends: Array.from(state.selectedBackends)
+                }));
+            } catch(e) {}
+        }
+
+        function loadConnectSelectorState(key) {
+            try {
+                var saved = localStorage.getItem('connect-shared');
+                if (saved) return JSON.parse(saved);
+            } catch(e) {}
+            return null;
+        }
+
         function ensureSelectorState(key, options) {
             if (!connectSelectors[key]) {
+                var saved = loadConnectSelectorState(key);
                 connectSelectors[key] = {
                     key: key,
                     rootId: options.rootId,
                     search: '',
                     allowDefault: !!options.allowDefault,
-                    selectedBackends: new Set(selectableBackends()),
-                    selectedModels: [],
-                    defaultModel: '',
+                    selectedBackends: saved && saved.selectedBackends ? new Set(saved.selectedBackends) : new Set(selectableBackends()),
+                    selectedModels: saved && saved.selectedModels ? saved.selectedModels : [],
+                    defaultModel: saved && saved.defaultModel ? saved.defaultModel : '',
                     activeModel: '',
                     renderConfig: options.renderConfig,
                     configTargetId: options.configTargetId,
@@ -2964,6 +3073,7 @@
             updateSelectorDropdown(key);
             updateSelectorDefaultSelect(key);
             rebuildSelectorConfig(key);
+            saveConnectSelectorState(key);
         }
 
         function selectorRemoveModel(key, bareID) {
@@ -2977,6 +3087,7 @@
             updateSelectorDropdown(key);
             updateSelectorDefaultSelect(key);
             rebuildSelectorConfig(key);
+            saveConnectSelectorState(key);
         }
 
         // Add all models from a specific backend (called from dropdown backend entries)
@@ -3010,6 +3121,7 @@
             if (checked) state.selectedBackends.add(name); else state.selectedBackends.delete(name);
             state.search = '';
             renderSelector(key);
+            saveConnectSelectorState(key);
         }
 
         function selectorToggleModel(key, bareID, checked) {
@@ -3022,6 +3134,7 @@
             if (!state) return;
             state.defaultModel = bareID;
             rebuildSelectorConfig(key);
+            saveConnectSelectorState(key);
         }
 
         function selectorSearch(key, value) {
@@ -3043,6 +3156,7 @@
             updateSelectorDropdown(key);
             updateSelectorDefaultSelect(key);
             rebuildSelectorConfig(key);
+            saveConnectSelectorState(key);
         }
 
         function selectorClearAllModels(key) {
@@ -3054,6 +3168,7 @@
             updateSelectorDropdown(key);
             updateSelectorDefaultSelect(key);
             rebuildSelectorConfig(key);
+            saveConnectSelectorState(key);
         }
 
         function selectorKeydown(key, event) {
@@ -3445,6 +3560,8 @@
         }
 
         function buildCurlSelector() {
+            if (curlConfigBuilt) return;
+            curlConfigBuilt = true;
             ensureSelectorState('curl', {
                 rootId: 'curl-selector',
                 configTargetId: '',
@@ -3535,6 +3652,54 @@
             var el   = document.getElementById(id);
             var text = el.dataset.copyText || el.textContent;
             copyToClipboard(text).then(() => copyFeedback(btn, true)).catch(() => copyFeedback(btn, false));
+        }
+
+        // Shared helper to get key from any selector
+        function getApiKey(selectId) {
+            var sel = document.getElementById(selectId);
+            return sel ? sel.value : '';
+        }
+
+        function getApiKeyMasked(selectId) {
+            var sel = document.getElementById(selectId);
+            if (!sel || sel.selectedIndex < 0) return '';
+            var text = sel.options[sel.selectedIndex].text;
+            var colonIdx = text.indexOf(': ');
+            return colonIdx >= 0 ? text.substring(colonIdx + 2) : text;
+        }
+
+        // Update functions for each modal's env block
+        function updateZedEnv() {
+            var key = getApiKey('zed-key-select');
+            var masked = getApiKeyMasked('zed-key-select');
+            var el = document.getElementById('zed-env');
+            if (!el) return;
+            var display = 'export LLM_API_PROXY_API_KEY="' + masked + '"';
+            var copy = 'export LLM_API_PROXY_API_KEY="' + key + '"';
+            el.textContent = display;
+            el.dataset.copyText = copy;
+        }
+
+        function updateOpenCodeEnv() {
+            var key = getApiKey('opencode-key-select');
+            var masked = getApiKeyMasked('opencode-key-select');
+            var el = document.getElementById('opencode-env');
+            if (!el) return;
+            var display = 'export LLM_API_PROXY_API_KEY="' + masked + '"';
+            var copy = 'export LLM_API_PROXY_API_KEY="' + key + '"';
+            el.textContent = display;
+            el.dataset.copyText = copy;
+        }
+
+        function updateDroidEnv() {
+            var key = getApiKey('droid-key-select');
+            var masked = getApiKeyMasked('droid-key-select');
+            var el = document.getElementById('droid-env');
+            if (!el) return;
+            var display = 'export LLM_API_PROXY_API_KEY="' + masked + '"';
+            var copy = 'export LLM_API_PROXY_API_KEY="' + key + '"';
+            el.textContent = display;
+            el.dataset.copyText = copy;
         }
 
         // Initialise curl examples with default values

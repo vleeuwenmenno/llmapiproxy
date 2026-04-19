@@ -1012,10 +1012,16 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 	aliasCollisionsJSON, _ := json.Marshal(aliasCollisions)
 
 	// Build API key entries for the curl modal (masked for display, full for copy).
-	apiKeyEntries := make([]keyEntry, len(cfg.Server.APIKeys))
+	// Include both Server.APIKeys and Clients for complete list.
+	allKeys := cfg.AllAPIKeys()
+	apiKeyEntries := make([]keyEntry, len(cfg.Server.APIKeys)+len(cfg.Clients))
 	for i, k := range cfg.Server.APIKeys {
-		apiKeyEntries[i] = keyEntry{Index: i, Masked: maskKey(k), Full: k}
+		apiKeyEntries[i] = keyEntry{Index: i, Name: "server", Masked: maskKey(k), Full: k}
 	}
+	for i, cl := range cfg.Clients {
+		apiKeyEntries[len(cfg.Server.APIKeys)+i] = keyEntry{Index: len(cfg.Server.APIKeys) + i, Name: cl.Name, Masked: maskKey(cl.APIKey), Full: cl.APIKey}
+	}
+	_ = allKeys // used above
 
 	// Collect all model IDs from enabled backends for the curl modal selector.
 	var curlModels []string
@@ -1277,9 +1283,12 @@ func (u *UI) BackendsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	aliasCollisionsJSON, _ := json.Marshal(aliasCollisions)
 
-	apiKeyEntries := make([]keyEntry, len(cfg.Server.APIKeys))
+	apiKeyEntries := make([]keyEntry, len(cfg.Server.APIKeys)+len(cfg.Clients))
 	for i, k := range cfg.Server.APIKeys {
-		apiKeyEntries[i] = keyEntry{Index: i, Masked: maskKey(k), Full: k}
+		apiKeyEntries[i] = keyEntry{Index: i, Name: "server", Masked: maskKey(k), Full: k}
+	}
+	for i, cl := range cfg.Clients {
+		apiKeyEntries[len(cfg.Server.APIKeys)+i] = keyEntry{Index: len(cfg.Server.APIKeys) + i, Name: cl.Name, Masked: maskKey(cl.APIKey), Full: cl.APIKey}
 	}
 
 	var curlModels []string
@@ -2124,6 +2133,7 @@ func (u *UI) ChatSetDefaultModel(w http.ResponseWriter, r *http.Request) {
 // keyEntry holds display data for a single API key on the settings page.
 type keyEntry struct {
 	Index  int
+	Name   string
 	Masked string
 	Full   string
 }
@@ -2145,9 +2155,12 @@ func maskKey(k string) string {
 
 func (u *UI) SettingsPage(w http.ResponseWriter, r *http.Request) {
 	cfg := u.cfgMgr.Get()
-	keys := make([]keyEntry, len(cfg.Server.APIKeys))
+	keys := make([]keyEntry, len(cfg.Server.APIKeys)+len(cfg.Clients))
 	for i, k := range cfg.Server.APIKeys {
-		keys[i] = keyEntry{Index: i, Masked: maskKey(k), Full: k}
+		keys[i] = keyEntry{Index: i, Name: "server", Masked: maskKey(k), Full: k}
+	}
+	for i, cl := range cfg.Clients {
+		keys[len(cfg.Server.APIKeys)+i] = keyEntry{Index: len(cfg.Server.APIKeys) + i, Name: cl.Name, Masked: maskKey(cl.APIKey), Full: cl.APIKey}
 	}
 	msg := r.URL.Query().Get("msg")
 
