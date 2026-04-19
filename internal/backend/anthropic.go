@@ -117,6 +117,9 @@ func (b *AnthropicBackend) ResolveModelID(canonicalID string) string {
 		}
 	}
 	for _, m := range b.getCachedOrFetchModels() {
+		if m.Disabled {
+			continue
+		}
 		if m.ID == canonicalID {
 			return canonicalID
 		}

@@ -774,7 +774,17 @@ func (r *Registry) ResolveRoute(model string, routing config.RoutingConfig) ([]R
 					continue
 				}
 				if b, ok := r.backends[bName]; ok {
-					entries = append(entries, RouteEntry{Backend: b, ModelID: b.ResolveModelID(model), Source: "config"})
+					rawID := model
+					if r.modelIndex != nil {
+						if resolved, ok2 := r.modelIndex.ResolveBackendModelID(model, bName); ok2 {
+							rawID = resolved
+						} else {
+							rawID = b.ResolveModelID(model)
+						}
+					} else {
+						rawID = b.ResolveModelID(model)
+					}
+					entries = append(entries, RouteEntry{Backend: b, ModelID: rawID, Source: "config"})
 				}
 			}
 			if len(entries) > 0 {

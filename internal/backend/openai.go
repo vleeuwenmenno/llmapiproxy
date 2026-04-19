@@ -107,7 +107,6 @@ func (b *OpenAIBackend) SupportsModel(modelID string) bool {
 }
 
 func (b *OpenAIBackend) ResolveModelID(canonicalID string) string {
-	// Check static model list.
 	for _, m := range b.models {
 		if m.ID == canonicalID {
 			return canonicalID
@@ -116,8 +115,10 @@ func (b *OpenAIBackend) ResolveModelID(canonicalID string) string {
 			return m.ID
 		}
 	}
-	// Check cached upstream models.
 	for _, m := range b.getCachedOrFetchModels() {
+		if m.Disabled {
+			continue
+		}
 		if m.ID == canonicalID {
 			return canonicalID
 		}

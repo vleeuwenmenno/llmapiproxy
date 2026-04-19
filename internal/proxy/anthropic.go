@@ -317,6 +317,7 @@ func (h *Handler) handleAnthropicNonStream(ctx context.Context, w http.ResponseW
 			Timestamp:         start,
 			Backend:           entry.Backend.Name(),
 			Model:             originalModel,
+			ResolvedModel:     resolvedModel(originalModel, entry.ModelID),
 			LatencyMs:         latency,
 			Stream:            false,
 			Client:            clientName,
@@ -367,6 +368,7 @@ func (h *Handler) handleAnthropicStream(ctx context.Context, w http.ResponseWrit
 	var lastErr error
 	var lastBE *backend.BackendError
 	var lastBackend string
+	var winnerModelID string
 	triedCount := 0
 
 	for i, entry := range entries {
@@ -398,6 +400,7 @@ func (h *Handler) handleAnthropicStream(ctx context.Context, w http.ResponseWrit
 		}
 		lastBackend = entry.Backend.Name()
 		triedCount++
+		winnerModelID = entry.ModelID
 		break
 	}
 
@@ -439,6 +442,7 @@ func (h *Handler) handleAnthropicStream(ctx context.Context, w http.ResponseWrit
 		Timestamp:         start,
 		Backend:           lastBackend,
 		Model:             originalModel,
+		ResolvedModel:     resolvedModel(originalModel, winnerModelID),
 		Stream:            true,
 		Client:            clientName,
 		Strategy:          strategy,

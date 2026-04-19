@@ -138,6 +138,15 @@ func triedBackends(entries []backend.RouteEntry, n int) string {
 	return strings.Join(names, ",")
 }
 
+// resolvedModel returns the backend-specific model ID if it differs from the
+// client-requested model name (i.e. an alias was applied), otherwise "".
+func resolvedModel(originalModel, entryModelID string) string {
+	if entryModelID != originalModel {
+		return entryModelID
+	}
+	return ""
+}
+
 func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, entries []backend.RouteEntry, strategy string, req *backend.ChatCompletionRequest, originalModel string, start time.Time, clientName string, cl *config.ClientConfig) {
 	var lastErr error
 	var lastBE *backend.BackendError
@@ -193,6 +202,7 @@ func (h *Handler) handleNonStream(ctx context.Context, w http.ResponseWriter, en
 			Timestamp:         start,
 			Backend:           entry.Backend.Name(),
 			Model:             originalModel,
+			ResolvedModel:     resolvedModel(originalModel, entry.ModelID),
 			LatencyMs:         latency,
 			Stream:            false,
 			Client:            clientName,
@@ -347,6 +357,7 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 		Timestamp:         start,
 		Backend:           lastBackend,
 		Model:             originalModel,
+		ResolvedModel:     resolvedModel(originalModel, entries[winnerIdx].ModelID),
 		Stream:            true,
 		Client:            clientName,
 		Strategy:          strategy,
@@ -405,6 +416,7 @@ type raceResult struct {
 	err       error
 	beErr     *backend.BackendError
 	latencyMs int64
+	modelID   string
 }
 
 func (h *Handler) handleRaceNonStream(ctx context.Context, w http.ResponseWriter, entries []backend.RouteEntry, req *backend.ChatCompletionRequest, originalModel string, start time.Time, clientName string, cl *config.ClientConfig) {
@@ -428,7 +440,7 @@ func (h *Handler) handleRaceNonStream(ctx context.Context, w http.ResponseWriter
 			}
 			t0 := time.Now()
 			resp, err := e.Backend.ChatCompletion(ctx, &reqCopy)
-			rr := raceResult{resp: resp, be: e.Backend, err: err, latencyMs: time.Since(t0).Milliseconds()}
+			rr := raceResult{resp: resp, be: e.Backend, err: err, latencyMs: time.Since(t0).Milliseconds(), modelID: e.ModelID}
 			errors.As(err, &rr.beErr)
 			resultCh <- rr
 		}()
@@ -453,6 +465,7 @@ func (h *Handler) handleRaceNonStream(ctx context.Context, w http.ResponseWriter
 				Timestamp:         start,
 				Backend:           rr.be.Name(),
 				Model:             originalModel,
+				ResolvedModel:     resolvedModel(originalModel, rr.modelID),
 				LatencyMs:         latency,
 				StatusCode:        http.StatusOK,
 				Stream:            false,
@@ -540,6 +553,7 @@ type raceStreamResult struct {
 	buffered   []byte
 	be         backend.Backend
 	cancelOurs context.CancelFunc
+	modelID    string
 }
 
 func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, entries []backend.RouteEntry, req *backend.ChatCompletionRequest, originalModel string, start time.Time, clientName string, cl *config.ClientConfig) {
@@ -591,6 +605,7 @@ func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, e
 				stream:   stream,
 				buffered: buf[:n],
 				be:       e.Backend,
+				modelID:  e.ModelID,
 			}, be: e.Backend, latencyMs: time.Since(t0).Milliseconds()}
 		}()
 	}
@@ -668,6 +683,7 @@ func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, e
 		Timestamp:         start,
 		Backend:           winner.be.Name(),
 		Model:             originalModel,
+		ResolvedModel:     resolvedModel(originalModel, winner.modelID),
 		Stream:            true,
 		Client:            clientName,
 		Strategy:          config.StrategyRace,
@@ -750,7 +766,7 @@ func (h *Handler) handleStaggeredRaceNonStream(ctx context.Context, w http.Respo
 			}
 			t0 := time.Now()
 			resp, err := e.Backend.ChatCompletion(ctx, &reqCopy)
-			rr := raceResult{resp: resp, be: e.Backend, err: err, latencyMs: time.Since(t0).Milliseconds()}
+			rr := raceResult{resp: resp, be: e.Backend, err: err, latencyMs: time.Since(t0).Milliseconds(), modelID: e.ModelID}
 			errors.As(err, &rr.beErr)
 			resultCh <- rr
 		}()
@@ -773,6 +789,7 @@ func (h *Handler) handleStaggeredRaceNonStream(ctx context.Context, w http.Respo
 				Timestamp:         start,
 				Backend:           rr.be.Name(),
 				Model:             originalModel,
+				ResolvedModel:     resolvedModel(originalModel, rr.modelID),
 				LatencyMs:         latency,
 				StatusCode:        http.StatusOK,
 				Stream:            false,
@@ -914,6 +931,7 @@ func (h *Handler) handleStaggeredRaceStream(ctx context.Context, w http.Response
 				stream:   stream,
 				buffered: buf[:n],
 				be:       e.Backend,
+				modelID:  e.ModelID,
 			}, be: e.Backend, latencyMs: time.Since(t0).Milliseconds()}
 		}()
 	}
@@ -989,6 +1007,7 @@ func (h *Handler) handleStaggeredRaceStream(ctx context.Context, w http.Response
 		Timestamp:         start,
 		Backend:           winner.be.Name(),
 		Model:             originalModel,
+		ResolvedModel:     resolvedModel(originalModel, winner.modelID),
 		Stream:            true,
 		Client:            clientName,
 		Strategy:          config.StrategyStaggeredRace,
