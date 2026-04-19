@@ -68,7 +68,7 @@
                         <input type="search" id="overlap-search" class="filter-input" placeholder="Model IDs, backends, aliases">
                     </div>
                     <div class="window-pills" id="overlap-view-toggle">
-                        <button type="button" class="pill active" data-view="cards">Cards</button>
+                        <button type="button" class="pill active" data-view="grid">Cards</button>
                         <button type="button" class="pill" data-view="list">List</button>
                     </div>
                     <button type="button" class="overlap-toggle-filters" id="overlap-toggle-filters">Filters<span class="toggle-arrow">&#x25BE;</span></button>
@@ -2440,6 +2440,7 @@
                 effectiveView = 'list';
             }
             results.innerHTML = effectiveView === 'list' ? renderOverlapList(visible) : renderOverlapGrid(visible);
+            syncOverlapViewButtons(effectiveView);
         }
 
         function setOverlapItems(items) {
