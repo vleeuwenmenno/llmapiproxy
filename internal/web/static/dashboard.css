@@ -904,6 +904,12 @@ body.light .rank-table td {
     color: var(--red);
 }
 
+/* ── Table Scroll Wrapper ── */
+.table-scroll-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 /* ── Request Log ── */
 .log-table {
     width: 100%;

@@ -847,12 +847,43 @@ nav {
             }
             .sidebar-toggle-btn { display: flex; }
             .params-grid { grid-template-columns: 1fr; }
-            .input-area { padding: 0.75rem; }
-            .token-bar { gap: 1rem; padding: 0.4rem 0.75rem; overflow-x: auto; }
+            .input-area { 
+                padding: 0.75rem;
+                padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+            }
+            .token-bar { 
+                gap: 1rem; 
+                padding: 0.4rem 0.75rem; 
+                overflow-x: auto;
+                flex-wrap: wrap;
+            }
+            .input-wrap {
+                min-height: 44px;
+            }
+            #user-input {
+                max-height: 120px;
+            }
+        }
+
+        /* PWA standalone mode */
+        @media (display-mode: standalone) {
+            body {
+                padding-top: env(safe-area-inset-top);
+            }
+            nav {
+                padding-top: max(0.75rem, env(safe-area-inset-top));
+            }
+            .input-area {
+                padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+            }
         }
 
         @media (max-width: 480px) {
             .messages { padding: 0.75rem; }
             .msg { max-width: 95%; }
             .model-pill-row { flex-wrap: wrap; }
+            .token-bar {
+                font-size: 0.7rem;
+                gap: 0.5rem;
+            }
         }
