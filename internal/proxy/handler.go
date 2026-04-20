@@ -352,6 +352,8 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
 
 	rec := stats.Record{
 		Timestamp:         start,
@@ -370,6 +372,7 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	var firstTokenAt time.Time
+	dataLineCount := 0
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -377,19 +380,25 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 			break
 		}
 
-		if strings.HasPrefix(line, "data: ") && line != "data: [DONE]" {
-			data := line[6:]
+		if data, done := parseSSEData(line); done {
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		} else if data != "" {
+			dataLineCount++
 			rewritten, usage := rewriteStreamChunk(data, originalModel)
+			if usage != nil {
+				log.Debug().Int("prompt", usage.PromptTokens).Int("completion", usage.CompletionTokens).Int("total", usage.TotalTokens).Str("backend", lastBackend).Msg("stream usage extracted")
+			}
 			applyUsageToRecord(&rec, usage)
 			fmt.Fprintf(w, "data: %s\n\n", rewritten)
 			if firstTokenAt.IsZero() {
 				firstTokenAt = time.Now()
+				log.Debug().Str("backend", lastBackend).Int64("ttft_ms", firstTokenAt.Sub(start).Milliseconds()).Msg("first stream token")
 			}
 		} else if line != "" {
 			fmt.Fprintf(w, "%s\n", line)
-			if line == "data: [DONE]" {
-				fmt.Fprint(w, "\n")
-			}
+			flusher.Flush()
+			continue
 		} else {
 			continue
 		}
@@ -406,7 +415,7 @@ func (h *Handler) handleStream(ctx context.Context, w http.ResponseWriter, entri
 	stats.ComputeTPS(&rec, firstTokenAt, time.Now())
 	rec.StatusCode = http.StatusOK
 	h.collector.Record(rec)
-	log.Info().Str("model", originalModel).Str("backend", lastBackend).Int64("latency_ms", rec.LatencyMs).Int64("ttft_ms", rec.TTFTMs).Float64("tps", rec.TPS).Bool("fallback", winnerIdx > 0).Bool("stream", true).Str("client", clientName).Msg("completion complete")
+	log.Info().Str("model", originalModel).Str("backend", lastBackend).Int64("latency_ms", rec.LatencyMs).Int64("ttft_ms", rec.TTFTMs).Float64("tps", rec.TPS).Bool("fallback", winnerIdx > 0).Bool("stream", true).Str("client", clientName).Int("chunks", dataLineCount).Int("prompt_tokens", rec.PromptTokens).Int("completion_tokens", rec.CompletionTokens).Msg("completion complete")
 }
 
 // raceResult holds the outcome of a single backend attempt in race mode.
@@ -678,6 +687,8 @@ func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, e
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
 
 	rec := stats.Record{
 		Timestamp:         start,
@@ -702,8 +713,10 @@ func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, e
 		if ctx.Err() != nil {
 			break
 		}
-		if strings.HasPrefix(line, "data: ") && line != "data: [DONE]" {
-			data := line[6:]
+		if data, done := parseSSEData(line); done {
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		} else if data != "" {
 			rewritten, usage := rewriteStreamChunk(data, originalModel)
 			applyUsageToRecord(&rec, usage)
 			fmt.Fprintf(w, "data: %s\n\n", rewritten)
@@ -712,13 +725,11 @@ func (h *Handler) handleRaceStream(ctx context.Context, w http.ResponseWriter, e
 			}
 		} else if line != "" {
 			fmt.Fprintf(w, "%s\n", line)
-			if line == "data: [DONE]" {
-				fmt.Fprint(w, "\n")
-			}
+			flusher.Flush()
 		} else {
 			fmt.Fprint(w, "\n")
+			flusher.Flush()
 		}
-		flusher.Flush()
 	}
 
 	if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
@@ -1002,6 +1013,8 @@ func (h *Handler) handleStaggeredRaceStream(ctx context.Context, w http.Response
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
 
 	rec := stats.Record{
 		Timestamp:         start,
@@ -1025,8 +1038,10 @@ func (h *Handler) handleStaggeredRaceStream(ctx context.Context, w http.Response
 		if ctx.Err() != nil {
 			break
 		}
-		if strings.HasPrefix(line, "data: ") && line != "data: [DONE]" {
-			data := line[6:]
+		if data, done := parseSSEData(line); done {
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		} else if data != "" {
 			rewritten, usage := rewriteStreamChunk(data, originalModel)
 			applyUsageToRecord(&rec, usage)
 			fmt.Fprintf(w, "data: %s\n\n", rewritten)
@@ -1035,13 +1050,11 @@ func (h *Handler) handleStaggeredRaceStream(ctx context.Context, w http.Response
 			}
 		} else if line != "" {
 			fmt.Fprintf(w, "%s\n", line)
-			if line == "data: [DONE]" {
-				fmt.Fprint(w, "\n")
-			}
+			flusher.Flush()
 		} else {
 			fmt.Fprint(w, "\n")
+			flusher.Flush()
 		}
-		flusher.Flush()
 	}
 
 	if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
@@ -1354,6 +1367,26 @@ func (h *Handler) circuitRecordFailure(backendName string, be *backend.BackendEr
 // isCircuitTripError returns true for status codes that should trip the circuit breaker.
 func isCircuitTripError(statusCode int) bool {
 	return statusCode == http.StatusTooManyRequests || statusCode == http.StatusForbidden
+}
+
+// parseSSEData extracts JSON payload from an SSE "data:" line,
+// handling both standard "data: {...}" and non-standard "data:{...}" (no space).
+// Returns ("", false) for non-data lines, ("", true) for [DONE].
+func parseSSEData(line string) (string, bool) {
+	if strings.HasPrefix(line, "data: ") {
+		if line == "data: [DONE]" {
+			return "", true
+		}
+		return line[6:], false
+	}
+	if strings.HasPrefix(line, "data:") && !strings.HasPrefix(line, "data: ") {
+		payload := strings.TrimPrefix(line, "data:")
+		if payload == " [DONE]" || payload == "[DONE]" {
+			return "", true
+		}
+		return payload, false
+	}
+	return "", false
 }
 
 // isRetryableError returns true for status codes that should allow retry/fallback
