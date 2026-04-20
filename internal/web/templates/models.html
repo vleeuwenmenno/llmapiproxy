@@ -430,6 +430,11 @@
                             <div class="wizard-label">Ollama</div>
                             <div class="wizard-desc">Self-hosted models with pull/delete management. Supports OpenAI, Anthropic, and native modes.</div>
                         </div>
+                        <div class="wizard-type-card" data-type="kimi" onclick="selectBackendType('kimi')">
+                            <div class="wizard-icon"><img class="backend-icon" style="width:28px;height:28px" src="/ui/static/icons/kimi.svg" alt="Kimi"></div>
+                            <div class="wizard-label">Kimi Coding</div>
+                            <div class="wizard-desc">Moonshot AI Kimi Coding API. Uses API key authentication.</div>
+                        </div>
                     </div>
                 </div>
 
@@ -504,6 +509,17 @@
                                 <span style="font-size:0.7rem;color:var(--text-dim)">OpenAI mode recommended for compatibility. Native mode uses Ollama's own API format.</span>
                             </div>
                             <input type="hidden" name="api_key" value="">
+                        </div>
+                        <div id="wizard-fields-kimi" style="display:none">
+                            <div class="wizard-form-group">
+                                <label for="wizard-kimi-name">Backend Name</label>
+                                <input type="text" name="name" id="wizard-kimi-name" value="kimi-coding" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="wizard-form-group">
+                                <label for="wizard-kimi-api-key">API Key</label>
+                                <input type="text" name="api_key" id="wizard-kimi-api-key" placeholder="Your Kimi Coding API key" autocomplete="off" spellcheck="false">
+                            </div>
+                            <input type="hidden" name="base_url" value="https://api.kimi.com/coding/v1">
                         </div>
                         <div id="wizard-form-error" class="wizard-error-msg" style="display:none"></div>
                         <div class="wizard-nav">
@@ -920,6 +936,7 @@
 
         function openModal(id) {
             document.getElementById(id).classList.add('open');
+            document.body.classList.add('modal-open');
             document.body.style.overflow = 'hidden';
             if (id === 'modal-zed' && !zedConfigBuilt) buildZedConfig();
             if (id === 'modal-opencode' && !opencodeConfigBuilt) buildOpenCodeConfig();
@@ -1608,7 +1625,8 @@
                 copilot: document.getElementById('wizard-fields-copilot'),
                 codex: document.getElementById('wizard-fields-codex'),
                 gemini: document.getElementById('wizard-fields-gemini'),
-                ollama: document.getElementById('wizard-fields-ollama')
+                ollama: document.getElementById('wizard-fields-ollama'),
+                kimi: document.getElementById('wizard-fields-kimi')
             };
             Object.keys(sets).forEach(function(key) {
                 var el = sets[key];
@@ -1647,7 +1665,7 @@
                     return;
                 }
                 wizardAddedName = json.name;
-                if (json.type === 'openai' || json.type === 'anthropic' || json.type === 'ollama') {
+                if (json.type === 'openai' || json.type === 'anthropic' || json.type === 'ollama' || json.type === 'kimi') {
                     closeModal('modal-add-backend');
                     location.reload();
                 } else {

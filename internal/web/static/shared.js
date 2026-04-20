@@ -63,7 +63,10 @@ function closeModal(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.classList.remove("open");
-    document.body.classList.remove("modal-open");
+    if (document.querySelectorAll('.modal-overlay.open').length === 0) {
+        document.body.classList.remove("modal-open");
+        document.body.style.overflow = "";
+    }
 }
 
 function closeOnBackdrop(e, id) {

@@ -12,6 +12,7 @@
     <a href="/ui/backends" {{if eq .ActivePage "backends"}}class="active"{{end}}>&#129302; Backends</a>
     <a href="/ui/models" {{if eq .ActivePage "models"}}class="active"{{end}}>&#127918; Models</a>
     <a href="/ui/chat" {{if eq .ActivePage "chat"}}class="active"{{end}}>&#128172; Chat</a>
+    <a href="/ui/chatv2/" {{if eq .ActivePage "chatv2"}}class="active"{{end}}>&#128172; Chat <small class="beta-badge">beta</small></a>
     <a href="/ui/settings" {{if eq .ActivePage "settings"}}class="active"{{end}}>&#9881; Settings</a>
     <button class="theme-toggle-mobile" onclick="toggleTheme(); closeMobileMenu();" id="themeBtnMobile">
         <span id="themeIconMobile">&#9728;</span> Toggle Theme
@@ -28,6 +29,7 @@
         <a href="/ui/backends" {{if eq .ActivePage "backends"}}class="active"{{end}}>Backends</a>
         <a href="/ui/models" {{if eq .ActivePage "models"}}class="active"{{end}}>Models</a>
         <a href="/ui/chat" {{if eq .ActivePage "chat"}}class="active"{{end}}>Chat</a>
+        <a href="/ui/chatv2/" {{if eq .ActivePage "chatv2"}}class="active"{{end}}>Chat <small class="beta-badge">beta</small></a>
         <a href="/ui/settings" {{if eq .ActivePage "settings"}}class="active"{{end}}>Settings</a>
         <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">&#9728;</button>
         {{if .User}}<span class="user-badge">{{.User.Username}}<form method="POST" action="/ui/logout" style="display:inline"><button type="submit" class="logout-btn" data-tooltip="Logout" aria-label="Logout"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button></form></span>{{end}}

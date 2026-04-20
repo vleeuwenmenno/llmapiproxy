@@ -2985,6 +2985,14 @@ func (u *UI) AddBackendPage(w http.ResponseWriter, r *http.Request) {
 		if bc.CompatMode == "" {
 			bc.CompatMode = "openai"
 		}
+	case "kimi":
+		if bc.BaseURL == "" {
+			bc.BaseURL = "https://api.kimi.com/coding/v1"
+		}
+		if bc.APIKey == "" {
+			sendErr("API key is required for Kimi Coding backends")
+			return
+		}
 	case "openai", "":
 		bc.Type = "openai"
 		if bc.BaseURL == "" {
