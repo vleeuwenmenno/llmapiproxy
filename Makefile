@@ -32,7 +32,7 @@ docker-build: ## Build the Docker image
 	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE):$(TAG) .
 
 up: ## Start the container (rebuild if needed)
-	docker compose up --build -d
+	@make docker-build && docker compose up -d --force-recreate || (printf '\n\033[31mBuild failed, no restart!\033[0m\n\n' && exit 1)
 
 down: ## Stop and remove the container
 	docker compose down
@@ -68,4 +68,3 @@ check: ## Run vet + test
 
 clean: ## Remove build artifacts
 	rm -f llmapiproxy
-	
