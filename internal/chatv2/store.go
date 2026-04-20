@@ -404,6 +404,30 @@ func (s *Store) SetModelDefaults(modelID string, temperature, topP float64, maxT
 	return nil
 }
 
+// ListAllModelDefaults returns all stored model defaults.
+func (s *Store) ListAllModelDefaults() ([]ModelDefaults, error) {
+	rows, err := s.db.Query(
+		`SELECT model_id, temperature, top_p, max_tokens, system_prompt, updated_at
+		 FROM model_defaults ORDER BY model_id`)
+	if err != nil {
+		return nil, fmt.Errorf("chatv2: list model defaults: %w", err)
+	}
+	defer rows.Close()
+
+	var defaults []ModelDefaults
+	for rows.Next() {
+		var md ModelDefaults
+		if err := rows.Scan(
+			&md.ModelID, &md.Temperature, &md.TopP, &md.MaxTokens,
+			&md.SystemPrompt, &md.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("chatv2: scan model defaults: %w", err)
+		}
+		defaults = append(defaults, md)
+	}
+	return defaults, rows.Err()
+}
+
 // ExportSessionMarkdown generates a markdown formatted string of all messages in a session.
 func (s *Store) ExportSessionMarkdown(sessionID string) (string, error) {
 	sess, err := s.GetSession(sessionID)

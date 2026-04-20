@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat (Beta) — LLM API Proxy</title>
+    <link rel="stylesheet" href="/ui/static/main.css">
+    <link rel="stylesheet" href="/ui/static/chatv2.css">
+</head>
+<body>
+    <div id="app" x-data="chatApp()" x-init="init()">
+        <!-- ChatV2 page placeholder — Alpine.js components will be added by frontend workers -->
+        <div class="chatv2-container">
+            <div class="chatv2-sidebar" x-show="sidebarOpen" x-transition>
+                <h2>Sessions</h2>
+                <div id="session-list">
+                    <p class="chatv2-empty">No sessions yet</p>
+                </div>
+            </div>
+            <div class="chatv2-main">
+                <div class="chatv2-messages" id="messages-area">
+                    <div class="chatv2-welcome" x-show="messages.length === 0">
+                        <h1>Chat (Beta)</h1>
+                        <p>Start a conversation by typing a message below.</p>
+                    </div>
+                </div>
+                <div class="chatv2-input-area">
+                    <textarea x-model="input" placeholder="Type a message..." rows="1"></textarea>
+                    <button x-on:click="sendMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Server-injected data
+        window.__CHATV2_DATA__ = [[ json . ]];
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="/ui/static/chatv2.js"></script>
+</body>
+</html>

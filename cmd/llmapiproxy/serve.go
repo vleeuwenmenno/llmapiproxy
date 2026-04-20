@@ -19,6 +19,7 @@ import (
 
 	"github.com/menno/llmapiproxy/internal/backend"
 	"github.com/menno/llmapiproxy/internal/chat"
+	"github.com/menno/llmapiproxy/internal/chatv2"
 	"github.com/menno/llmapiproxy/internal/circuit"
 	"github.com/menno/llmapiproxy/internal/config"
 	"github.com/menno/llmapiproxy/internal/logger"
@@ -116,6 +117,15 @@ var serveCmd = &cobra.Command{
 		}
 		log.Info().Str("path", cfg.Server.ChatDBPath).Msg("chat database opened")
 
+		// Open chatv2 store (separate database file).
+		chatv2DBPath := "data/chatv2.db"
+		chatv2Store, err := chatv2.OpenStore(chatv2DBPath)
+		if err != nil {
+			return fmt.Errorf("failed to open chatv2 database: %w", err)
+		}
+		defer chatv2Store.Close()
+		log.Info().Str("path", chatv2DBPath).Msg("chatv2 database opened")
+
 		appBaseURL := oauth.BaseURL(cfg.Server.Domain, cfg.Server.Listen)
 
 		web.SetVersion(version)
@@ -143,6 +153,9 @@ var serveCmd = &cobra.Command{
 		}
 
 		ui := web.NewUI(cfgMgr, collector, registry, store, chatStore, userStore, sessionSecret, circuitMgrAdapter{mgr: circuitMgr})
+
+		// Create the chatv2 handler.
+		chatv2Handler := web.NewChatV2Handler(chatv2Store, cfgMgr, registry)
 
 		r := chi.NewRouter()
 		r.Use(chiMiddleware.RealIP)
@@ -215,6 +228,23 @@ var serveCmd = &cobra.Command{
 			r.Post("/chat/sessions/{id}/title", ui.ChatGenerateTitle)
 			r.Put("/chat/title-model", ui.ChatSetTitleModel)
 			r.Put("/chat/default-model", ui.ChatSetDefaultModel)
+
+			// ChatV2 (Chat Beta) routes
+			r.Get("/chatv2", chatv2Handler.ChatV2Page)
+			r.Get("/chatv2/models", chatv2Handler.ChatV2Models)
+			r.Get("/chatv2/sessions", chatv2Handler.ChatV2ListSessions)
+			r.Post("/chatv2/sessions", chatv2Handler.ChatV2CreateSession)
+			r.Get("/chatv2/sessions/{id}", chatv2Handler.ChatV2GetSession)
+			r.Put("/chatv2/sessions/{id}", chatv2Handler.ChatV2UpdateSession)
+			r.Delete("/chatv2/sessions/{id}", chatv2Handler.ChatV2DeleteSession)
+			r.Delete("/chatv2/sessions", chatv2Handler.ChatV2DeleteAllSessions)
+			r.Get("/chatv2/sessions/{id}/messages", chatv2Handler.ChatV2ListMessages)
+			r.Post("/chatv2/sessions/{id}/messages", chatv2Handler.ChatV2SaveMessage)
+			r.Post("/chatv2/sessions/{id}/title", chatv2Handler.ChatV2GenerateTitle)
+			r.Get("/chatv2/sessions/search", chatv2Handler.ChatV2SearchSessions)
+			r.Post("/chatv2/sessions/{id}/export", chatv2Handler.ChatV2ExportSession)
+			r.Get("/chatv2/defaults", chatv2Handler.ChatV2GetDefaults)
+			r.Put("/chatv2/defaults/{model}", chatv2Handler.ChatV2SetDefaults)
 			r.Post("/settings/clear-stats", ui.ClearStats)
 			r.Post("/settings/toggle-stats", ui.ToggleStats)
 			r.Post("/settings/keys/add", ui.AddAPIKey)
