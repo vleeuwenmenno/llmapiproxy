@@ -18,7 +18,11 @@
     <div class="card">
         <div class="label">Avg TPS ({{.WindowLabel}})</div>
         <div class="value" style="color:#06b6d4">{{printf "%.1f" .WindowStats.AvgTPS}}<span class="unit"> tok/s</span></div>
+        {{if .WindowTPSPercentiles}}
+        <div class="sub">P50 {{.WindowTPSPercentiles.P50}} tok/s · P90 {{.WindowTPSPercentiles.P90}} tok/s · P99 {{.WindowTPSPercentiles.P99}} tok/s</div>
+        {{else}}
         <div class="sub">{{printf "%.1f" .AllTime.AvgTPS}} all time</div>
+        {{end}}
     </div>
     {{end}}
     {{if .WindowStats.AvgTTFTMs}}

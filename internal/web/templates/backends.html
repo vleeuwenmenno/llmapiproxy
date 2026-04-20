@@ -212,6 +212,9 @@
                     <div class="model-item{{if .Disabled}} model-disabled{{end}}">
                         <span class="model-id">{{.BareID}}</span>
                         {{if .Alias}}<span class="alias-badge">&rarr; {{.Alias}}</span>{{end}}
+                        {{if .ContextLength}}<span class="ctx-badge" title="Context window">{{ctxBadge .ContextLength}}ctx</span>{{end}}
+                        {{if .MaxOutputTokens}}<span class="out-badge" title="Max output">{{ctxBadge .MaxOutputTokens}}out</span>{{end}}
+                        {{range .Capabilities}}<span class="cap-badge">{{.}}</span>{{end}}
                         <div class="model-menu-container">
                             <button type="button" class="model-menu-trigger" onclick="toggleModelDropdown(event, this)" title="Model actions">&#x22EE;</button>
                             <div class="model-dropdown-menu">

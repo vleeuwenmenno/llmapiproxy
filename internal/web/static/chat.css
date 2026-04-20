@@ -6,10 +6,52 @@ body {
     overflow: hidden;
 }
 
-/* ── Chat page nav override (non-sticky) ── */
+/* ── Chat page nav override ── */
 nav {
     position: static;
     backdrop-filter: none;
+    flex-shrink: 0;
+    padding-top: max(1rem, env(safe-area-inset-top));
+}
+
+/* ── Mobile Input Menu Popover positioning ── */
+.mobile-input-menu-popover {
+    position: fixed;
+    bottom: 80px;
+    left: 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    z-index: 250;
+    overflow: hidden;
+    max-width: calc(100vw - 1.5rem);
+}
+
+.mobile-input-menu-popover.open {
+    display: block;
+}
+
+.mobile-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.875rem 1rem;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 0.9rem;
+    cursor: pointer;
+    text-align: left;
+}
+
+.mobile-menu-item:hover {
+    background: var(--accent-dim);
+}
+
+.mobile-menu-item svg {
+    color: var(--text-dim);
     flex-shrink: 0;
 }
 
@@ -27,44 +69,65 @@ nav {
 }
 .theme-toggle:hover { background: var(--accent-dim); color: var(--text); }
 
-/* ── Layout: sessions sidebar + chat area ── */
+/* ── Layout: chat area only (sidebar is slide-in overlay) ── */
         .workspace {
             display: grid;
-            grid-template-columns: var(--sidebar-w, 260px) 5px 1fr;
+            grid-template-columns: 1fr;
             flex: 1;
             overflow: hidden;
         }
 
-        /* ── Sessions sidebar ── */
+        /* ── Sessions sidebar (overlay on all viewports) ── */
         .sessions-sidebar {
             border-right: none;
             background: var(--surface);
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            z-index: 300;
+            transform: translateX(-100%) !important;
+            transition: transform 0.3s ease;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.3);
         }
 
-        /* ── Sidebar resize handle ── */
+        .sessions-sidebar.open {
+            transform: translateX(0) !important;
+        }
+
+        /* Desktop: sidebar is still overlay but wider backdrop not needed */
+        @media (min-width: 769px) {
+            .sidebar-backdrop {
+                display: none !important;
+            }
+
+            .sidebar-toggle-btn {
+                display: flex;
+            }
+
+            .mobile-input-menu-btn {
+                display: none;
+            }
+        }
+
+        /* Mobile: sidebar is overlay */
+        @media (max-width: 768px) {
+            .sidebar-backdrop.open {
+                display: block !important;
+                position: fixed;
+                inset: 0;
+                background: rgba(0,0,0,0.5);
+                z-index: 190;
+            }
+        }
+
+        /* ── Sidebar resize handle (hidden — sidebar is overlay) ── */
         .sidebar-resize {
-            width: 5px;
-            background: transparent;
-            border-right: 1px solid var(--border);
-            cursor: col-resize;
-            flex-shrink: 0;
-            position: relative;
-            z-index: 10;
-            transition: background 0.15s, border-color 0.15s;
-        }
-        .sidebar-resize::after {
-            content: '';
-            position: absolute;
-            inset: 0 -3px;
-            /* wider invisible hit area */
-        }
-        .sidebar-resize:hover,
-        .sidebar-resize.dragging {
-            background: var(--accent-dim);
-            border-color: var(--accent);
+            display: none;
         }
 
         .sessions-header {
@@ -427,6 +490,7 @@ nav {
         .input-area {
             border-top: 1px solid var(--border);
             padding: 0.75rem 1.25rem;
+            padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
             background: var(--surface);
             flex-shrink: 0;
         }
@@ -448,10 +512,11 @@ nav {
             max-height: 160px;
             overflow-y: auto;
             line-height: 1.5;
-            font-size: 0.875rem;
+            font-size: 1rem;
             font-family: var(--sans);
             color: var(--text);
             transition: border-color 0.15s;
+            -webkit-font-smoothing: antialiased;
         }
         #user-input:focus { border-color: var(--accent); outline: none; }
         #user-input::placeholder { color: var(--text-dim); }
@@ -712,14 +777,15 @@ nav {
             opacity: 0.8;
         }
 
-        /* ── Token bar ── */
+        /* ── Token bar (top) ── */
         .token-bar {
             display: flex;
             gap: 1.5rem;
             padding: 0.4rem 1.5rem;
-            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
             background: var(--surface);
             flex-shrink: 0;
+            order: -1;
         }
         .tok-stat { font-size: 0.7rem; color: var(--text-dim); font-family: var(--mono); }
         .tok-stat span { color: var(--text); }
@@ -779,41 +845,11 @@ nav {
         .default-model-btn.active svg { fill: var(--accent); }
         .default-model-btn svg { flex-shrink: 0; }
 
-        /* ── Mobile Sidebar Toggle ── */
+        /* ── Sidebar Toggle Button (all viewports) ── */
         .sidebar-toggle-btn {
-            display: none;
             position: fixed;
-            top: 4.5rem;
-            left: 0.75rem;
-            z-index: 60;
-            width: 44px;
-            height: 44px;
-            border-radius: 10px;
-            background: var(--surface-2);
-            border: 1px solid var(--border);
-            color: var(--text);
-            cursor: pointer;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
-            transition: background 0.15s, border-color 0.15s;
-        }
-
-        .sidebar-toggle-btn:hover {
-            background: var(--accent-dim);
-            border-color: var(--accent);
-        }
-
-        .sidebar-toggle-btn svg {
-            width: 22px;
-            height: 22px;
-        }
-
-        /* Floating Chat History Toggle (always visible) */
-        .chat-history-float {
-            position: fixed;
-            top: 1rem;
-            left: 1rem;
+            top: max(1rem, env(safe-area-inset-top));
+            left: max(1rem, env(safe-area-inset-left));
             width: 44px;
             height: 44px;
             border-radius: 10px;
@@ -829,34 +865,44 @@ nav {
             z-index: 150;
         }
 
-        .chat-history-float:hover {
+        .sidebar-toggle-btn:hover {
             background: var(--surface-2);
             color: var(--text);
             border-color: var(--accent);
         }
 
-        .chat-history-float svg {
+        .sidebar-toggle-btn svg {
             width: 20px;
             height: 20px;
         }
 
         /* Hide on mobile */
-        @media (max-width: 768px) {
-            .chat-history-float {
-                display: none;
-            }
+        /* ── Sidebar Backdrop (mobile only) ── */
+        .sidebar-backdrop {
+            display: none !important;
         }
 
-        /* ── Sidebar Backdrop ── */
-        .sidebar-backdrop {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.5);
-            z-index: 190;
-        }
-        .sidebar-backdrop.open {
-            display: block;
+        @media (max-width: 768px) {
+            .sidebar-backdrop {
+                display: none !important;
+            }
+            .sidebar-backdrop.open {
+                display: block !important;
+                position: fixed;
+                inset: 0;
+                background: rgba(0,0,0,0.5);
+                z-index: 190;
+            }
+
+            .workspace {
+                grid-template-columns: 1fr;
+            }
+
+            .sessions-sidebar {
+                width: 280px;
+                max-width: 80vw;
+                z-index: 200;
+            }
         }
 
         /* ── Mobile Responsive ── */
@@ -866,32 +912,97 @@ nav {
             .mobile-menu-btn { display: flex; align-items: center; justify-content: center; }
             .nav-links-mobile { display: flex; }
 
-            .workspace { grid-template-columns: 1fr; }
-            .sidebar-resize { display: none; }
-            .sessions-sidebar {
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 280px;
-                max-width: 80vw;
-                height: 100vh;
-                z-index: 200;
-                transform: translateX(-100%);
-                transition: transform 0.3s ease;
+            /* Hide model selector on mobile */
+            .model-pill-row { display: none !important; }
+            .default-model-row { display: none !important; }
+            .mode-toggle-btn { display: none !important; }
+
+            /* Mobile input menu button */
+            .mobile-input-menu-btn {
                 display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 36px;
+                height: 36px;
+                background: var(--surface-2);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                color: var(--text-dim);
+                cursor: pointer;
+                flex-shrink: 0;
+                margin-left: 0.5rem;
+                margin-top: max(0, env(safe-area-inset-top));
             }
-            .sessions-sidebar.open {
-                transform: translateX(0);
+
+            .mobile-input-menu-btn:active {
+                background: var(--accent-dim);
             }
+        }
+
+        @media (min-width: 769px) {
+            .mobile-input-menu-btn {
+                display: none;
+            }
+        }
+
+        /* Mobile Input Menu Popover */
+        .mobile-input-menu-popover {
+            display: none;
+            position: fixed;
+            bottom: 80px;
+            left: 0.75rem;
+            right: 0.75rem;
+            max-width: calc(100vw - 1.5rem);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            z-index: 250;
+            overflow: hidden;
+        }
+
+        @media (max-width: 768px) {
+            .mobile-input-menu-popover {
+                bottom: max(80px, env(safe-area-inset-bottom) + 80px);
+            }
+        }
+
+        .mobile-input-menu-popover.open {
+            display: block;
+        }
+
+        .mobile-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            width: 100%;
+            padding: 0.875rem 1rem;
+            background: none;
+            border: none;
+            color: var(--text);
+            font-size: 0.9rem;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .mobile-menu-item:hover {
+            background: var(--accent-dim);
+        }
+
+        .mobile-menu-item svg {
+            color: var(--text-dim);
+            flex-shrink: 0;
+        }
+
             .sidebar-toggle-btn { display: flex; }
             .params-grid { grid-template-columns: 1fr; }
             .input-area { 
                 padding: 0.75rem;
                 padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
             }
-            .token-bar { 
-                gap: 1rem; 
-                padding: 0.4rem 0.75rem; 
+            .token-bar {
+                gap: 1rem;
+                padding: 0.4rem 0.75rem;
                 overflow-x: auto;
                 flex-wrap: wrap;
             }
@@ -909,10 +1020,13 @@ nav {
                 padding-top: env(safe-area-inset-top);
             }
             nav {
-                padding-top: max(0.75rem, env(safe-area-inset-top));
+                padding-top: max(1rem, env(safe-area-inset-top));
             }
             .input-area {
                 padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+            }
+            .mobile-input-menu-popover {
+                bottom: max(80px, env(safe-area-inset-bottom) + 80px);
             }
         }
 
@@ -938,8 +1052,6 @@ nav {
             height: 100%;
         }
 
-        body.home-screen .sessions-sidebar,
-        body.home-screen .sidebar-resize,
         body.home-screen .sidebar-toggle-btn {
             display: none !important;
         }
@@ -1074,6 +1186,11 @@ nav {
         }
 
         body.chat-active .token-bar {
+            display: flex;
+        }
+
+        /* Ensure sidebar is visible when chat becomes active */
+        body.chat-active .sessions-sidebar {
             display: flex;
         }
 

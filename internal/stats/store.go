@@ -609,6 +609,91 @@ func (s *Store) FilteredGenerationPercentiles(f StatsFilter) (Percentiles, error
 	return Percentiles{P50: pct(0.50), P90: pct(0.90), P99: pct(0.99)}, nil
 }
 
+// TPSHistogram returns a histogram of TPS values for records matching f.
+// buckets defines the upper bounds of each bucket (e.g., []float64{10, 50, 100, 200, 500, 1000}).
+// The result map has bucket upper bounds as keys and the count of requests in that bucket as values.
+// Requests with TPS <= 0 are excluded.
+func (s *Store) TPSHistogram(f StatsFilter, buckets []float64) (map[float64]int, error) {
+	if s == nil || len(buckets) == 0 {
+		return nil, nil
+	}
+	where, args := buildWhere(f)
+	if where == "" {
+		where = "WHERE tps > 0"
+	} else {
+		where += " AND tps > 0"
+	}
+	rows, err := s.db.Query(`SELECT tps FROM requests `+where, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	hist := make(map[float64]int)
+	for _, b := range buckets {
+		hist[b] = 0
+	}
+
+	var tpsVals []float64
+	for rows.Next() {
+		var v float64
+		if err := rows.Scan(&v); err != nil {
+			return nil, err
+		}
+		tpsVals = append(tpsVals, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, tps := range tpsVals {
+		for _, b := range buckets {
+			if tps <= b {
+				hist[b]++
+				break
+			}
+		}
+	}
+
+	return hist, nil
+}
+
+// FilteredTPSPercentiles computes P50/P90/P99 TPS for records matching f.
+// Only requests with TPS > 0 are included.
+func (s *Store) FilteredTPSPercentiles(f StatsFilter) (Percentiles, error) {
+	if s == nil {
+		return Percentiles{}, nil
+	}
+	where, args := buildWhere(f)
+	if where == "" {
+		where = "WHERE tps > 0"
+	} else {
+		where += " AND tps > 0"
+	}
+	rows, err := s.db.Query(`SELECT tps FROM requests `+where+` ORDER BY tps`, args...)
+	if err != nil {
+		return Percentiles{}, err
+	}
+	defer rows.Close()
+	var vals []float64
+	for rows.Next() {
+		var v float64
+		if err := rows.Scan(&v); err != nil {
+			return Percentiles{}, err
+		}
+		vals = append(vals, v)
+	}
+	if err := rows.Err(); err != nil {
+		return Percentiles{}, err
+	}
+	n := len(vals)
+	if n == 0 {
+		return Percentiles{}, nil
+	}
+	pct := func(p float64) float64 { return vals[int(float64(n-1)*p)] }
+	return Percentiles{P50: int64(pct(0.50)), P90: int64(pct(0.90)), P99: int64(pct(0.99))}, nil
+}
+
 // TimeSeries returns bucketed time series data for records matching f.
 // bucketSecs is the bucket width in seconds.
 func (s *Store) TimeSeries(f StatsFilter, bucketSecs int64) ([]TimePoint, error) {

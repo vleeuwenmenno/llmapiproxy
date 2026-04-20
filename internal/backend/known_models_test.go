@@ -30,9 +30,9 @@ func TestLookupKnownModel(t *testing.T) {
 		{"claude-haiku-4-5-20251001", 200000, false},
 		{"glm-5.1", 200000, false},
 		{"glm-4.6v", 128000, false},
-		{"minimax-m2.5", 1048576, false},
-		{"minimax-m2.5-free", 1048576, false},
-		{"kimi-k2.5", 131072, false},
+		{"minimax-m2.5", 204800, false},
+		{"minimax-m2.5-free", 204800, false},
+		{"kimi-k2.5", 262144, false},
 		{"unknown-model-xyz-999", 0, true},
 	}
 

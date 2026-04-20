@@ -1,6 +1,9 @@
 package backend
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // knownModelInfo holds default metadata for well-known models.
 type knownModelInfo struct {
@@ -197,11 +200,15 @@ var knownModels = map[string]knownModelInfo{
 	"moonshot-v1":  {DisplayName: "Moonshot v1", ContextLength: 128000, MaxOutputTokens: 8192},
 
 	// ── MiniMax ─────────────────────────────────────────────────
-	"minimax-m2.7": {DisplayName: "MiniMax M2.7", ContextLength: 204800, MaxOutputTokens: 65536},
-	"minimax-m2.5": {DisplayName: "MiniMax M2.5", ContextLength: 204800, MaxOutputTokens: 65536},
-	"minimax-m2-":  {DisplayName: "MiniMax M2", ContextLength: 204800, MaxOutputTokens: 65536},
-	"minimax-m1-":  {DisplayName: "MiniMax M1", ContextLength: 204800, MaxOutputTokens: 65536},
-	"minimax-":     {DisplayName: "MiniMax", ContextLength: 204800, MaxOutputTokens: 8192},
+	"minimax-m2.7-highspeed": {DisplayName: "MiniMax M2.7 Highspeed", ContextLength: 204800, MaxOutputTokens: 65536, SupportsSampling: true},
+	"minimax-m2.7":           {DisplayName: "MiniMax M2.7", ContextLength: 204800, MaxOutputTokens: 65536, SupportsSampling: true},
+	"minimax-m2.5-highspeed": {DisplayName: "MiniMax M2.5 Highspeed", ContextLength: 204800, MaxOutputTokens: 65536, SupportsSampling: true},
+	"minimax-m2.5":           {DisplayName: "MiniMax M2.5", ContextLength: 204800, MaxOutputTokens: 65536, SupportsSampling: true},
+	"minimax-m2.1-highspeed": {DisplayName: "MiniMax M2.1 Highspeed", ContextLength: 204800, MaxOutputTokens: 65536, SupportsSampling: true},
+	"minimax-m2.1":           {DisplayName: "MiniMax M2.1", ContextLength: 204800, MaxOutputTokens: 65536, SupportsSampling: true},
+	"minimax-m2-":            {DisplayName: "MiniMax M2", ContextLength: 204800, MaxOutputTokens: 65536, SupportsSampling: true},
+	"minimax-m1-":            {DisplayName: "MiniMax M1", ContextLength: 204800, MaxOutputTokens: 65536},
+	"minimax-":               {DisplayName: "MiniMax", ContextLength: 204800, MaxOutputTokens: 8192},
 
 	// ── xAI Grok ────────────────────────────────────────────────
 	"grok-3-": {DisplayName: "Grok 3", ContextLength: 1000000, MaxOutputTokens: 32768},
@@ -266,13 +273,7 @@ func applyKnownDefaults(m *Model, modelID string) {
 		m.MaxOutputTokens = &info.MaxOutputTokens
 	}
 	if info.Vision {
-		hasVision := false
-		for _, c := range m.Capabilities {
-			if c == "vision" {
-				hasVision = true
-				break
-			}
-		}
+		hasVision := slices.Contains(m.Capabilities, "vision")
 		if !hasVision {
 			m.Capabilities = append(m.Capabilities, "vision")
 		}

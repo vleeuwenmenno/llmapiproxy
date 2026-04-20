@@ -1129,7 +1129,7 @@
 
             // ── Render all ─────────────────────────────────────────────
             function renderAll(d) {
-                renderSummary(d.summary, d.percentiles);
+                renderSummary(d.summary, d.percentiles, d.tps_percentiles);
                 renderCharts(d.time_series);
                 rankData.models = d.top_models || [];
                 rankData.backends = d.top_backends || [];
@@ -1141,7 +1141,7 @@
             }
 
             // ── Summary Cards ──────────────────────────────────────────
-            function renderSummary(s, p) {
+            function renderSummary(s, p, tp) {
                 document.getElementById("c-requests").textContent = fmtNum(
                     s.total_requests,
                 );
@@ -1156,6 +1156,10 @@
                     tpsCard.style.display = "";
                     document.getElementById("c-tps").textContent =
                         s.avg_tps.toFixed(1) + " tok/s";
+                    if (tp && tp.p50 > 0) {
+                        document.getElementById("c-tps-sub").textContent =
+                            "P50 " + tp.p50 + " tok/s · P90 " + tp.p90 + " tok/s · P99 " + tp.p99 + " tok/s";
+                    }
                 } else {
                     tpsCard.style.display = "none";
                 }

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
@@ -531,15 +532,16 @@ func (u *UI) Dashboard(w http.ResponseWriter, r *http.Request) {
 
 // unifiedDashResponse is the JSON payload for the consolidated dashboard data endpoint.
 type unifiedDashResponse struct {
-	Summary     stats.Summary             `json:"summary"`
-	Percentiles stats.Percentiles         `json:"percentiles"`
-	TimeSeries  []stats.TimePoint         `json:"time_series"`
-	TopModels   []stats.RankRow           `json:"top_models"`
-	TopBackends []stats.RankRow           `json:"top_backends"`
-	TopClients  []stats.RankRow           `json:"top_clients"`
-	Routing     []stats.ModelRoutingStats `json:"routing"`
-	Records     unifiedRecPage            `json:"records"`
-	Filters     unifiedFilters            `json:"filters"`
+	Summary        stats.Summary             `json:"summary"`
+	Percentiles    stats.Percentiles         `json:"percentiles"`
+	TPSPercentiles stats.Percentiles         `json:"tps_percentiles"`
+	TimeSeries     []stats.TimePoint         `json:"time_series"`
+	TopModels      []stats.RankRow           `json:"top_models"`
+	TopBackends    []stats.RankRow           `json:"top_backends"`
+	TopClients     []stats.RankRow           `json:"top_clients"`
+	Routing        []stats.ModelRoutingStats `json:"routing"`
+	Records        unifiedRecPage            `json:"records"`
+	Filters        unifiedFilters            `json:"filters"`
 }
 
 type unifiedRecPage struct {
@@ -571,6 +573,10 @@ func (u *UI) DashboardData(w http.ResponseWriter, r *http.Request) {
 	pcts, err := u.store.FilteredPercentiles(f)
 	if err != nil {
 		log.Error().Err(err).Msg("dashboard: percentiles error")
+	}
+	tpsPcts, err := u.store.FilteredTPSPercentiles(f)
+	if err != nil {
+		log.Error().Err(err).Msg("dashboard: tps percentiles error")
 	}
 	ts, err := u.store.TimeSeries(f, bucketSecsForFilter(f))
 	if err != nil {
@@ -605,18 +611,19 @@ func (u *UI) DashboardData(w http.ResponseWriter, r *http.Request) {
 	models, _ := u.store.DistinctValues("model")
 	clients, _ := u.store.DistinctValues("client")
 
-	resp := unifiedDashResponse{
-		Summary:     summary,
-		Percentiles: pcts,
-		TimeSeries:  ts,
-		TopModels:   topModels,
-		TopBackends: topBackends,
-		TopClients:  topClients,
-		Routing:     routing,
+resp := unifiedDashResponse{
+		Summary:        summary,
+		Percentiles:    pcts,
+		TPSPercentiles: tpsPcts,
+		TimeSeries:     ts,
+		TopModels:      topModels,
+		TopBackends:    topBackends,
+		TopClients:     topClients,
+		Routing:        routing,
 		Records: unifiedRecPage{
 			Items:      records,
 			Total:      total,
-			Page:       page,
+			Page:      page,
 			TotalPages: totalPages,
 		},
 		Filters: unifiedFilters{
@@ -642,6 +649,15 @@ func (u *UI) StatsCards(w http.ResponseWriter, r *http.Request) {
 		"Today":       today,
 		"WindowStats": windowStats,
 		"WindowLabel": label,
+	}
+
+	if u.store != nil {
+		windowFilter := statsFilterForWindow(window)
+		allTimeFilter := stats.StatsFilter{}
+		windowTPS, _ := u.store.FilteredTPSPercentiles(windowFilter)
+		allTimeTPS, _ := u.store.FilteredTPSPercentiles(allTimeFilter)
+		data["WindowTPSPercentiles"] = windowTPS
+		data["AllTimeTPSPercentiles"] = allTimeTPS
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -4010,4 +4026,63 @@ func (u *UI) OllamaSignout(w http.ResponseWriter, r *http.Request) {
 	log.Info().Str("backend", backendName).Msg("ollama signed out")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+}
+
+func (u *UI) TPSHistogram(w http.ResponseWriter, r *http.Request) {
+	if u.store == nil {
+		http.Error(w, "stats store not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	f := parseStatsFilter(r)
+	buckets := []float64{10, 25, 50, 100, 200, 300, 500, 750, 1000, 2000}
+	hist, err := u.store.TPSHistogram(f, buckets)
+	if err != nil {
+		log.Error().Err(err).Msg("tps histogram query failed")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	percentiles, err := u.store.FilteredTPSPercentiles(f)
+	if err != nil {
+		log.Error().Err(err).Msg("tps percentiles query failed")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	sum, err := u.store.FilteredSummary(f)
+	if err != nil {
+		log.Error().Err(err).Msg("filtered summary query failed")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Info().Int("hist_buckets", len(hist)).Int("total_requests", sum.TotalRequests).Float64("avg_tps", sum.AvgTPS).Msg("tps histogram response")
+
+	histSlice := make([]map[string]any, 0, len(hist))
+	for k, v := range hist {
+		histSlice = append(histSlice, map[string]any{"bucket": k, "count": v})
+	}
+	sort.Slice(histSlice, func(i, j int) bool {
+		return histSlice[i]["bucket"].(float64) < histSlice[j]["bucket"].(float64)
+	})
+
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetIndent("", "  ")
+	err = enc.Encode(map[string]any{
+		"filter":          f,
+		"buckets":         buckets,
+		"histogram":       histSlice,
+		"percentiles":     percentiles,
+		"avg_tps":         sum.AvgTPS,
+		"total_requests":  sum.TotalRequests,
+	})
+	if err != nil {
+		log.Error().Err(err).Msg("json encode failed")
+		http.Error(w, "json encode failed", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(buf.Bytes())
 }

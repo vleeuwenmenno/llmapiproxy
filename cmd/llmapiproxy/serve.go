@@ -190,6 +190,7 @@ var serveCmd = &cobra.Command{
 			r.Get("/", ui.Dashboard)
 			r.Get("/dashboard/data", ui.DashboardData)
 			r.Get("/stats", ui.StatsFragment)
+			r.Get("/stats/tps-histogram", ui.TPSHistogram)
 			r.Get("/models", ui.ModelsPage)
 			r.Get("/backends", ui.BackendsPage)
 			r.Get("/backends/{name}/models", ui.BackendModels)
