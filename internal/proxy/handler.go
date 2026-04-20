@@ -1138,6 +1138,32 @@ func rewriteStreamChunk(data string, originalModel string) (string, *backend.Usa
 		usage = &backend.Usage{}
 		json.Unmarshal(u, usage)
 	}
+	if usage == nil || (usage.PromptTokens == 0 && usage.CompletionTokens == 0 && usage.TotalTokens == 0) {
+		if choicesRaw, ok := chunk["choices"]; ok {
+			var choices []map[string]json.RawMessage
+			if err := json.Unmarshal(choicesRaw, &choices); err == nil {
+				for _, choice := range choices {
+					u, ok := choice["usage"]
+					if !ok {
+						continue
+					}
+					candidate := &backend.Usage{}
+					if err := json.Unmarshal(u, candidate); err != nil {
+						continue
+					}
+					if candidate.PromptTokens != 0 || candidate.CompletionTokens != 0 || candidate.TotalTokens != 0 {
+						usage = candidate
+						if _, exists := chunk["usage"]; !exists {
+							if usageBytes, err := json.Marshal(candidate); err == nil {
+								chunk["usage"] = usageBytes
+							}
+						}
+						break
+					}
+				}
+			}
+		}
+	}
 
 	out, err := json.Marshal(chunk)
 	if err != nil {

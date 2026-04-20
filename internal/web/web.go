@@ -892,11 +892,22 @@ func (u *UI) ModelsPage(w http.ResponseWriter, r *http.Request) {
 				if bc.ModelAliases != nil {
 					alias = bc.ModelAliases[mc.ID]
 				}
+				m := &backend.Model{ID: mc.ID}
+				if mc.ContextLength != nil {
+					m.ContextLength = mc.ContextLength
+				}
+				if mc.MaxOutputTokens != nil {
+					m.MaxOutputTokens = mc.MaxOutputTokens
+				}
+				backend.ApplyKnownDefaults(m, mc.ID)
 				modelEntries = append(modelEntries, ModelEntry{
-					FullID:   bc.Name + "/" + mc.ID,
-					BareID:   mc.ID,
-					Disabled: disabledSet[mc.ID],
-					Alias:    alias,
+					FullID:          bc.Name + "/" + mc.ID,
+					BareID:          mc.ID,
+					ContextLength:   m.ContextLength,
+					MaxOutputTokens: m.MaxOutputTokens,
+					Capabilities:    m.Capabilities,
+					Disabled:        disabledSet[mc.ID],
+					Alias:           alias,
 				})
 			}
 		}
@@ -1211,11 +1222,22 @@ func (u *UI) BackendsPage(w http.ResponseWriter, r *http.Request) {
 				if bc.ModelAliases != nil {
 					alias = bc.ModelAliases[mc.ID]
 				}
+				m := &backend.Model{ID: mc.ID}
+				if mc.ContextLength != nil {
+					m.ContextLength = mc.ContextLength
+				}
+				if mc.MaxOutputTokens != nil {
+					m.MaxOutputTokens = mc.MaxOutputTokens
+				}
+				backend.ApplyKnownDefaults(m, mc.ID)
 				modelEntries = append(modelEntries, ModelEntry{
-					FullID:   bc.Name + "/" + mc.ID,
-					BareID:   mc.ID,
-					Disabled: disabledSet[mc.ID],
-					Alias:    alias,
+					FullID:          bc.Name + "/" + mc.ID,
+					BareID:          mc.ID,
+					ContextLength:   m.ContextLength,
+					MaxOutputTokens: m.MaxOutputTokens,
+					Capabilities:    m.Capabilities,
+					Disabled:        disabledSet[mc.ID],
+					Alias:           alias,
 				})
 			}
 		}

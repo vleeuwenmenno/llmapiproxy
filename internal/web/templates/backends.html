@@ -1868,6 +1868,17 @@
                     }
                     btn.onclick = function() { toggleModelDisabled(btn, backendName, modelID, disable); };
                 }
+                // Rebuild all config generators so enabled/disabled state is reflected immediately
+                zedConfigBuilt = false;
+                opencodeConfigBuilt = false;
+                droidConfigBuilt = false;
+                curlConfigBuilt = false;
+                Object.keys(connectSelectors).forEach(function(key) { renderSelector(key); });
+                recomputeOverlaps();
+                buildZedConfig();
+                buildOpenCodeConfig();
+                buildDroidConfig();
+                buildCurlSelector();
             }).catch(function(e) { alert('Error: ' + e); });
         }
 
@@ -1925,6 +1936,17 @@
                         if (m.BareID === modelID) m.alias = alias;
                     });
                 }
+                // Rebuild all config generators so alias changes are reflected immediately
+                zedConfigBuilt = false;
+                opencodeConfigBuilt = false;
+                droidConfigBuilt = false;
+                curlConfigBuilt = false;
+                Object.keys(connectSelectors).forEach(function(key) { renderSelector(key); });
+                recomputeOverlaps();
+                buildZedConfig();
+                buildOpenCodeConfig();
+                buildDroidConfig();
+                buildCurlSelector();
             }).catch(function(e) { alert('Error: ' + e); });
         }
 
@@ -1982,6 +2004,17 @@
                     if (disabledCount > 0) text += ' (' + disabledCount + ' disabled)';
                     countEl.textContent = text;
                 }
+                // Rebuild all config generators so bulk disabled state is reflected immediately
+                zedConfigBuilt = false;
+                opencodeConfigBuilt = false;
+                droidConfigBuilt = false;
+                curlConfigBuilt = false;
+                Object.keys(connectSelectors).forEach(function(key) { renderSelector(key); });
+                recomputeOverlaps();
+                buildZedConfig();
+                buildOpenCodeConfig();
+                buildDroidConfig();
+                buildCurlSelector();
             }).catch(function(e) { alert('Error: ' + e); });
         }
 
@@ -2265,7 +2298,7 @@
             if (seed) {
                 Object.keys(seed).forEach(function(name) {
                     out[name] = (seed[name] || []).map(function(m) {
-                        return { FullID: m.full_id || '', BareID: m.bare_id || '', ContextLength: m.context_length || null, MaxOutputTokens: m.max_output_tokens || null, Capabilities: m.capabilities || [], Disabled: !!m.disabled, alias: m.alias || '' };
+                        return { FullID: m.full_id || '', BareID: m.bare_id || '', ContextLength: m.context_length || null, MaxOutputTokens: m.max_output_tokens || null, Capabilities: m.capabilities || [], Disabled: !!m.disabled, alias: m.alias || m.Alias || '' };
                     });
                 });
             }
@@ -2722,7 +2755,8 @@
                             maxOutputTokens: m.MaxOutputTokens || 0,
                             capabilities: (m.Capabilities || []).slice(),
                             backends: [backendName],
-                            displayName: titleizeModelID(bareID)
+                            displayName: titleizeModelID(bareID),
+                            alias: m.alias || ''
                         };
                         order.push(bareID);
                         return;
@@ -2734,6 +2768,7 @@
                     (m.Capabilities || []).forEach(function(cap) {
                         if (entry.capabilities.indexOf(cap) === -1) entry.capabilities.push(cap);
                     });
+                    if (m.alias && !entry.alias) entry.alias = m.alias;
                 });
             });
 
@@ -2801,7 +2836,7 @@
             }
 
             var flat = flattenModels(state.selectedBackends);
-            var flatIDs = flat.map(function(m) { return m.bareID; });
+            var flatIDs = flat.map(function(m) { return m.alias || m.bareID; });
             state.selectedModels = state.selectedModels.filter(function(id) { return flatIDs.indexOf(id) !== -1; });
             if (state.selectedModels.length === 0) state.selectedModels = flatIDs.slice();
             state.activeModel = state.activeModel && flatIDs.indexOf(state.activeModel) !== -1 ? state.activeModel : (state.selectedModels[0] || flatIDs[0] || '');
@@ -2879,22 +2914,26 @@
             labelEl.className = 'connect-model-badges-label';
             labelEl.textContent = 'Selected:';
             area.appendChild(labelEl);
-            state.selectedModels.forEach(function(bareID) {
+            state.selectedModels.forEach(function(modelID) {
+                // Find model in flattened list to get its display name (alias or bareID)
+                var flat = flattenModels(state.selectedBackends);
+                var model = flat.find(function(m) { return (m.alias || m.bareID) === modelID; });
+                var displayName = model ? (model.alias || model.bareID) : modelID;
                 var tag = document.createElement('span');
                 tag.className = 'connect-model-tag';
-                tag.title = bareID;
+                tag.title = displayName;
                 var nameSpan = document.createElement('span');
-                nameSpan.textContent = bareID;
+                nameSpan.textContent = displayName;
                 nameSpan.style.overflow = 'hidden';
                 nameSpan.style.textOverflow = 'ellipsis';
                 var btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'connect-model-tag-remove';
-                btn.setAttribute('aria-label', 'Remove ' + bareID);
+                btn.setAttribute('aria-label', 'Remove ' + displayName);
                 btn.textContent = '×';
                 btn.addEventListener('mousedown', (function(id) {
                     return function(ev) { ev.preventDefault(); selectorRemoveModel(key, id); };
-                })(bareID));
+                })(modelID));
                 tag.appendChild(nameSpan);
                 tag.appendChild(btn);
                 area.appendChild(tag);
@@ -2910,9 +2949,10 @@
             var selectedSet = new Set(state.selectedModels);
             var q = (state.search || '').toLowerCase();
             var candidates = flat.filter(function(model) {
-                if (selectedSet.has(model.bareID)) return false;
+                var modelID = model.alias || model.bareID;
+                if (selectedSet.has(modelID)) return false;
                 if (!q) return true;
-                return [model.bareID, model.displayName].concat(model.backends).join(' ').toLowerCase().indexOf(q) !== -1;
+                return [modelID, model.bareID, model.displayName].concat(model.backends).join(' ').toLowerCase().indexOf(q) !== -1;
             }).slice(0, 60);
 
             // Build backend entries: show backends whose name matches the query
@@ -2922,7 +2962,10 @@
             allBackends.forEach(function(bName) {
                 var models = allBackendModels[bName] || [];
                 var unselectedCount = models.filter(function(m) {
-                    return m && m.BareID && !m.Disabled && !selectedSet.has(m.BareID);
+                    var bareID = m && m.BareID;
+                    var alias = m && m.alias;
+                    var modelID = alias || bareID;
+                    return bareID && !m.Disabled && !selectedSet.has(modelID);
                 }).length;
                 if (unselectedCount === 0) return;
                 if (q && bName.toLowerCase().indexOf(q) === -1) return;
@@ -2961,9 +3004,10 @@
                 var item = document.createElement('div');
                 item.className = 'connect-model-dropdown-item';
                 var name = document.createElement('span');
-                name.textContent = model.bareID;
+                name.textContent = model.alias || model.bareID;
                 item.appendChild(name);
                 var tags = [];
+                if (model.alias) tags.push('→ ' + model.bareID);
                 if (model.contextLength) tags.push(fmtN(model.contextLength) + ' ctx');
                 if (model.maxOutputTokens) tags.push(fmtN(model.maxOutputTokens) + ' out');
                 if (tags.length) {
@@ -2972,9 +3016,10 @@
                     meta.textContent = tags.join('  ');
                     item.appendChild(meta);
                 }
+                var selectID = model.alias || model.bareID;
                 item.addEventListener('mousedown', (function(id) {
                     return function(ev) { ev.preventDefault(); selectorAddModel(key, id); };
-                })(model.bareID));
+                })(selectID));
                 dropdown.appendChild(item);
             });
         }
@@ -2993,10 +3038,16 @@
                 sel.appendChild(opt);
                 return;
             }
+            // Build a lookup from flat models for display names
+            var flat = flattenModels(state.selectedBackends);
+            var modelByID = {};
+            flat.forEach(function(m) { modelByID[m.alias || m.bareID] = m; });
             state.selectedModels.forEach(function(id) {
+                var model = modelByID[id];
+                var displayName = model ? (model.alias || model.bareID) : id;
                 var opt = document.createElement('option');
                 opt.value = id;
-                opt.textContent = id;
+                opt.textContent = displayName;
                 if (id === state.defaultModel) opt.selected = true;
                 sel.appendChild(opt);
             });
@@ -3007,7 +3058,8 @@
             if (!state) return;
             // Rebuild the config output (no refreshSelectorState here — avoids fighting "clear all")
             var flat = flattenModels(state.selectedBackends).filter(function(model) {
-                return state.selectedModels.indexOf(model.bareID) !== -1;
+                var modelID = model.alias || model.bareID;
+                return state.selectedModels.indexOf(modelID) !== -1;
             });
             if (state.configTargetId) {
                 var target = document.getElementById(state.configTargetId);
@@ -3088,8 +3140,9 @@
             models.forEach(function(m) {
                 if (!m || !m.BareID) return;
                 if (m.Disabled) return;
-                if (state.selectedModels.indexOf(m.BareID) === -1) {
-                    state.selectedModels.push(m.BareID);
+                var modelID = m.alias || m.BareID;
+                if (state.selectedModels.indexOf(modelID) === -1) {
+                    state.selectedModels.push(modelID);
                     added++;
                 }
             });
@@ -3208,7 +3261,7 @@
                 allowDefault: true,
                 renderConfig: function(models, state) {
                     var endpointURL = getEndpointURL();
-                    var sampleModel = state.defaultModel || (models[0] ? models[0].bareID : '');
+                    var sampleModel = state.defaultModel || (models[0] ? (models[0].alias || models[0].bareID) : '');
                     return JSON.stringify({
                         language_models: {
                             openai_compatible: {
@@ -3216,7 +3269,7 @@
                                     api_url: endpointURL,
                                     available_models: models.map(function(model) {
                                         return {
-                                            name: model.bareID,
+                                            name: model.alias || model.bareID,
                                             max_tokens: model.contextLength || 128000,
                                             max_output_tokens: model.maxOutputTokens || undefined,
                                             capabilities: {
@@ -3268,7 +3321,7 @@
                 allowDefault: true,
                 renderConfig: function(models, state) {
                     var endpointURL = getEndpointURL();
-                    var defaultModel = state.defaultModel || (models[0] ? models[0].bareID : '');
+                    var defaultModel = state.defaultModel || (models[0] ? (models[0].alias || models[0].bareID) : '');
                     return JSON.stringify({
                         $schema: 'https://opencode.ai/config.json',
                         provider: {
@@ -3280,7 +3333,8 @@
                                     baseURL: endpointURL
                                 },
                                 models: models.reduce(function(acc, model) {
-                                    acc[model.bareID] = {
+                                    var modelKey = model.alias || model.bareID;
+                                    acc[modelKey] = {
                                         name: model.displayName,
                                         limit: {
                                             context: model.contextLength || 128000,
@@ -3315,7 +3369,7 @@
                     return JSON.stringify({
                         customModels: models.map(function(model) {
                             return {
-                                model: model.bareID,
+                                model: model.alias || model.bareID,
                                 displayName: model.displayName,
                                 baseUrl: endpointURL,
                                 apiKey: '${LLM_API_PROXY_API_KEY}',
@@ -3323,7 +3377,7 @@
                                 maxOutputTokens: model.maxOutputTokens || 16384
                             };
                         }),
-                        defaultModel: state.defaultModel || (models[0] ? models[0].bareID : '')
+                        defaultModel: state.defaultModel || (models[0] ? (models[0].alias || models[0].bareID) : '')
                     }, null, 2);
                 }
             });
@@ -3424,9 +3478,13 @@
                     zedConfigBuilt = false;
                     opencodeConfigBuilt = false;
                     droidConfigBuilt = false;
+                    curlConfigBuilt = false;
                     Object.keys(connectSelectors).forEach(function(key) { renderSelector(key); });
                     recomputeOverlaps();
                     buildZedConfig();
+                    buildOpenCodeConfig();
+                    buildDroidConfig();
+                    buildCurlSelector();
                     var countEl = document.getElementById('count-' + name);
                     if (countEl) countEl.textContent = models.length + ' model' + (models.length !== 1 ? 's' : '');
                     if (statusEl) statusEl.innerHTML = dynHtml;
@@ -3499,7 +3557,17 @@
                     // Track for client-side overlap recomputation.
                     allBackendModels[name] = models;
                     pendingLoads--;
-                    if (pendingLoads <= 0) { recomputeOverlaps(); buildZedConfig(); }
+                    if (pendingLoads <= 0) {
+                        recomputeOverlaps();
+                        zedConfigBuilt = false;
+                        opencodeConfigBuilt = false;
+                        droidConfigBuilt = false;
+                        curlConfigBuilt = false;
+                        buildZedConfig();
+                        buildOpenCodeConfig();
+                        buildDroidConfig();
+                        buildCurlSelector();
+                    }
 
                     if (countEl) countEl.textContent = models.length + ' model' + (models.length !== 1 ? 's' : '');
                     if (statusEl) statusEl.innerHTML = dynHtml;
@@ -3516,7 +3584,17 @@
                 .catch(function(e) {
                     allBackendModels[name] = []; // treat as empty so pending count still completes
                     pendingLoads--;
-                    if (pendingLoads <= 0) { recomputeOverlaps(); buildZedConfig(); }
+                    if (pendingLoads <= 0) {
+                        recomputeOverlaps();
+                        zedConfigBuilt = false;
+                        opencodeConfigBuilt = false;
+                        droidConfigBuilt = false;
+                        curlConfigBuilt = false;
+                        buildZedConfig();
+                        buildOpenCodeConfig();
+                        buildDroidConfig();
+                        buildCurlSelector();
+                    }
 
                     if (statusEl) {
                         statusEl.innerHTML = dynHtml

@@ -872,6 +872,39 @@ func TestCopilotProxy_StatsRecording_Streaming(t *testing.T) {
 	}
 }
 
+func TestRewriteStreamChunk_ExtractsChoiceLevelUsage(t *testing.T) {
+	chunk := `{"id":"chatcmpl-kimi","object":"chat.completion.chunk","created":1776716734,"model":"kimi-for-coding","choices":[{"index":0,"delta":{},"finish_reason":"stop","usage":{"prompt_tokens":13,"completion_tokens":261,"total_tokens":274}}],"system_fingerprint":"fpv0_1db6139b"}`
+
+	rewritten, usage := rewriteStreamChunk(chunk, "kimi-coding/kimi-for-coding")
+	if usage == nil {
+		t.Fatal("usage is nil")
+	}
+	if usage.PromptTokens != 13 {
+		t.Fatalf("prompt_tokens = %d, want 13", usage.PromptTokens)
+	}
+	if usage.CompletionTokens != 261 {
+		t.Fatalf("completion_tokens = %d, want 261", usage.CompletionTokens)
+	}
+	if usage.TotalTokens != 274 {
+		t.Fatalf("total_tokens = %d, want 274", usage.TotalTokens)
+	}
+
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(rewritten), &m); err != nil {
+		t.Fatalf("unmarshal rewritten chunk: %v", err)
+	}
+	if _, ok := m["usage"]; !ok {
+		t.Fatal("rewritten chunk missing top-level usage")
+	}
+	var model string
+	if err := json.Unmarshal(m["model"], &model); err != nil {
+		t.Fatalf("unmarshal model: %v", err)
+	}
+	if model != "kimi-coding/kimi-for-coding" {
+		t.Fatalf("model = %q, want %q", model, "kimi-coding/kimi-for-coding")
+	}
+}
+
 // --- VAL-CODEX-006 & VAL-CODEX-007: Native Responses API passthrough ---
 
 // mockResponsesBackend implements both Backend and ResponsesBackend for testing.

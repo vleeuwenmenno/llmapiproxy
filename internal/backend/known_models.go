@@ -193,11 +193,13 @@ var knownModels = map[string]knownModelInfo{
 	"deepseek-coder":  {DisplayName: "DeepSeek Coder", ContextLength: 128000, MaxOutputTokens: 8000},
 
 	// ── Moonshot / Kimi ─────────────────────────────────────────
-	"kimi-k2.5":    {DisplayName: "Kimi K2.5", ContextLength: 262144, MaxOutputTokens: 32768},
-	"kimi-k2-":     {DisplayName: "Kimi K2", ContextLength: 262144, MaxOutputTokens: 32000},
-	"kimi-k2":      {DisplayName: "Kimi K2", ContextLength: 262144, MaxOutputTokens: 32000},
-	"moonshot-v1-": {DisplayName: "Moonshot v1", ContextLength: 128000, MaxOutputTokens: 8192},
-	"moonshot-v1":  {DisplayName: "Moonshot v1", ContextLength: 128000, MaxOutputTokens: 8192},
+	"kimi-k2.6":           {DisplayName: "Kimi K2.6", ContextLength: 262144, MaxOutputTokens: 32768},
+	"kimi-k2.5":           {DisplayName: "Kimi K2.5", ContextLength: 262144, MaxOutputTokens: 32768},
+	"kimi-k2.5-lightning": {DisplayName: "Kimi K2.5 Lightning", ContextLength: 262144, MaxOutputTokens: 32768},
+	"kimi-k2-":            {DisplayName: "Kimi K2", ContextLength: 262144, MaxOutputTokens: 32000},
+	"kimi-k2":             {DisplayName: "Kimi K2", ContextLength: 262144, MaxOutputTokens: 32000},
+	"moonshot-v1-":        {DisplayName: "Moonshot v1", ContextLength: 128000, MaxOutputTokens: 8192},
+	"moonshot-v1":         {DisplayName: "Moonshot v1", ContextLength: 128000, MaxOutputTokens: 8192},
 
 	// ── MiniMax ─────────────────────────────────────────────────
 	"minimax-m2.7-highspeed": {DisplayName: "MiniMax M2.7 Highspeed", ContextLength: 204800, MaxOutputTokens: 65536, SupportsSampling: true},
