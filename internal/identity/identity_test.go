@@ -8,7 +8,7 @@ import (
 )
 
 func TestGet_BuiltinProfiles(t *testing.T) {
-	for _, id := range []string{"none", "codex-cli", "gemini-cli", "copilot-vscode", "opencode", "claude-code"} {
+	for _, id := range []string{"none", "codex-cli", "gemini-cli", "copilot-vscode", "opencode", "kimi-cli", "claude-code"} {
 		p := Get(id)
 		if p == nil {
 			t.Errorf("Get(%q) returned nil", id)
@@ -35,7 +35,7 @@ func TestList_ContainsAllBuiltins(t *testing.T) {
 	for _, p := range profiles {
 		ids[p.ID] = true
 	}
-	for _, want := range []string{"none", "codex-cli", "gemini-cli", "copilot-vscode", "opencode", "claude-code"} {
+	for _, want := range []string{"none", "codex-cli", "gemini-cli", "copilot-vscode", "opencode", "kimi-cli", "claude-code"} {
 		if !ids[want] {
 			t.Errorf("List() missing profile %q", want)
 		}

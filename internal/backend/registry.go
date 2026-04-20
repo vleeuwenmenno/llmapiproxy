@@ -398,6 +398,14 @@ func (r *Registry) createBackend(bc config.BackendConfig, existingTS *oauth.Toke
 			return nil, nil, err
 		}
 		return b, ts, nil
+	case "kimi":
+		if profileID == "" {
+			profileID = "kimi-cli"
+		}
+		profile := identity.Resolve(profileID, customProfiles)
+		b := NewKimi(bc, cacheTTL, profile)
+		b.SetModelCacheStore(r.modelCacheStore)
+		return b, nil, nil
 	case "anthropic":
 		b := NewAnthropic(bc, cacheTTL, profile)
 		b.SetModelCacheStore(r.modelCacheStore)

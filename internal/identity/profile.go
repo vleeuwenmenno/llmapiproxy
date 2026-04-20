@@ -140,6 +140,16 @@ var builtinProfiles = []Profile{
 		},
 	},
 	{
+		ID:          "kimi-cli",
+		DisplayName: "Kimi CLI",
+		UserAgent:   "KimiCLI/1.37.0",
+		Headers: map[string]string{
+			"X-Msh-Platform": "kimi_cli",
+			"X-Msh-Version":  "1.37.0",
+		},
+		NoRequestID: true,
+	},
+	{
 		ID:          "claude-code",
 		DisplayName: "Claude Code CLI",
 		UserAgent:   "claude-cli/2.1.112 (pro, cli)",
