@@ -144,9 +144,6 @@ var serveCmd = &cobra.Command{
 
 		ui := web.NewUI(cfgMgr, collector, registry, store, chatStore, userStore, sessionSecret, circuitMgrAdapter{mgr: circuitMgr})
 
-		// Create the chatv2 handler.
-		chatv2Handler := web.NewChatV2Handler(chatv2Store, cfgMgr, registry)
-
 		r := chi.NewRouter()
 		r.Use(chiMiddleware.RealIP)
 		r.Use(chiMiddleware.Recoverer)
@@ -219,22 +216,6 @@ var serveCmd = &cobra.Command{
 			r.Put("/chat/title-model", ui.ChatSetTitleModel)
 			r.Put("/chat/default-model", ui.ChatSetDefaultModel)
 
-			// ChatV2 (Chat Beta) routes
-			r.Get("/chatv2", chatv2Handler.ChatV2Page)
-			r.Get("/chatv2/models", chatv2Handler.ChatV2Models)
-			r.Get("/chatv2/sessions", chatv2Handler.ChatV2ListSessions)
-			r.Post("/chatv2/sessions", chatv2Handler.ChatV2CreateSession)
-			r.Get("/chatv2/sessions/{id}", chatv2Handler.ChatV2GetSession)
-			r.Put("/chatv2/sessions/{id}", chatv2Handler.ChatV2UpdateSession)
-			r.Delete("/chatv2/sessions/{id}", chatv2Handler.ChatV2DeleteSession)
-			r.Delete("/chatv2/sessions", chatv2Handler.ChatV2DeleteAllSessions)
-			r.Get("/chatv2/sessions/{id}/messages", chatv2Handler.ChatV2ListMessages)
-			r.Post("/chatv2/sessions/{id}/messages", chatv2Handler.ChatV2SaveMessage)
-			r.Post("/chatv2/sessions/{id}/title", chatv2Handler.ChatV2GenerateTitle)
-			r.Get("/chatv2/sessions/search", chatv2Handler.ChatV2SearchSessions)
-			r.Post("/chatv2/sessions/{id}/export", chatv2Handler.ChatV2ExportSession)
-			r.Get("/chatv2/defaults", chatv2Handler.ChatV2GetDefaults)
-			r.Put("/chatv2/defaults/{model}", chatv2Handler.ChatV2SetDefaults)
 			r.Post("/settings/clear-stats", ui.ClearStats)
 			r.Post("/settings/toggle-stats", ui.ToggleStats)
 			r.Post("/settings/keys/add", ui.AddAPIKey)
