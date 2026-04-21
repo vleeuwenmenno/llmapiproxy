@@ -19,7 +19,6 @@ import (
 
 	"github.com/menno/llmapiproxy/internal/backend"
 	"github.com/menno/llmapiproxy/internal/chat"
-	"github.com/menno/llmapiproxy/internal/chatv2"
 	"github.com/menno/llmapiproxy/internal/circuit"
 	"github.com/menno/llmapiproxy/internal/config"
 	"github.com/menno/llmapiproxy/internal/logger"
@@ -116,15 +115,6 @@ var serveCmd = &cobra.Command{
 			return fmt.Errorf("failed to open chat database: %w", err)
 		}
 		log.Info().Str("path", cfg.Server.ChatDBPath).Msg("chat database opened")
-
-		// Open chatv2 store (separate database file).
-		chatv2DBPath := "data/chatv2.db"
-		chatv2Store, err := chatv2.OpenStore(chatv2DBPath)
-		if err != nil {
-			return fmt.Errorf("failed to open chatv2 database: %w", err)
-		}
-		defer chatv2Store.Close()
-		log.Info().Str("path", chatv2DBPath).Msg("chatv2 database opened")
 
 		appBaseURL := oauth.BaseURL(cfg.Server.Domain, cfg.Server.Listen)
 
