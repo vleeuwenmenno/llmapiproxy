@@ -224,11 +224,17 @@ var knownModels = map[string]knownModelInfo{
 	"command-r-":      {DisplayName: "Command R", ContextLength: 128000, MaxOutputTokens: 4096},
 	"command-r":       {DisplayName: "Command R", ContextLength: 128000, MaxOutputTokens: 4096},
 
+	// ── Xiaomi MIMO ──────────────────────────────────────────────
+	"mimo-v2.5-pro-": {DisplayName: "MIMO v2.5 Pro", ContextLength: 1048576, MaxOutputTokens: 131072, Vision: true},
+	"mimo-v2.5-pro":  {DisplayName: "MIMO v2.5 Pro", ContextLength: 1048576, MaxOutputTokens: 131072, Vision: true},
+	"mimo-v2.5-":     {DisplayName: "MIMO v2.5", ContextLength: 1048576, MaxOutputTokens: 131072, Vision: true},
+	"mimo-v2.5":      {DisplayName: "MIMO v2.5", ContextLength: 1048576, MaxOutputTokens: 131072, Vision: true},
+	"mimo-v2-pro":    {DisplayName: "MIMO v2 Pro", ContextLength: 131072, MaxOutputTokens: 8192},
+	"mimo-v2-omni":   {DisplayName: "MIMO v2 Omni", ContextLength: 131072, MaxOutputTokens: 8192, Vision: true},
+
 	// ── Other models ────────────────────────────────────────────
 	"big-pickle":       {DisplayName: "Big Pickle", ContextLength: 131072, MaxOutputTokens: 8192},
 	"nemotron-3-super": {DisplayName: "Nemotron 3 Super", ContextLength: 131072, MaxOutputTokens: 8192},
-	"mimo-v2-pro":      {DisplayName: "MIMO v2 Pro", ContextLength: 131072, MaxOutputTokens: 8192},
-	"mimo-v2-omni":     {DisplayName: "MIMO v2 Omni", ContextLength: 131072, MaxOutputTokens: 8192, Vision: true},
 }
 
 // LookupKnownModel searches for a model ID in the built-in database.
