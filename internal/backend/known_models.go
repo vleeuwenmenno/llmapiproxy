@@ -191,6 +191,8 @@ var knownModels = map[string]knownModelInfo{
 	"deepseek-chat":   {DisplayName: "DeepSeek Chat", ContextLength: 128000, MaxOutputTokens: 8000},
 	"deepseek-coder-": {DisplayName: "DeepSeek Coder", ContextLength: 128000, MaxOutputTokens: 8000},
 	"deepseek-coder":  {DisplayName: "DeepSeek Coder", ContextLength: 128000, MaxOutputTokens: 8000},
+	"deepseek-v4-pro": {DisplayName: "DeepSeek V4 Pro", ContextLength: 1000000, MaxOutputTokens: 131072},
+	"deepseek-v4-flash": {DisplayName: "DeepSeek V4 Flash", ContextLength: 1000000, MaxOutputTokens: 131072},
 
 	// ── Moonshot / Kimi ─────────────────────────────────────────
 	"kimi-k2.6":           {DisplayName: "Kimi K2.6", ContextLength: 262144, MaxOutputTokens: 32768},
